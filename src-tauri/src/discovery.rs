@@ -38,24 +38,9 @@ fn now_epoch() -> i64 {
 fn read_pure_mode_level(app: &AppHandle) -> String {
     if let Ok(Some(raw)) = internal_read_settings(app) {
         if let Ok(json) = serde_json::from_str::<Value>(&raw) {
-            let app_state = json.get("appState");
-            // Check pureModeLevel first, fall back to pureModeEnabled boolean
-            if let Some(level) = app_state
-                .and_then(|v| v.get("pureModeLevel"))
-                .and_then(|v| v.as_str())
-            {
-                return level.to_string();
-            }
-            if let Some(enabled) = app_state
-                .and_then(|v| v.get("pureModeEnabled"))
-                .and_then(|v| v.as_bool())
-            {
-                return if enabled {
-                    "standard".to_string()
-                } else {
-                    "off".to_string()
-                };
-            }
+            return crate::content_filter::level_from_app_state(json.get("appState"))
+                .as_str()
+                .to_string();
         }
     }
     "standard".to_string()

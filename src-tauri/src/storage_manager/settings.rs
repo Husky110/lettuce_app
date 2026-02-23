@@ -6,22 +6,7 @@ use super::{db::now_ms, db::open_db, legacy::read_encrypted_file, legacy::settin
 use crate::utils::{log_error, log_info};
 
 fn pure_mode_level_from_app_state(app_state: &JsonValue) -> crate::content_filter::PureModeLevel {
-    if let Some(level) = app_state
-        .get("pureModeLevel")
-        .and_then(|v| v.as_str())
-        .map(crate::content_filter::PureModeLevel::from_str)
-    {
-        return level;
-    }
-    let enabled = app_state
-        .get("pureModeEnabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-    if enabled {
-        crate::content_filter::PureModeLevel::Standard
-    } else {
-        crate::content_filter::PureModeLevel::Off
-    }
+    crate::content_filter::level_from_app_state(Some(app_state))
 }
 
 fn sync_content_filter_from_app_state(app: &tauri::AppHandle, app_state: &JsonValue) {

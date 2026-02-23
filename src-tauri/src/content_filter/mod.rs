@@ -15,6 +15,17 @@ pub enum PureModeLevel {
 }
 
 impl PureModeLevel {
+    pub fn try_from_str(s: &str) -> Option<Self> {
+        let normalized = s.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "off" => Some(Self::Off),
+            "low" => Some(Self::Low),
+            "standard" => Some(Self::Standard),
+            "strict" => Some(Self::Strict),
+            _ => None,
+        }
+    }
+
     pub fn from_u8(v: u8) -> Self {
         match v {
             0 => Self::Off,
@@ -26,13 +37,7 @@ impl PureModeLevel {
     }
 
     pub fn from_str(s: &str) -> Self {
-        match s {
-            "off" => Self::Off,
-            "low" => Self::Low,
-            "standard" => Self::Standard,
-            "strict" => Self::Strict,
-            _ => Self::Standard,
-        }
+        Self::try_from_str(s).unwrap_or(Self::Standard)
     }
 
     pub fn as_str(&self) -> &'static str {
@@ -51,6 +56,25 @@ impl PureModeLevel {
             Self::Standard => 1.5,
             Self::Strict => 1.0,
         }
+    }
+}
+
+pub fn level_from_app_state(app_state: Option<&serde_json::Value>) -> PureModeLevel {
+    if let Some(level) = app_state
+        .and_then(|v| v.get("pureModeLevel"))
+        .and_then(|v| v.as_str())
+        .and_then(PureModeLevel::try_from_str)
+    {
+        return level;
+    }
+    let enabled = app_state
+        .and_then(|v| v.get("pureModeEnabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    if enabled {
+        PureModeLevel::Standard
+    } else {
+        PureModeLevel::Off
     }
 }
 

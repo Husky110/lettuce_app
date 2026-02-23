@@ -72,25 +72,7 @@ pub fn run() {
                     Ok(value) => value,
                     Err(_) => return content_filter::PureModeLevel::Standard,
                 };
-                let app_state = parsed.get("appState");
-                // Try pureModeLevel first, fall back to pureModeEnabled boolean
-                if let Some(level_str) = app_state
-                    .and_then(|v| v.get("pureModeLevel"))
-                    .and_then(|v| v.as_str())
-                {
-                    content_filter::PureModeLevel::from_str(level_str)
-                } else if let Some(enabled) = app_state
-                    .and_then(|v| v.get("pureModeEnabled"))
-                    .and_then(|v| v.as_bool())
-                {
-                    if enabled {
-                        content_filter::PureModeLevel::Standard
-                    } else {
-                        content_filter::PureModeLevel::Off
-                    }
-                } else {
-                    content_filter::PureModeLevel::Standard
-                }
+                content_filter::level_from_app_state(parsed.get("appState"))
             }
             Ok(None) => content_filter::PureModeLevel::Standard,
             Err(_) => content_filter::PureModeLevel::Standard,
