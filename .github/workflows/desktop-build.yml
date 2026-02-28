@@ -79,6 +79,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libspeechd-dev \
             patchelf \
+            rpm \
             zip
 
       - name: Install dependencies
@@ -141,12 +142,24 @@ jobs:
           }
           EOF
 
-      - name: Build Tauri (Linux, CPU)
+      - name: Build Tauri binary (Linux, CPU)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
-        run: bun run tauri build --config dev-config.json
+        run: bun run tauri build --config dev-config.json --no-bundle
 
-      - name: Package Linux CPU zip
+      - name: Bundle Linux CPU deb
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+        run: bun run tauri bundle --config dev-config.json --bundles deb
+
+      - name: Bundle Linux CPU rpm
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+        run: bun run tauri bundle --config dev-config.json --bundles rpm
+
+      - name: Package Linux CPU bundle zip
         run: |
           mkdir -p dist-artifacts
           cd src-tauri/target/release/bundle
@@ -198,6 +211,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libspeechd-dev \
             patchelf \
+            rpm \
             zip
 
       - name: Setup CUDA Toolkit
@@ -274,7 +288,7 @@ jobs:
           }
           EOF
 
-      - name: Build Tauri (Linux, llama.cpp CUDA)
+      - name: Build Tauri binary (Linux, llama.cpp CUDA)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
           CARGO_TARGET_DIR: target-cuda
@@ -282,9 +296,31 @@ jobs:
           CMAKE_C_FLAGS: "-fPIC"
           CMAKE_CXX_FLAGS: "-fPIC"
           CMAKE_CUDA_FLAGS: "--compiler-options=-fPIC"
-        run: bun run tauri build --config dev-config.json --features llama-gpu-cuda
+        run: bun run tauri build --config dev-config.json --features llama-gpu-cuda --no-bundle
 
-      - name: Package Linux CUDA zip
+      - name: Bundle Linux CUDA deb
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: target-cuda
+          CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+          CMAKE_C_FLAGS: "-fPIC"
+          CMAKE_CXX_FLAGS: "-fPIC"
+          CMAKE_CUDA_FLAGS: "--compiler-options=-fPIC"
+        run: bun run tauri bundle --config dev-config.json --features llama-gpu-cuda --bundles deb
+
+      - name: Bundle Linux CUDA rpm
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: target-cuda
+          CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+          CMAKE_C_FLAGS: "-fPIC"
+          CMAKE_CXX_FLAGS: "-fPIC"
+          CMAKE_CUDA_FLAGS: "--compiler-options=-fPIC"
+        run: bun run tauri bundle --config dev-config.json --features llama-gpu-cuda --bundles rpm
+
+      - name: Package Linux CUDA bundle zip
         run: |
           mkdir -p dist-artifacts
           cd src-tauri/target-cuda/release/bundle
@@ -341,6 +377,7 @@ jobs:
             libshaderc-dev \
             glslc \
             glslang-tools \
+            rpm \
             zip
 
       - name: Verify Vulkan shader toolchain
@@ -411,13 +448,27 @@ jobs:
           }
           EOF
 
-      - name: Build Tauri (Linux, llama.cpp Vulkan)
+      - name: Build Tauri binary (Linux, llama.cpp Vulkan)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
           CARGO_TARGET_DIR: target-vulkan
-        run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan
+        run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan --no-bundle
 
-      - name: Package Linux Vulkan zip
+      - name: Bundle Linux Vulkan deb
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: target-vulkan
+        run: bun run tauri bundle --config dev-config.json --features llama-gpu-vulkan --bundles deb
+
+      - name: Bundle Linux Vulkan rpm
+        timeout-minutes: 20
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: target-vulkan
+        run: bun run tauri bundle --config dev-config.json --features llama-gpu-vulkan --bundles rpm
+
+      - name: Package Linux Vulkan bundle zip
         run: |
           mkdir -p dist-artifacts
           cd src-tauri/target-vulkan/release/bundle
