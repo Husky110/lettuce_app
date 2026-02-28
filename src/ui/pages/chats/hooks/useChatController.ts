@@ -47,6 +47,14 @@ import {
   createThinkStreamState,
   finalizeThinkStream,
 } from "../../../../core/utils/thinkTags";
+import {
+  getKeyMemoriesForRequest,
+  type MemoryEmbedding,
+} from "../../../../core/memory";
+import {
+  getSessionMemoriesFromTauri,
+  iosCoreMLEmbeddingProvider,
+} from "../../../../core/storage/repo";
 
 const INITIAL_MESSAGE_LIMIT = 50;
 const OLDER_MESSAGE_PAGE = 50;
@@ -619,7 +627,7 @@ export function useChatController(
           targetSession = await createSession(
             match.id,
             match.name ?? "New chat",
-            match.defaultSceneId ?? match.scenes?.[0]?.id,
+            match.scenes && match.scenes.length > 0 ? match.scenes[0].id : undefined,
           );
         }
 
@@ -1014,6 +1022,20 @@ export function useChatController(
           }
         });
 
+        // On iOS, run TS memory retrieval and pass key memories so backend skips ONNX.
+        // Embedding 來自 Tauri 命令 compute_embedding_ios（CoreML）；若尚未實作則 iosCoreMLEmbeddingProvider 回傳 []。
+        let keyMemories: MemoryEmbedding[] | undefined;
+        try {
+          if (getPlatform() === "ios") {
+            keyMemories = await getKeyMemoriesForRequest(state.session.id, message, {
+              getSessionMemories: getSessionMemoriesFromTauri,
+              embeddingProvider: iosCoreMLEmbeddingProvider,
+            });
+          }
+        } catch {
+          keyMemories = undefined;
+        }
+
         const result = await sendChatTurn({
           sessionId: state.session.id,
           characterId: state.character.id,
@@ -1023,6 +1045,7 @@ export function useChatController(
           stream: true,
           requestId,
           attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
+          keyMemories: keyMemories ?? undefined,
         });
 
         const replaced = messagesRef.current.map((msg) => {
@@ -1152,6 +1175,25 @@ export function useChatController(
           }
         });
 
+        // On iOS, run TS memory retrieval and pass key memories so backend skips ONNX.
+        let continueKeyMemories: MemoryEmbedding[] | undefined;
+        try {
+          if (getPlatform() === "ios") {
+            const lastUserContent =
+              [...state.messages].reverse().find((m) => m.role === "user")?.content ?? "";
+            continueKeyMemories = await getKeyMemoriesForRequest(
+              state.session.id,
+              lastUserContent,
+              {
+                getSessionMemories: getSessionMemoriesFromTauri,
+                embeddingProvider: iosCoreMLEmbeddingProvider,
+              },
+            );
+          }
+        } catch {
+          continueKeyMemories = undefined;
+        }
+
         const result = await continueConversation({
           sessionId: state.session.id,
           characterId: state.character.id,
@@ -1159,6 +1201,7 @@ export function useChatController(
           swapPlaces: options?.swapPlaces ?? false,
           stream: true,
           requestId,
+          keyMemories: continueKeyMemories ?? undefined,
         });
 
         const replaced = messagesRef.current.map((msg) => {
@@ -1229,7 +1272,13 @@ export function useChatController(
         });
       }
     },
-    [runInChatImageGeneration, state.character, state.persona?.id, state.session],
+    [
+      runInChatImageGeneration,
+      state.character,
+      state.messages,
+      state.persona?.id,
+      state.session,
+    ],
   );
 
   const handleRegenerate = useCallback(
@@ -1317,12 +1366,36 @@ export function useChatController(
           }
         });
 
+        // On iOS, run TS memory retrieval and pass key memories so backend skips ONNX.
+        let regenKeyMemories: MemoryEmbedding[] | undefined;
+        try {
+          if (getPlatform() === "ios") {
+            const idx = state.messages.findIndex((m) => m.id === message.id);
+            const before = idx > 0 ? state.messages[idx - 1] : undefined;
+            const queryText =
+              before?.role === "user"
+                ? before.content
+                : state.messages
+                    .slice(0, idx)
+                    .reverse()
+                    .find((m) => m.role === "user")
+                    ?.content ?? "";
+            regenKeyMemories = await getKeyMemoriesForRequest(state.session.id, queryText, {
+              getSessionMemories: getSessionMemoriesFromTauri,
+              embeddingProvider: iosCoreMLEmbeddingProvider,
+            });
+          }
+        } catch {
+          regenKeyMemories = undefined;
+        }
+
         const result = await regenerateAssistantMessage({
           sessionId: state.session.id,
           messageId: message.id,
           swapPlaces: options?.swapPlaces ?? false,
           stream: true,
           requestId,
+          keyMemories: regenKeyMemories ?? undefined,
         });
 
         const replaced = messagesRef.current.map((msg) =>
@@ -1403,7 +1476,13 @@ export function useChatController(
         });
       }
     },
-    [runInChatImageGeneration, state.messageAction, state.regeneratingMessageId, state.session],
+    [
+      runInChatImageGeneration,
+      state.messageAction,
+      state.messages,
+      state.regeneratingMessageId,
+      state.session,
+    ],
   );
 
   const handleAbort = useCallback(async () => {
