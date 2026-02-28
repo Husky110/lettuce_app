@@ -757,6 +757,10 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
       - name: Install LLVM (libclang)
         run: |
           choco install llvm -y --no-progress
@@ -883,6 +887,7 @@ jobs:
         env:
           RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
+          CMAKE_GENERATOR: "Ninja"
           CARGO_TARGET_DIR: target-vulkan
         run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
