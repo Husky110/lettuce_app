@@ -88,8 +88,8 @@ import { TopNav, BottomNav } from "./ui/components/App";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useAndroidBackHandler } from "./ui/hooks/useAndroidBackHandler";
 import { logManager, isLoggingEnabled } from "./core/utils/logger";
-import { storageBridge } from "./core/storage/files";
 import { getPlatform } from "./core/utils/platform";
+import { I18nProvider } from "./core/i18n/context";
 
 const chatLog = logManager({ component: "Chat" });
 
@@ -194,28 +194,30 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider>
-      <BrowserRouter
-        future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true,
-        }}
-      >
-        <div id="app-root" className="min-h-screen bg-surface text-fg antialiased">
-          <Toaster // {isMobile ? "bottom-center" : "top-center"}
-            position={"top-center"}
-            offset={isMobile ? { bottom: 24 } : { top: 16 }}
-            toastOptions={{
-              unstyled: true,
-              className: "pointer-events-auto w-full max-w-md",
-              descriptionClassName: "text-xs text-fg/70",
-            }}
-          />
-          <ConfirmBottomMenuHost />
-          <AppContent />
-        </div>
-      </BrowserRouter>
-    </ThemeProvider>
+    <I18nProvider>
+      <ThemeProvider>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <div id="app-root" className="min-h-screen bg-surface text-fg antialiased">
+            <Toaster // {isMobile ? "bottom-center" : "top-center"}
+              position={"top-center"}
+              offset={isMobile ? { bottom: 24 } : { top: 16 }}
+              toastOptions={{
+                unstyled: true,
+                className: "pointer-events-auto w-full max-w-md",
+                descriptionClassName: "text-xs text-fg/70",
+              }}
+            />
+            <ConfirmBottomMenuHost />
+            <AppContent />
+          </div>
+        </BrowserRouter>
+      </ThemeProvider>
+    </I18nProvider>
   );
 }
 
@@ -541,8 +543,8 @@ function AppContent() {
                       : isTemplateEditorRoute
                         ? "overflow-hidden px-0 pt-0 pb-0"
                         : isDiscoveryRoute
-                        ? "overflow-hidden px-0 pt-0 pb-0"
-                        : `overflow-y-auto px-4 pt-4 ${showBottomNav ? "pb-[calc(96px+env(safe-area-inset-bottom))]" : "pb-6"}`
+                          ? "overflow-hidden px-0 pt-0 pb-0"
+                          : `overflow-y-auto px-4 pt-4 ${showBottomNav ? "pb-[calc(96px+env(safe-area-inset-bottom))]" : "pb-6"}`
           }`}
         >
           {voidActive && (

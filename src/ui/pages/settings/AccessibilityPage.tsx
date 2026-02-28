@@ -10,6 +10,7 @@ import {
 } from "../../../core/storage/schemas";
 import { playAccessibilitySound } from "../../../core/utils/accessibilityAudio";
 import { cn, radius, colors, interactive } from "../../design-tokens";
+import { SUPPORTED_LOCALES, type Locale, useI18n } from "../../../core/i18n/context";
 
 const SOUND_LABELS = {
   send: {
@@ -48,6 +49,7 @@ function percentToVolume(value: number): number {
 
 export function AccessibilityPage() {
   const navigate = useNavigate();
+  const { locale, setLocale, t, tLocale } = useI18n();
   const [accessibility, setAccessibility] = useState<AccessibilitySettings>(
     createDefaultAccessibilitySettings(),
   );
@@ -73,6 +75,12 @@ export function AccessibilityPage() {
   }, []);
 
   const isMobile = platform === "android" || platform === "ios";
+
+  const handleLanguageChange = (next: string) => {
+    if ((SUPPORTED_LOCALES as readonly string[]).includes(next)) {
+      setLocale(next as Locale);
+    }
+  };
 
   const persistAccessibility = async (next: AccessibilitySettings) => {
     try {
@@ -146,7 +154,36 @@ export function AccessibilityPage() {
       <section className="flex-1 overflow-y-auto px-3 pt-3 space-y-6">
         <div>
           <h2 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
-            Sound Feedback
+            {t("accessibility.sectionTitles.language")}
+          </h2>
+          <div className={cn("rounded-xl border px-4 py-3", "border-fg/10 bg-fg/5")}>
+            <label htmlFor="app-language" className="text-sm font-medium text-fg">
+              {t("accessibility.language.appLanguage")}
+            </label>
+            <div className="mt-2">
+              <select
+                id="app-language"
+                value={locale}
+                onChange={(event) => handleLanguageChange(event.target.value)}
+                className={cn(
+                  "w-full rounded-lg border border-fg/15 bg-fg/6 px-3 py-2 text-sm text-fg outline-none",
+                  "focus:border-accent/50 focus:ring-1 focus:ring-accent/35",
+                )}
+              >
+                {SUPPORTED_LOCALES.map((value) => (
+                  <option key={value} value={value}>
+                    {tLocale(value)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="mt-2 text-[11px] text-fg/45">{t("accessibility.language.description")}</p>
+          </div>
+        </div>
+
+        <div>
+          <h2 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
+            {t("accessibility.sectionTitles.sounds")}
           </h2>
           <div className="space-y-3">
             {(Object.keys(SOUND_LABELS) as SoundKey[]).map((key) => {
@@ -156,9 +193,7 @@ export function AccessibilityPage() {
                   key={key}
                   className={cn(
                     "rounded-xl border px-4 py-3",
-                    sound.enabled
-                      ? "border-accent/25 bg-fg/6"
-                      : "border-fg/10 bg-fg/5",
+                    sound.enabled ? "border-accent/25 bg-fg/6" : "border-fg/10 bg-fg/5",
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -166,17 +201,13 @@ export function AccessibilityPage() {
                       <div
                         className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
-                          sound.enabled
-                            ? "border-accent/40 bg-accent/15"
-                            : "border-fg/10 bg-fg/10",
+                          sound.enabled ? "border-accent/40 bg-accent/15" : "border-fg/10 bg-fg/10",
                         )}
                       >
                         <Volume2 className="h-4 w-4 text-fg/70" />
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-fg">
-                          {SOUND_LABELS[key].title}
-                        </div>
+                        <div className="text-sm font-medium text-fg">{SOUND_LABELS[key].title}</div>
                         <div className="mt-0.5 text-[11px] text-fg/45">
                           {SOUND_LABELS[key].description}
                         </div>
@@ -248,15 +279,13 @@ export function AccessibilityPage() {
         {isMobile && (
           <div>
             <h2 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
-              Haptic Feedback
+              {t("accessibility.sectionTitles.haptics")}
             </h2>
             <div className="space-y-4">
               <div
                 className={cn(
                   "rounded-xl border px-4 py-4",
-                  accessibility.haptics
-                    ? "border-accent/25 bg-fg/6"
-                    : "border-fg/10 bg-fg/5",
+                  accessibility.haptics ? "border-accent/25 bg-fg/6" : "border-fg/10 bg-fg/5",
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -272,9 +301,11 @@ export function AccessibilityPage() {
                       <Smartphone className="h-4 w-4 text-fg/70" />
                     </div>
                     <div>
-                      <div className="text-sm font-medium text-fg">Vibrate on Chat</div>
+                      <div className="text-sm font-medium text-fg">
+                        {t("accessibility.haptics.vibrateOnChat")}
+                      </div>
                       <div className="mt-0.5 text-[11px] text-fg/45">
-                        Short vibration pulses while the assistant is typing
+                        {t("accessibility.haptics.vibrateDesc")}
                       </div>
                     </div>
                   </div>
@@ -306,7 +337,7 @@ export function AccessibilityPage() {
                 {accessibility.haptics && (
                   <div className="mt-3">
                     <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-fg/30">
-                      Intensity
+                      {t("accessibility.haptics.intensity")}
                     </div>
                     <div className="grid grid-cols-5 gap-1.5">
                       {HAPTIC_INTENSITIES.map((opt) => (
@@ -334,7 +365,7 @@ export function AccessibilityPage() {
 
         <div>
           <h2 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
-            Appearance
+            {t("accessibility.sectionTitles.appearance")}
           </h2>
           <button
             type="button"
@@ -350,9 +381,11 @@ export function AccessibilityPage() {
               <Palette className="h-4 w-4 text-fg/70" />
             </div>
             <div className="flex-1 text-left">
-              <div className="text-sm font-medium text-fg">Custom Colors</div>
+              <div className="text-sm font-medium text-fg">
+                {t("accessibility.appearance.customColors")}
+              </div>
               <div className="mt-0.5 text-[11px] text-fg/45">
-                Personalize the app's color scheme
+                {t("accessibility.appearance.customColorsDesc")}
               </div>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-fg/25 transition-colors group-hover:text-fg/50" />
@@ -371,9 +404,11 @@ export function AccessibilityPage() {
               <MessageSquare className="h-4 w-4 text-fg/70" />
             </div>
             <div className="flex-1 text-left">
-              <div className="text-sm font-medium text-fg">Chat Appearance</div>
+              <div className="text-sm font-medium text-fg">
+                {t("accessibility.appearance.chatAppearance")}
+              </div>
               <div className="mt-0.5 text-[11px] text-fg/45">
-                Customize message bubbles, fonts, and layout
+                {t("accessibility.appearance.chatAppearanceDesc")}
               </div>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-fg/25 transition-colors group-hover:text-fg/50" />
@@ -381,10 +416,7 @@ export function AccessibilityPage() {
         </div>
 
         <div
-          className={cn(
-            "rounded-xl border px-4 py-3 text-[11px] text-fg/45",
-            colors.glass.subtle,
-          )}
+          className={cn("rounded-xl border px-4 py-3 text-[11px] text-fg/45", colors.glass.subtle)}
         >
           Feedback helps you notice when messages are sent or received.
           {isMobile ? " Haptics are available on mobile devices." : ""}

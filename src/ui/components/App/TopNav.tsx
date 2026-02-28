@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { typography, interactive, cn } from "../../design-tokens";
 import { toast } from "../toast";
 import { openDocs } from "../../../core/utils/docs";
+import { type TranslationKey, useI18n } from "../../../core/i18n/context";
 
 interface TopNavProps {
   currentPath: string;
@@ -27,6 +28,7 @@ interface TopNavProps {
 
 export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction }: TopNavProps) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const basePath = useMemo(() => currentPath.split("?")[0], [currentPath]);
   const hasAdvancedView = useMemo(() => currentPath.includes("view=advanced"), [currentPath]);
 
@@ -35,86 +37,92 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
 
     const rules: Array<{
       match: (path: string) => boolean;
-      title: string;
+      titleKey: TranslationKey;
     }> = [
-      { match: (p) => p === "/settings/providers", title: "Providers" },
-      { match: (p) => p.includes("view=advanced"), title: "Response Style" },
+      { match: (p) => p === "/settings/providers", titleKey: "common.nav.providers" },
+      { match: (p) => p.includes("view=advanced"), titleKey: "common.nav.responseStyle" },
       {
         match: (p) => p === "/settings/models" || p.startsWith("/settings/models/"),
-        title: "Models",
+        titleKey: "common.nav.models",
       },
-      { match: (p) => p === "/settings/security", title: "Security" },
-      { match: (p) => p === "/settings/accessibility", title: "Accessibility" },
-      { match: (p) => p === "/settings/reset", title: "Reset" },
-      { match: (p) => p === "/settings/backup", title: "Backup & Restore" },
-      { match: (p) => p === "/settings/convert", title: "Convert Files" },
-      { match: (p) => p === "/settings/usage", title: "Usage Analytics" },
-      { match: (p) => p === "/settings/changelog", title: "Changelog" },
-      { match: (p) => p === "/settings/prompts/new", title: "Create System Prompt" },
-      { match: (p) => p.startsWith("/settings/prompts/"), title: "Edit System Prompt" },
-      { match: (p) => p === "/settings/prompts", title: "System Prompts" },
-      { match: (p) => p === "/settings/developer", title: "Developer" },
-      { match: (p) => p === "/settings/advanced", title: "Advanced" },
-      { match: (p) => p === "/settings/characters", title: "Characters" },
-      { match: (p) => p.includes("/lorebook"), title: "Lorebooks" },
-      { match: (p) => p === "/settings/personas", title: "Personas" },
-      { match: (p) => p === "/settings/advanced/memory", title: "Dynamic Memory" },
-      { match: (p) => p === "/settings/advanced/creation-helper", title: "Creation Helper" },
-      { match: (p) => p === "/settings/advanced/help-me-reply", title: "Help Me Reply" },
+      { match: (p) => p === "/settings/security", titleKey: "common.nav.security" },
+      { match: (p) => p === "/settings/accessibility", titleKey: "common.nav.accessibility" },
+      { match: (p) => p === "/settings/reset", titleKey: "common.nav.reset" },
+      { match: (p) => p === "/settings/backup", titleKey: "common.nav.backupRestore" },
+      { match: (p) => p === "/settings/convert", titleKey: "common.nav.convertFiles" },
+      { match: (p) => p === "/settings/usage", titleKey: "common.nav.usageAnalytics" },
+      { match: (p) => p === "/settings/changelog", titleKey: "common.nav.changelog" },
+      { match: (p) => p === "/settings/prompts/new", titleKey: "common.nav.createSystemPrompt" },
+      { match: (p) => p.startsWith("/settings/prompts/"), titleKey: "common.nav.editSystemPrompt" },
+      { match: (p) => p === "/settings/prompts", titleKey: "common.nav.systemPrompts" },
+      { match: (p) => p === "/settings/developer", titleKey: "common.nav.developer" },
+      { match: (p) => p === "/settings/advanced", titleKey: "common.nav.advanced" },
+      { match: (p) => p === "/settings/characters", titleKey: "common.nav.characters" },
+      { match: (p) => p.includes("/lorebook"), titleKey: "common.nav.lorebooks" },
+      { match: (p) => p === "/settings/personas", titleKey: "common.nav.personas" },
+      { match: (p) => p === "/settings/advanced/memory", titleKey: "common.nav.dynamicMemory" },
+      {
+        match: (p) => p === "/settings/advanced/creation-helper",
+        titleKey: "common.nav.creationHelper",
+      },
+      {
+        match: (p) => p === "/settings/advanced/help-me-reply",
+        titleKey: "common.nav.helpMeReply",
+      },
       {
         match: (p) => p.startsWith("/settings/personas/") && p.endsWith("/edit"),
-        title: "Edit Persona",
+        titleKey: "common.nav.editPersona",
+      },
+      {
+        match: (p) => p.startsWith("/settings/characters/") && p.includes("/templates/new"),
+        titleKey: "common.nav.newTemplate",
       },
       {
         match: (p) =>
-          p.startsWith("/settings/characters/") && p.includes("/templates/new"),
-        title: "New Template",
+          p.startsWith("/settings/characters/") &&
+          p.includes("/templates/") &&
+          !p.endsWith("/templates"),
+        titleKey: "common.nav.editTemplate",
       },
       {
-        match: (p) =>
-          p.startsWith("/settings/characters/") && p.includes("/templates/") && !p.endsWith("/templates"),
-        title: "Edit Template",
-      },
-      {
-        match: (p) =>
-          p.startsWith("/settings/characters/") && p.endsWith("/templates"),
-        title: "Chat Templates",
+        match: (p) => p.startsWith("/settings/characters/") && p.endsWith("/templates"),
+        titleKey: "common.nav.chatTemplates",
       },
       {
         match: (p) => p.startsWith("/settings/characters/") && p.endsWith("/edit"),
-        title: "Edit Character",
+        titleKey: "common.nav.editCharacter",
       },
-      { match: (p) => p === "/settings/sync", title: "Sync" },
+      { match: (p) => p === "/settings/sync", titleKey: "common.nav.sync" },
       {
         match: (p) => p.startsWith("/settings/engine/") && p.includes("/character/new"),
-        title: "New Character",
+        titleKey: "common.nav.newCharacter",
       },
       {
         match: (p) => p.startsWith("/settings/engine/") && p.endsWith("/setup"),
-        title: "Engine Setup",
+        titleKey: "common.nav.engineSetup",
       },
       {
         match: (p) => p.startsWith("/settings/engine/") && p.endsWith("/providers"),
-        title: "LLM Providers",
+        titleKey: "common.nav.llmProviders",
       },
       {
         match: (p) => p.startsWith("/settings/engine/") && p.endsWith("/settings"),
-        title: "Engine Settings",
+        titleKey: "common.nav.engineSettings",
       },
-      { match: (p) => p.startsWith("/settings/engine/"), title: "Lettuce Engine" },
-      { match: (p) => p.startsWith("/settings"), title: "Settings" },
-      { match: (p) => p.startsWith("/create"), title: "Create" },
-      { match: (p) => p.startsWith("/onboarding"), title: "Setup" },
-      { match: (p) => p.startsWith("/welcome"), title: "Welcome" },
-      { match: (p) => p.startsWith("/chat/"), title: "Conversation" },
-      { match: (p) => p === "/library", title: "Library" },
-      { match: (p) => p === "/group-chats", title: "Group Chats" },
-      { match: (p) => p.startsWith("/group-chats/"), title: "Group Chat" },
+      { match: (p) => p.startsWith("/settings/engine/"), titleKey: "common.nav.lettuceEngine" },
+      { match: (p) => p.startsWith("/settings"), titleKey: "common.nav.settings" },
+      { match: (p) => p.startsWith("/create"), titleKey: "common.nav.create" },
+      { match: (p) => p.startsWith("/onboarding"), titleKey: "common.nav.setup" },
+      { match: (p) => p.startsWith("/welcome"), titleKey: "common.nav.welcome" },
+      { match: (p) => p.startsWith("/chat/"), titleKey: "common.nav.conversation" },
+      { match: (p) => p === "/library", titleKey: "common.nav.library" },
+      { match: (p) => p === "/group-chats", titleKey: "common.nav.groupChats" },
+      { match: (p) => p.startsWith("/group-chats/"), titleKey: "common.nav.groupChat" },
     ];
 
     const rule = rules.find((r) => r.match(basePath));
-    return rule?.title ?? "Chats";
-  }, [basePath, titleOverride]);
+    return rule ? t(rule.titleKey) : t("common.nav.chats");
+  }, [basePath, t, titleOverride]);
 
   const showBackButton = useMemo(() => {
     if (basePath.startsWith("/settings/") || basePath === "/settings") return true;
@@ -577,10 +585,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
                   typeof globalWindow.__saveColorCustomization === "function"
                 ) {
                   globalWindow.__saveColorCustomization();
-                } else if (
-                  isTemplateEdit &&
-                  typeof globalWindow.__saveCharacter === "function"
-                ) {
+                } else if (isTemplateEdit && typeof globalWindow.__saveCharacter === "function") {
                   globalWindow.__saveCharacter();
                 }
               }}
