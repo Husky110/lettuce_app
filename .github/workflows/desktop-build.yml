@@ -273,7 +273,7 @@ jobs:
       - name: Build Tauri (Linux, llama.cpp CUDA)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
-          CARGO_TARGET_DIR: src-tauri/target-cuda
+          CARGO_TARGET_DIR: target-cuda
           CMAKE_POSITION_INDEPENDENT_CODE: "ON"
           CMAKE_C_FLAGS: "-fPIC"
           CMAKE_CXX_FLAGS: "-fPIC"
@@ -410,7 +410,7 @@ jobs:
       - name: Build Tauri (Linux, llama.cpp Vulkan)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
-          CARGO_TARGET_DIR: src-tauri/target-vulkan
+          CARGO_TARGET_DIR: target-vulkan
         run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
       - name: Package Linux Vulkan zip
@@ -660,7 +660,7 @@ jobs:
         env:
           RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
-          CARGO_TARGET_DIR: src-tauri/target-cuda
+          CARGO_TARGET_DIR: target-cuda
         run: bun run tauri build --config dev-config.json --features llama-gpu-cuda
 
       - name: Package Windows CUDA zip
@@ -818,7 +818,7 @@ jobs:
         env:
           RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
-          CARGO_TARGET_DIR: src-tauri/target-vulkan
+          CARGO_TARGET_DIR: target-vulkan
         run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
       - name: Package Windows Vulkan zip
