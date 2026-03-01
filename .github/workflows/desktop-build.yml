@@ -796,8 +796,8 @@ jobs:
           }
           $rocmVersion = $tarMatch.Groups[1].Value
 
-          Write-Host "Installing rocm[devel]==$rocmVersion from $releaseUrl"
-          python -m pip install "rocm[devel]==$rocmVersion" --find-links "$releaseUrl"
+          Write-Host "Installing rocm[devel,libraries]==$rocmVersion from $releaseUrl"
+          python -m pip install "rocm[devel,libraries]==$rocmVersion" --find-links "$releaseUrl"
           python -m rocm_sdk init
 
           $rocmBin = (python -m rocm_sdk path --bin).Trim()
