@@ -460,6 +460,10 @@ jobs:
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
           CARGO_TARGET_DIR: target-rocm
+          CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+          CMAKE_C_FLAGS: "-fPIC"
+          CMAKE_CXX_FLAGS: "-fPIC"
+          CMAKE_HIP_FLAGS: "-fPIC"
         run: bun run tauri build --config dev-config.json --features llama-gpu-rocm --no-bundle
 
       - name: Bundle Linux ROCm deb
@@ -467,6 +471,10 @@ jobs:
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
           CARGO_TARGET_DIR: target-rocm
+          CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+          CMAKE_C_FLAGS: "-fPIC"
+          CMAKE_CXX_FLAGS: "-fPIC"
+          CMAKE_HIP_FLAGS: "-fPIC"
         run: bun run tauri bundle --config dev-config.json --features llama-gpu-rocm --bundles deb
 
       - name: Package Linux ROCm bundle zip
