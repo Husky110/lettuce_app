@@ -900,6 +900,7 @@ jobs:
           RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
           CMAKE_GENERATOR: "Ninja"
+          CXXFLAGS: "/EHsc"
           CMAKE_C_COMPILER: "clang-cl"
           CMAKE_CXX_COMPILER: "clang-cl"
           CMAKE_HIP_COMPILER: "hipcc"
