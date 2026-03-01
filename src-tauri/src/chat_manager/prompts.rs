@@ -306,11 +306,6 @@ fn row_to_template(row: &rusqlite::Row<'_>) -> Result<SystemPromptTemplate, rusq
     let scope = str_to_scope(&scope_str).map_err(|_| rusqlite::Error::InvalidQuery)?;
     let target_ids: Vec<String> = serde_json::from_str(&target_ids_json).unwrap_or_default();
     let entries: Vec<SystemPromptEntry> = serde_json::from_str(&entries_json).unwrap_or_default();
-    let entries = if entries.is_empty() && supports_entry_prompts(&id) && !content.is_empty() {
-        single_entry_from_content(&content)
-    } else {
-        entries
-    };
 
     Ok(SystemPromptTemplate {
         id,
