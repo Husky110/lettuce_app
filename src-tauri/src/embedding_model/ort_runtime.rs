@@ -113,26 +113,35 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                                 app,
                                 "embedding_debug",
                                 format!(
-                                    "ORT_DYLIB_PATH is set to {} but provider shared dylib is missing; using main ONNX Runtime dylib and skipping download.",
+                                    "ORT_DYLIB_PATH is set to {} but provider shared dylib is missing; attempting runtime download fallback.",
                                     path.display()
                                 ),
                             );
-                            return Ok(path.to_path_buf());
+                        } else {
+                            let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
+                            if !coreml.exists() {
+                                crate::utils::log_warn(
+                                    app,
+                                    "embedding_debug",
+                                    format!(
+                                        "ORT_DYLIB_PATH is set to {} but CoreML provider dylib is missing; attempting runtime download fallback.",
+                                        path.display()
+                                    ),
+                                );
+                            } else {
+                                return Ok(path.to_path_buf());
+                            }
                         }
-                        let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
-                        if !coreml.exists() {
-                            crate::utils::log_warn(
-                                app,
-                                "embedding_debug",
-                                format!(
-                                    "ORT_DYLIB_PATH is set to {} but CoreML provider dylib is missing; embeddings will use CPU fallback.",
-                                    path.display()
-                                ),
-                            );
-                        }
-                        return Ok(path.to_path_buf());
+                    } else {
+                        crate::utils::log_warn(
+                            app,
+                            "embedding_debug",
+                            format!(
+                                "ORT_DYLIB_PATH is set to {} but parent directory is unavailable; attempting runtime download fallback.",
+                                path.display()
+                            ),
+                        );
                     }
-                    return Ok(path.to_path_buf());
                 } else {
                     return Ok(path.to_path_buf());
                 }
@@ -160,13 +169,25 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                     app,
                     "embedding_debug",
                     format!(
-                        "Bundled ONNX Runtime found at {} but provider shared dylib is missing; using bundled main dylib and skipping download.",
+                        "Bundled ONNX Runtime found at {} but provider shared dylib is missing; attempting runtime download fallback.",
                         dest_path.display()
                     ),
                 );
-                return Ok(dest_path);
+            } else {
+                let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
+                if !coreml.exists() {
+                    crate::utils::log_warn(
+                        app,
+                        "embedding_debug",
+                        format!(
+                            "Bundled ONNX Runtime found at {} but CoreML provider dylib is missing; attempting runtime download fallback.",
+                            dest_path.display()
+                        ),
+                    );
+                } else {
+                    return Ok(dest_path);
+                }
             }
-            return Ok(dest_path);
         } else {
             return Ok(dest_path);
         }
@@ -208,6 +229,32 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                 dest_path.display()
             ),
         ));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
+        let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
+        if !shared.exists() {
+            crate::utils::log_warn(
+                app,
+                "embedding_debug",
+                format!(
+                    "Runtime-downloaded ONNX Runtime at {} is missing provider shared dylib; CoreML acceleration may be unavailable.",
+                    dest_path.display()
+                ),
+            );
+        }
+        if !coreml.exists() {
+            crate::utils::log_warn(
+                app,
+                "embedding_debug",
+                format!(
+                    "Runtime-downloaded ONNX Runtime at {} is missing CoreML provider dylib; embeddings will fall back to CPU.",
+                    dest_path.display()
+                ),
+            );
+        }
     }
 
     Ok(dest_path)
