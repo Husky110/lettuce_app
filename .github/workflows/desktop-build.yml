@@ -8,8 +8,8 @@ on:
         required: false
         default: false
         type: boolean
-      build_llama_rocm_linux:
-        description: "Also build Linux desktop with llama.cpp ROCm support"
+      build_llama_vulkan_linux:
+        description: "Also build Linux desktop with llama.cpp Vulkan support"
         required: false
         default: false
         type: boolean
@@ -113,6 +113,7 @@ jobs:
           workflow_ref = os.environ["GITHUB_WORKFLOW_REF"]
           workflow = workflow_ref.split("@", 1)[0].split("/")[-1]
           branch = os.environ["GITHUB_REF_NAME"]
+          current_sha = os.environ["GITHUB_SHA"]
           current_run = int(os.environ["GITHUB_RUN_NUMBER"])
           current_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
           token = os.environ.get("GH_TOKEN", "")
@@ -137,6 +138,7 @@ jobs:
               data = json.load(resp)
 
           best = None
+          best_same_sha = None
           for run in data.get("workflow_runs", []):
               if run.get("conclusion") != "success":
                   continue
@@ -144,8 +146,15 @@ jobs:
               run_attempt = int(run.get("run_attempt") or 1)
               if run_number < current_run or (run_number == current_run and run_attempt < current_attempt):
                   key = (run_number, run_attempt)
+                  if run.get("head_sha") == current_sha:
+                      if best_same_sha is None or key > best_same_sha:
+                          best_same_sha = key
+                      continue
                   if best is None or key > best:
                       best = key
+
+          if best is None:
+              best = best_same_sha
 
           if best is not None:
               print(f"{best[0]}\t{best[1]}")
@@ -153,7 +162,7 @@ jobs:
           )"
           if [[ -n "${PREV_SUCCESS_RUN_INFO}" ]]; then
             IFS=$'\t' read -r PREV_RUN PREV_ATTEMPT <<< "${PREV_SUCCESS_RUN_INFO}"
-            PREV_TAG="$(git tag --list "${TAG_PREFIX}-${PREV_RUN}-${PREV_ATTEMPT}-*" | head -n 1)"
+            PREV_TAG="$(git tag --list "${TAG_PREFIX}-${PREV_RUN}-${PREV_ATTEMPT}-*" --sort=-creatordate | head -n 1)"
           fi
 
           BODY_DELIM="BODY_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
@@ -478,10 +487,10 @@ jobs:
           files: dist-artifacts/linux-cuda.zip
           fail_on_unmatched_files: true
 
-  linux_rocm:
-    name: Linux Build (ROCm)
+  linux_vulkan:
+    name: Linux Build (Vulkan)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_rocm_linux == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -511,9 +520,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            ca-certificates \
-            curl \
-            gpg \
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
@@ -521,35 +527,22 @@ jobs:
             librsvg2-dev \
             libwebkit2gtk-4.1-dev \
             libspeechd-dev \
+            libvulkan-dev \
+            glslc \
             patchelf \
             zip
 
-      - name: Install ROCm HIP toolchain (Linux)
+      - name: Verify Vulkan toolchain
         run: |
-          set -euxo pipefail
-          ROCM_SERIES="7.2.0"
-          sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg >/dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/latest noble main" | sudo tee /etc/apt/sources.list.d/rocm.list
-          sudo apt-get update
-          sudo apt-get install -y \
-            rocm-core${ROCM_SERIES} \
-            rocm-hip-runtime${ROCM_SERIES} \
-            rocm-hip-sdk${ROCM_SERIES} \
-            hipcc${ROCM_SERIES}
-          echo "/opt/rocm/bin" >> "$GITHUB_PATH"
-          echo "ROCM_PATH=/opt/rocm" >> "$GITHUB_ENV"
-          echo "HIP_PATH=/opt/rocm" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=/opt/rocm" >> "$GITHUB_ENV"
-
-      - name: Verify ROCm toolchain
-        run: |
-          command -v hipcc >/dev/null 2>&1 || {
-            echo "hipcc not found (required for llama-gpu-rocm build).";
-            echo "Install ROCm/HIP on this runner image and ensure hipcc is on PATH.";
+          pkg-config --exists vulkan || {
+            echo "Vulkan development files not found via pkg-config.";
             exit 1;
           }
-          hipcc --version
+          command -v glslc >/dev/null 2>&1 || {
+            echo "glslc not found (required for llama-gpu-vulkan build).";
+            exit 1;
+          }
+          glslc --version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -611,38 +604,36 @@ jobs:
           }
           EOF
 
-      - name: Build Tauri binary (Linux, llama.cpp ROCm)
+      - name: Build Tauri binary (Linux, llama.cpp Vulkan)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
-          CARGO_TARGET_DIR: target-rocm
+          CARGO_TARGET_DIR: target-vulkan
           CMAKE_POSITION_INDEPENDENT_CODE: "ON"
           CMAKE_C_FLAGS: "-fPIC"
           CMAKE_CXX_FLAGS: "-fPIC"
-          CMAKE_HIP_FLAGS: "-fPIC"
-        run: bun run tauri build --config dev-config.json --features llama-gpu-rocm --no-bundle
+        run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan --no-bundle
 
-      - name: Bundle Linux ROCm deb
+      - name: Bundle Linux Vulkan deb
         timeout-minutes: 20
         env:
           RUSTFLAGS: "--cfg DEV_BUILD"
-          CARGO_TARGET_DIR: target-rocm
+          CARGO_TARGET_DIR: target-vulkan
           CMAKE_POSITION_INDEPENDENT_CODE: "ON"
           CMAKE_C_FLAGS: "-fPIC"
           CMAKE_CXX_FLAGS: "-fPIC"
-          CMAKE_HIP_FLAGS: "-fPIC"
-        run: bun run tauri bundle --config dev-config.json --features llama-gpu-rocm --bundles deb
+        run: bun run tauri bundle --config dev-config.json --features llama-gpu-vulkan --bundles deb
 
-      - name: Package Linux ROCm bundle zip
+      - name: Package Linux Vulkan bundle zip
         run: |
           mkdir -p dist-artifacts
-          cd src-tauri/target-rocm/release/bundle
-          zip -r ../../../../dist-artifacts/linux-rocm.zip .
+          cd src-tauri/target-vulkan/release/bundle
+          zip -r ../../../../dist-artifacts/linux-vulkan.zip .
 
-      - name: Upload Linux ROCm zip to GitHub Release
+      - name: Upload Linux Vulkan zip to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/linux-rocm.zip
+          files: dist-artifacts/linux-vulkan.zip
           fail_on_unmatched_files: true
 
   windows_cpu:
@@ -1333,7 +1324,7 @@ jobs:
       - prepare_release
       - linux_cpu
       - linux_cuda
-      - linux_rocm
+      - linux_vulkan
       - windows_cpu
       - windows_cuda
       - windows_vulkan
