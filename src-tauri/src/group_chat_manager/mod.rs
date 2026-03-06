@@ -18,7 +18,7 @@ use uuid::Uuid;
 use rusqlite::OptionalExtension;
 
 use crate::abort_manager::AbortRegistry;
-use crate::api::{api_request, ApiRequest};
+use crate::api::{api_request, ApiRequest, ApiResponse};
 use crate::models::get_model_pricing;
 use crate::usage::add_usage_record;
 use crate::usage::tracking::{RequestUsage, UsageFinishReason, UsageOperationType};
@@ -828,8 +828,419 @@ fn record_group_dynamic_memory_error(
 
     let _ = app.emit(
         "group-dynamic-memory:error",
-        json!({ "sessionId": session.id, "error": error, "stage": stage }),
+        json!({
+            "sessionId": session.id,
+            "error": format!("{}: {}", stage, error),
+            "stage": stage
+        }),
     );
+}
+
+fn normalize_llm_output_text(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("```") {
+        let mut lines = trimmed.lines();
+        let _ = lines.next();
+        let mut body: Vec<&str> = lines.collect();
+        if body
+            .last()
+            .map(|line| line.trim() == "```")
+            .unwrap_or(false)
+        {
+            body.pop();
+        }
+        return body.join("\n").trim().to_string();
+    }
+    trimmed.to_string()
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn validate_summary_text(summary: &str) -> Result<String, String> {
+    let normalized = collapse_whitespace(&normalize_llm_output_text(summary));
+    if normalized.is_empty() {
+        return Err("summary was empty".to_string());
+    }
+    if normalized.len() > 6_000 {
+        return Err("summary was implausibly long".to_string());
+    }
+
+    let lower = normalized.to_ascii_lowercase();
+    let refusal_prefixes = [
+        "i'm sorry",
+        "i am sorry",
+        "sorry,",
+        "sorry but",
+        "i can't help",
+        "i cannot help",
+        "i can't assist",
+        "i cannot assist",
+        "i can't provide",
+        "i cannot provide",
+        "i'm unable to",
+        "i am unable to",
+        "cannot comply",
+    ];
+    if refusal_prefixes
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        return Err("summary looked like a refusal".to_string());
+    }
+    if lower.contains("write_summary") || lower.contains("create_memory(") {
+        return Err("summary leaked tool syntax".to_string());
+    }
+
+    Ok(normalized)
+}
+
+fn validate_memory_text(memory: &str) -> Result<String, String> {
+    let normalized = collapse_whitespace(&normalize_llm_output_text(memory));
+    if normalized.is_empty() {
+        return Err("memory was empty".to_string());
+    }
+    if normalized.len() > 280 {
+        return Err("memory was too long".to_string());
+    }
+
+    let lower = normalized.to_ascii_lowercase();
+    let refusal_markers = [
+        "i'm sorry",
+        "i am sorry",
+        "i can't",
+        "i cannot",
+        "i'm unable",
+        "i am unable",
+        "cannot comply",
+        "i won't help",
+    ];
+    if refusal_markers
+        .iter()
+        .any(|marker| lower.starts_with(marker) || lower.contains(marker))
+    {
+        return Err("memory looked like a refusal".to_string());
+    }
+
+    let meta_markers = [
+        "as an ai",
+        "as a language model",
+        "assistant:",
+        "user:",
+        "system:",
+        "content policy",
+        "safety policy",
+        "cannot assist with",
+        "here's a summary",
+        "write_summary",
+        "create_memory(",
+        "\"operations\"",
+        "\"items\"",
+    ];
+    if meta_markers.iter().any(|marker| lower.contains(marker)) {
+        return Err("memory looked like meta output".to_string());
+    }
+
+    Ok(normalized)
+}
+
+fn extract_json_value_from_text(raw: &str) -> Option<Value> {
+    let normalized = normalize_llm_output_text(raw);
+    if let Ok(value) = serde_json::from_str::<Value>(&normalized) {
+        return Some(value);
+    }
+
+    let candidates = [
+        (normalized.find('{'), normalized.rfind('}')),
+        (normalized.find('['), normalized.rfind(']')),
+    ];
+
+    for (start, end) in candidates {
+        if let (Some(start_idx), Some(end_idx)) = (start, end) {
+            if start_idx <= end_idx {
+                let snippet = &normalized[start_idx..=end_idx];
+                if let Ok(value) = serde_json::from_str::<Value>(snippet) {
+                    return Some(value);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn tool_call_from_json_operation(operation: &Value, index: usize) -> Result<ToolCall, String> {
+    let object = operation
+        .as_object()
+        .ok_or_else(|| format!("operation {} was not an object", index))?;
+    let name = object
+        .get("name")
+        .or_else(|| object.get("op"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("operation {} missing name", index))?;
+
+    let mut args = Map::new();
+    for (key, value) in object {
+        if key == "name" || key == "op" {
+            continue;
+        }
+        args.insert(key.clone(), value.clone());
+    }
+
+    Ok(ToolCall {
+        id: format!("json_op_{}", index + 1),
+        name,
+        arguments: Value::Object(args),
+        raw_arguments: None,
+    })
+}
+
+fn parse_memory_operations_from_text(raw: &str) -> Result<Vec<ToolCall>, String> {
+    let value = extract_json_value_from_text(raw)
+        .ok_or_else(|| "fallback response did not contain valid JSON".to_string())?;
+    let operations = value
+        .get("operations")
+        .or_else(|| value.get("actions"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "fallback JSON missing operations array".to_string())?;
+
+    operations
+        .iter()
+        .enumerate()
+        .map(|(index, item)| tool_call_from_json_operation(item, index))
+        .collect()
+}
+
+fn guess_memory_category(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+
+    if [
+        "prefer",
+        "preference",
+        "likes",
+        "dislikes",
+        "favorite",
+        "boundary",
+        "request",
+        "wants",
+        "doesn't want",
+        "does not want",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return "preference".to_string();
+    }
+    if [
+        "friend",
+        "ally",
+        "enemy",
+        "trust",
+        "relationship",
+        "bond",
+        "dating",
+        "married",
+        "siblings",
+        "partners",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return "relationship".to_string();
+    }
+    if [
+        "city", "town", "kingdom", "forest", "artifact", "magic", "rule", "world", "location",
+        "village",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return "world_detail".to_string();
+    }
+    if [
+        "decided",
+        "chose",
+        "agreed",
+        "arrived",
+        "left",
+        "found",
+        "discovered",
+        "promised",
+        "killed",
+        "saved",
+        "escaped",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return "plot_event".to_string();
+    }
+    if [
+        "afraid",
+        "fear",
+        "goal",
+        "trait",
+        "personality",
+        "backstory",
+        "secret",
+        "revealed",
+        "believes",
+        "hates",
+        "loves",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return "character_trait".to_string();
+    }
+
+    "other".to_string()
+}
+
+fn parse_memory_tag_repairs_from_text(raw: &str) -> Result<HashMap<String, String>, String> {
+    let value = extract_json_value_from_text(raw)
+        .ok_or_else(|| "fallback response did not contain valid JSON".to_string())?;
+    let items = value
+        .get("items")
+        .or_else(|| value.get("repairs"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "fallback JSON missing items array".to_string())?;
+
+    let mut repaired = HashMap::new();
+    for item in items {
+        let Some(text) = item.get("text").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(category) = item.get("category").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if ALLOWED_MEMORY_CATEGORIES.contains(&category) {
+            repaired.insert(text.to_string(), category.to_string());
+        }
+    }
+    Ok(repaired)
+}
+
+fn tool_choice_requires_auto(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("tool choice must be auto")
+        || lower.contains("tool_choice must be auto")
+        || (lower.contains("tool choice") && lower.contains("auto"))
+}
+
+fn tool_config_with_auto_choice(tool_config: &ToolConfig) -> ToolConfig {
+    let mut cloned = tool_config.clone();
+    cloned.choice = Some(ToolChoice::Auto);
+    cloned
+}
+
+async fn send_dynamic_memory_request(
+    app: &AppHandle,
+    provider_cred: &ProviderCredential,
+    model: &Model,
+    api_key: &str,
+    messages_for_api: &Vec<Value>,
+    max_tokens: u32,
+    context_length: Option<u32>,
+    extra_body_fields: Option<HashMap<String, Value>>,
+    tool_config: Option<&ToolConfig>,
+) -> Result<ApiResponse, String> {
+    let built = crate::chat_manager::request_builder::build_chat_request(
+        provider_cred,
+        api_key,
+        &model.name,
+        messages_for_api,
+        None,
+        0.2,
+        1.0,
+        max_tokens,
+        context_length,
+        false,
+        None,
+        None,
+        None,
+        None,
+        tool_config,
+        false,
+        None,
+        None,
+        extra_body_fields.clone(),
+    );
+
+    let api_request_payload = ApiRequest {
+        url: built.url,
+        method: Some("POST".into()),
+        headers: Some(built.headers),
+        query: None,
+        body: Some(built.body),
+        timeout_ms: Some(60_000),
+        stream: Some(false),
+        request_id: built.request_id.clone(),
+        provider_id: Some(provider_cred.provider_id.clone()),
+    };
+
+    let first_response = api_request(app.clone(), api_request_payload).await?;
+
+    if !first_response.ok {
+        let fallback = format!("Provider returned status {}", first_response.status);
+        let err_message = extract_error_message(first_response.data()).unwrap_or(fallback);
+
+        if let Some(cfg) = tool_config {
+            if !matches!(cfg.choice, Some(ToolChoice::Auto))
+                && tool_choice_requires_auto(&err_message)
+            {
+                log_warn(
+                    app,
+                    "group_dynamic_memory",
+                    format!(
+                        "provider rejected forced tool choice; retrying dynamic memory request with auto tool choice. Provider={}, model={}",
+                        provider_cred.provider_id, model.name
+                    ),
+                );
+                let auto_tool_config = tool_config_with_auto_choice(cfg);
+                let built = crate::chat_manager::request_builder::build_chat_request(
+                    provider_cred,
+                    api_key,
+                    &model.name,
+                    messages_for_api,
+                    None,
+                    0.2,
+                    1.0,
+                    max_tokens,
+                    context_length,
+                    false,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&auto_tool_config),
+                    false,
+                    None,
+                    None,
+                    extra_body_fields,
+                );
+
+                let api_request_payload = ApiRequest {
+                    url: built.url,
+                    method: Some("POST".into()),
+                    headers: Some(built.headers),
+                    query: None,
+                    body: Some(built.body),
+                    timeout_ms: Some(60_000),
+                    stream: Some(false),
+                    request_id: built.request_id.clone(),
+                    provider_id: Some(provider_cred.provider_id.clone()),
+                };
+
+                return api_request(app.clone(), api_request_payload).await;
+            }
+        }
+    }
+
+    Ok(first_response)
 }
 
 // ============================================================================
@@ -1467,7 +1878,7 @@ async fn summarize_group_messages(
         .flatten()
         .map(|t| t.content)
         .unwrap_or_else(|| {
-            "Summarize the recent group conversation into a concise paragraph capturing key facts, decisions, and character interactions. Note which characters said what when relevant.".to_string()
+            "Summarize the recent conversation transcript into a concise paragraph capturing durable facts, decisions, and character interactions. Note who said or did what when it matters.".to_string()
         });
 
     let prev_text = prior_summary
@@ -1494,13 +1905,13 @@ async fn summarize_group_messages(
             });
         messages_for_api.push(json!({
             "role": msg.role,
-            "content": format!("[{}]: {}", speaker, msg.content)
+            "content": format!("[{} transcript line]: {}", speaker, msg.content)
         }));
     }
 
     messages_for_api.push(json!({
         "role": "user",
-        "content": "Return only the concise summary for the above group conversation. Use the write_summary tool."
+        "content": "Return only the concise summary for the above conversation transcript. Use the write_summary tool."
     }));
 
     let max_tokens = settings
@@ -1526,67 +1937,143 @@ async fn summarize_group_messages(
     } else {
         None
     };
-    let built = crate::chat_manager::request_builder::build_chat_request(
+    let tool_attempt = send_dynamic_memory_request(
+        app,
         provider_cred,
+        model,
         api_key,
-        &model.name,
         &messages_for_api,
-        None,
-        0.2,
-        1.0,
         max_tokens,
         context_length,
-        false,
-        None,
-        None,
-        None,
-        None,
+        extra_body_fields.clone(),
         Some(&summarization_tool_config()),
-        false,
-        None,
-        None,
-        extra_body_fields,
-    );
+    )
+    .await;
 
-    let api_request_payload = ApiRequest {
-        url: built.url,
-        method: Some("POST".into()),
-        headers: Some(built.headers),
-        query: None,
-        body: Some(built.body),
-        timeout_ms: Some(60_000),
-        stream: Some(false),
-        request_id: built.request_id.clone(),
-        provider_id: Some(provider_cred.provider_id.clone()),
+    let tool_failure_reason = match tool_attempt {
+        Ok(api_response) => {
+            if api_response.ok {
+                let calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
+                for call in calls.iter() {
+                    if call.name != "write_summary" {
+                        continue;
+                    }
+                    if let Some(summary) = call.arguments.get("summary").and_then(|v| v.as_str()) {
+                        if let Ok(validated) = validate_summary_text(summary) {
+                            return Ok(validated);
+                        }
+                    }
+                }
+
+                if let Some(text) =
+                    extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                        .filter(|s| !s.is_empty())
+                {
+                    if let Ok(validated) = validate_summary_text(&text) {
+                        return Ok(validated);
+                    }
+                }
+
+                if calls.is_empty() {
+                    let legacy_hint = if payload_contains_function_call(api_response.data()) {
+                        " (response uses legacy function_call format)"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "model returned no tool call and no valid text{}. Provider={}, model={}",
+                        legacy_hint, provider_cred.provider_id, model.name
+                    )
+                } else {
+                    let tool_names = calls
+                        .iter()
+                        .map(|c| c.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "expected write_summary tool call or valid text, got {}. Provider={}, model={}",
+                        tool_names, provider_cred.provider_id, model.name
+                    )
+                }
+            } else {
+                let fallback = format!("Provider returned status {}", api_response.status);
+                let err_message =
+                    extract_error_message(api_response.data()).unwrap_or(fallback.clone());
+                if err_message == fallback {
+                    err_message
+                } else {
+                    format!("{} (status {})", err_message, api_response.status)
+                }
+            }
+        }
+        Err(err) => err,
     };
 
-    let api_response = api_request(app.clone(), api_request_payload).await?;
+    log_warn(
+        app,
+        "group_dynamic_memory",
+        format!(
+            "summary tool request failed or was invalid; retrying with plain-text fallback: {}",
+            tool_failure_reason
+        ),
+    );
+
+    let mut fallback_messages = messages_for_api.clone();
+    fallback_messages.push(json!({
+        "role": "user",
+        "content": "Return only the final merged summary as plain text. No tools, no JSON, no markdown, no commentary."
+    }));
+
+    let api_response = send_dynamic_memory_request(
+        app,
+        provider_cred,
+        model,
+        api_key,
+        &fallback_messages,
+        max_tokens,
+        context_length,
+        extra_body_fields,
+        None,
+    )
+    .await?;
 
     if !api_response.ok {
         let fallback = format!("Provider returned status {}", api_response.status);
         let err_message = extract_error_message(api_response.data()).unwrap_or(fallback.clone());
-        return Err(err_message);
+        return Err(if err_message == fallback {
+            format!(
+                "summary fallback failed after tool attempt '{}': {}",
+                tool_failure_reason, err_message
+            )
+        } else {
+            format!(
+                "summary fallback failed after tool attempt '{}': {} (status {})",
+                tool_failure_reason, err_message, api_response.status
+            )
+        });
     }
 
-    let calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
-    for call in calls {
-        if call.name == "write_summary" {
-            if let Some(summary) = call
-                .arguments
-                .get("summary")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                if !summary.is_empty() {
-                    return Ok(summary);
-                }
+    let text =
+        extract_text(api_response.data(), Some(&provider_cred.provider_id)).ok_or_else(|| {
+            format!(
+                "summary fallback returned no text after tool attempt '{}'",
+                tool_failure_reason
+            )
+        })?;
+    validate_summary_text(&text)
+}
+
+fn payload_contains_function_call(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => {
+            if map.contains_key("function_call") || map.contains_key("functionCall") {
+                return true;
             }
+            map.values().any(payload_contains_function_call)
         }
+        Value::Array(items) => items.iter().any(payload_contains_function_call),
+        _ => false,
     }
-
-    extract_text(api_response.data(), Some(&provider_cred.provider_id))
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Failed to summarize group messages".to_string())
 }
 
 /// Run memory tool update for group chat
@@ -1612,7 +2099,7 @@ async fn run_group_memory_tool_update(
         .flatten()
         .map(|t| t.content)
         .unwrap_or_else(|| {
-            "You maintain long-term memories for this group chat. Use tools to add or delete concise factual memories about the conversation and characters. Every create_memory call must include a category tag. Keep the list tidy and capped at {{max_entries}} entries. When finished, call the done tool.".to_string()
+            "You maintain a long-term memory index for a multi-speaker conversation transcript. Use tools to add or delete concise factual memories about the participants and events. Every create_memory call must include a category tag. Keep the list tidy and capped at {{max_entries}} entries. When finished, call the done tool.".to_string()
         });
 
     let pinned_fixed = ensure_pinned_hot(&mut session.memory_embeddings);
@@ -1647,7 +2134,7 @@ async fn run_group_memory_tool_update(
     messages_for_api.push(json!({
         "role": "user",
         "content": format!(
-            "Group conversation summary:\n{}\n\nRecent messages:\n{}\n\nCurrent memories (with IDs):\n{}",
+            "Conversation transcript summary:\n{}\n\nRecent transcript lines:\n{}\n\nCurrent memories (with IDs):\n{}",
             summary,
             convo_text.join("\n"),
             if memory_lines.is_empty() { "none".to_string() } else { memory_lines.join("\n") }
@@ -1677,64 +2164,186 @@ async fn run_group_memory_tool_update(
     } else {
         None
     };
-    let built = crate::chat_manager::request_builder::build_chat_request(
+    let calls = match send_dynamic_memory_request(
+        app,
         provider_cred,
+        model,
         api_key,
-        &model.name,
         &messages_for_api,
-        None,
-        0.2,
-        1.0,
         max_tokens,
         context_length,
-        false,
-        None,
-        None,
-        None,
-        None,
+        extra_body_fields.clone(),
         Some(&tool_config),
-        false,
-        None,
-        None,
-        extra_body_fields,
-    );
+    )
+    .await
+    {
+        Ok(api_response) => {
+            if !api_response.ok {
+                let fallback = format!("Provider returned status {}", api_response.status);
+                let err_message = extract_error_message(api_response.data()).unwrap_or(fallback);
+                log_warn(
+                    app,
+                    "group_dynamic_memory",
+                    format!(
+                        "memory tool request failed; retrying with JSON fallback: {}",
+                        err_message
+                    ),
+                );
+                let mut fallback_messages = messages_for_api.clone();
+                fallback_messages.push(json!({
+                    "role": "user",
+                    "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+                }));
 
-    let api_request_payload = ApiRequest {
-        url: built.url,
-        method: Some("POST".into()),
-        headers: Some(built.headers),
-        query: None,
-        body: Some(built.body),
-        timeout_ms: Some(60_000),
-        stream: Some(false),
-        request_id: built.request_id.clone(),
-        provider_id: Some(provider_cred.provider_id.clone()),
+                let api_response = send_dynamic_memory_request(
+                    app,
+                    provider_cred,
+                    model,
+                    api_key,
+                    &fallback_messages,
+                    max_tokens,
+                    context_length,
+                    extra_body_fields,
+                    None,
+                )
+                .await?;
+
+                if !api_response.ok {
+                    let fallback = format!("Provider returned status {}", api_response.status);
+                    let err_message =
+                        extract_error_message(api_response.data()).unwrap_or(fallback.clone());
+                    return Err(if err_message == fallback {
+                        err_message
+                    } else {
+                        format!("{} (status {})", err_message, api_response.status)
+                    });
+                }
+
+                let text = extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                    .ok_or_else(|| {
+                        "memory fallback returned neither tool calls nor text output".to_string()
+                    })?;
+                parse_memory_operations_from_text(&text)?
+            } else {
+                let tool_calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
+                if !tool_calls.is_empty() {
+                    tool_calls
+                } else {
+                    log_warn(
+                        app,
+                        "group_dynamic_memory",
+                        "memory tool request returned no tool usage; retrying with JSON fallback",
+                    );
+                    let mut fallback_messages = messages_for_api.clone();
+                    fallback_messages.push(json!({
+                        "role": "user",
+                        "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+                    }));
+
+                    let api_response = send_dynamic_memory_request(
+                        app,
+                        provider_cred,
+                        model,
+                        api_key,
+                        &fallback_messages,
+                        max_tokens,
+                        context_length,
+                        extra_body_fields,
+                        None,
+                    )
+                    .await?;
+
+                    if !api_response.ok {
+                        let fallback = format!("Provider returned status {}", api_response.status);
+                        let err_message =
+                            extract_error_message(api_response.data()).unwrap_or(fallback.clone());
+                        return Err(if err_message == fallback {
+                            err_message
+                        } else {
+                            format!("{} (status {})", err_message, api_response.status)
+                        });
+                    }
+
+                    let text = extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                        .ok_or_else(|| {
+                            "memory fallback returned neither tool calls nor text output"
+                                .to_string()
+                        })?;
+                    parse_memory_operations_from_text(&text)?
+                }
+            }
+        }
+        Err(err) => {
+            log_warn(
+                app,
+                "group_dynamic_memory",
+                format!(
+                    "memory tool request errored; retrying with JSON fallback: {}",
+                    err
+                ),
+            );
+            let mut fallback_messages = messages_for_api.clone();
+            fallback_messages.push(json!({
+                "role": "user",
+                "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+            }));
+
+            let api_response = send_dynamic_memory_request(
+                app,
+                provider_cred,
+                model,
+                api_key,
+                &fallback_messages,
+                max_tokens,
+                context_length,
+                extra_body_fields,
+                None,
+            )
+            .await?;
+
+            if !api_response.ok {
+                let fallback = format!("Provider returned status {}", api_response.status);
+                let err_message =
+                    extract_error_message(api_response.data()).unwrap_or(fallback.clone());
+                return Err(if err_message == fallback {
+                    err_message
+                } else {
+                    format!("{} (status {})", err_message, api_response.status)
+                });
+            }
+
+            let text = extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                .ok_or_else(|| {
+                    "memory fallback returned neither tool calls nor text output".to_string()
+                })?;
+            parse_memory_operations_from_text(&text)?
+        }
     };
-
-    let api_response = api_request(app.clone(), api_request_payload).await?;
-
-    if !api_response.ok {
-        let fallback = format!("Provider returned status {}", api_response.status);
-        let err_message = extract_error_message(api_response.data()).unwrap_or(fallback.clone());
-        return Err(err_message);
-    }
-
-    let calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
-    if calls.is_empty() {
-        log_warn(
-            app,
-            "group_dynamic_memory",
-            "memory tool call returned no tool usage",
-        );
-        return Ok(Vec::new());
-    }
 
     let mut actions_log: Vec<Value> = Vec::new();
     let mut untagged_candidates: Vec<(String, bool)> = Vec::new();
     for call in calls {
         match call.name.as_str() {
             "create_memory" => {
-                if let Some(text) = extract_text_argument(&call) {
+                if let Some(raw_text) = extract_text_argument(&call) {
+                    let text = match validate_memory_text(&raw_text) {
+                        Ok(text) => text,
+                        Err(reason) => {
+                            log_warn(
+                                app,
+                                "group_dynamic_memory",
+                                format!("Skipping invalid memory text: {}", reason),
+                            );
+                            actions_log.push(json!({
+                                "name": "create_memory",
+                                "arguments": call.arguments,
+                                "skipped": true,
+                                "reason": reason,
+                                "timestamp": now_millis().unwrap_or_default(),
+                            }));
+                            continue;
+                        }
+                    };
                     let mem_id = generate_memory_id();
                     let embedding =
                         match embedding_model::compute_embedding(app.clone(), text.clone()).await {
@@ -1953,6 +2562,21 @@ async fn run_group_memory_tool_update(
                         continue;
                     };
 
+                    let text = match validate_memory_text(&text) {
+                        Ok(text) => text,
+                        Err(reason) => {
+                            actions_log.push(json!({
+                                "name": "create_memory",
+                                "repaired": true,
+                                "text": text,
+                                "skipped": true,
+                                "reason": reason,
+                                "timestamp": now_millis().unwrap_or_default(),
+                            }));
+                            continue;
+                        }
+                    };
+
                     let mem_id = generate_memory_id();
                     let embedding =
                         match embedding_model::compute_embedding(app.clone(), text.clone()).await {
@@ -2017,6 +2641,29 @@ async fn run_group_memory_tool_update(
                 );
             }
         }
+    }
+
+    let trimmed = trim_memories_to_max(&mut session.memory_embeddings, max_entries);
+    if trimmed > 0 {
+        log_info(
+            app,
+            "group_dynamic_memory",
+            format!(
+                "Trimmed {} memories to enforce max_entries={}",
+                trimmed, max_entries
+            ),
+        );
+    }
+    if session.memory_embeddings.len() > max_entries {
+        log_warn(
+            app,
+            "group_dynamic_memory",
+            format!(
+                "Pinned memories exceed max_entries (count={}, max={})",
+                session.memory_embeddings.len(),
+                max_entries
+            ),
+        );
     }
 
     Ok(actions_log)
@@ -2111,66 +2758,112 @@ async fn run_group_memory_tag_repair(
         )
     }));
 
-    let built = crate::chat_manager::request_builder::build_chat_request(
+    let mut repaired = HashMap::new();
+    match send_dynamic_memory_request(
+        app,
         provider_cred,
+        model,
         api_key,
-        &model.name,
         &messages_for_api,
-        None,
-        0.0,
-        1.0,
         512,
-        None,
-        false,
-        None,
-        None,
         None,
         None,
         Some(&build_memory_tag_repair_tool_config()),
-        false,
-        None,
-        None,
-        None,
-    );
-
-    let api_request_payload = ApiRequest {
-        url: built.url,
-        method: Some("POST".into()),
-        headers: Some(built.headers),
-        query: None,
-        body: Some(built.body),
-        timeout_ms: Some(30_000),
-        stream: Some(false),
-        request_id: built.request_id.clone(),
-        provider_id: Some(provider_cred.provider_id.clone()),
-    };
-
-    let api_response = api_request(app.clone(), api_request_payload).await?;
-    if !api_response.ok {
-        let fallback = format!("Provider returned status {}", api_response.status);
-        let err_message = extract_error_message(api_response.data()).unwrap_or(fallback.clone());
-        return Err(if err_message == fallback {
-            err_message
-        } else {
-            format!("{} (status {})", err_message, api_response.status)
-        });
+    )
+    .await
+    {
+        Ok(api_response) if api_response.ok => {
+            for call in parse_tool_calls(&provider_cred.provider_id, api_response.data()) {
+                if call.name != "retag_memory" {
+                    continue;
+                }
+                let Some(text) = call
+                    .arguments
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                else {
+                    continue;
+                };
+                if let Ok(category) = extract_required_memory_category(&call) {
+                    repaired.insert(text, category);
+                }
+            }
+        }
+        Ok(api_response) => {
+            let fallback = format!("Provider returned status {}", api_response.status);
+            let err_message = extract_error_message(api_response.data()).unwrap_or(fallback);
+            log_warn(
+                app,
+                "group_dynamic_memory",
+                format!(
+                    "memory tag repair tool request failed; retrying with JSON fallback: {}",
+                    err_message
+                ),
+            );
+        }
+        Err(err) => {
+            log_warn(
+                app,
+                "group_dynamic_memory",
+                format!(
+                    "memory tag repair tool request errored; retrying with JSON fallback: {}",
+                    err
+                ),
+            );
+        }
     }
 
-    let mut repaired = HashMap::new();
-    for call in parse_tool_calls(&provider_cred.provider_id, api_response.data()) {
-        if call.name != "retag_memory" {
-            continue;
+    if repaired.is_empty() {
+        let mut fallback_messages = messages_for_api.clone();
+        fallback_messages.push(json!({
+            "role": "user",
+            "content": "Return only JSON. Format: {\"items\":[{\"text\":\"...\",\"category\":\"other\"}]}. Use exactly one item per input text. Do not use markdown."
+        }));
+        match send_dynamic_memory_request(
+            app,
+            provider_cred,
+            model,
+            api_key,
+            &fallback_messages,
+            512,
+            None,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(api_response) if api_response.ok => {
+                if let Some(text) =
+                    extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                {
+                    if let Ok(parsed) = parse_memory_tag_repairs_from_text(&text) {
+                        repaired.extend(parsed);
+                    }
+                }
+            }
+            Ok(api_response) => {
+                let fallback = format!("Provider returned status {}", api_response.status);
+                let err_message = extract_error_message(api_response.data()).unwrap_or(fallback);
+                log_warn(
+                    app,
+                    "group_dynamic_memory",
+                    format!("memory tag repair JSON fallback failed: {}", err_message),
+                );
+            }
+            Err(err) => {
+                log_warn(
+                    app,
+                    "group_dynamic_memory",
+                    format!("memory tag repair JSON fallback errored: {}", err),
+                );
+            }
         }
-        let Some(text) = call
-            .arguments
-            .get("text")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-        else {
-            continue;
-        };
-        if let Ok(category) = extract_required_memory_category(&call) {
-            repaired.insert(text, category);
+    }
+
+    if repaired.is_empty() {
+        for text in texts {
+            repaired.insert(text.clone(), guess_memory_category(text));
         }
     }
 
