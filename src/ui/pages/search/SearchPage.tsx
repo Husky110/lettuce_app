@@ -433,7 +433,7 @@ function LoadingSkeleton() {
   return (
     <div className="space-y-2 pb-4">
       {[0, 1, 2, 3].map((index) => (
-        <div key={index} className="h-[76px] animate-pulse rounded-2xl bg-surface-el p-3.5">
+        <div key={index} className="h-19 animate-pulse rounded-2xl bg-surface-el p-3.5">
           <div className="flex items-center gap-3.5">
             <div className="h-14 w-14 rounded-full bg-fg/10" />
             <div className="flex-1 space-y-2">

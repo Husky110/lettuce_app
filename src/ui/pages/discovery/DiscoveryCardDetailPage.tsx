@@ -389,7 +389,7 @@ export function DiscoveryCardDetailPage() {
           )}
 
           {/* Gradient overlay */}
-          <div className="absolute inset-0 bg-linear-to-t from-[#050505] via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-surface via-transparent to-transparent" />
 
           {/* Badges */}
           <div className="absolute bottom-4 left-4 z-10 flex flex-wrap gap-2">

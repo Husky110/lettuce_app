@@ -274,7 +274,7 @@ export function StartingSceneStep({
           </AnimatePresence>
 
           {scenes.length === 0 && (
-            <div className="rounded-xl border border-dashed border-fg/10 bg-fg/[0.02] px-4 py-8 text-center">
+            <div className="rounded-xl border border-dashed border-fg/10 bg-fg/2 px-4 py-8 text-center">
               <BookOpen className="mx-auto h-8 w-8 text-fg/20 mb-2" />
               <p className="text-sm text-fg/40">No scenes yet</p>
               <p className="text-xs text-fg/30 mt-1">Create your first scene to get started</p>

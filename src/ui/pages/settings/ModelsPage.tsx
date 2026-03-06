@@ -159,8 +159,8 @@ export function ModelsPage() {
           <button
             onClick={() => navigate(Routes.settingsModelsBrowse)}
             className={cn(
-              "group w-full rounded-xl border border-dashed border-fg/15 bg-fg/[0.02] px-4 py-3 text-left transition",
-              "hover:border-fg/25 hover:bg-fg/[0.05] active:scale-[0.995]",
+              "group w-full rounded-xl border border-dashed border-fg/15 bg-fg/2 px-4 py-3 text-left transition",
+              "hover:border-fg/25 hover:bg-fg/5 active:scale-[0.995]",
             )}
           >
             <div className="flex items-center gap-3">

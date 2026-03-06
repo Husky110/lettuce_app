@@ -12,10 +12,6 @@ import { cn, interactive, radius } from "../../design-tokens";
 import { toast } from "../../components/toast";
 import { useI18n } from "../../../core/i18n/context";
 
-// ---------------------------------------------------------------------------
-// Token definitions
-// ---------------------------------------------------------------------------
-
 const COLOR_TOKENS = [
   {
     key: "surface" as const,
@@ -94,10 +90,6 @@ const DEFAULTS = Object.fromEntries(COLOR_TOKENS.map((t) => [t.key, t.defaultVal
   ColorKey,
   string
 >;
-
-// ---------------------------------------------------------------------------
-// Presets
-// ---------------------------------------------------------------------------
 
 interface Preset {
   name: string;
@@ -340,10 +332,6 @@ interface PresetExportPayload {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function isValidHex(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
 }
@@ -435,10 +423,6 @@ function slugify(value: string): string {
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 const TOKEN_LABEL_KEYS: Record<ColorKey, { label: string; desc: string }> = {
   surface: { label: "colorCustomization.tokens.surface", desc: "colorCustomization.tokens.surfaceDesc" },
@@ -1033,7 +1017,7 @@ export function ColorCustomizationPage() {
                             placeholder={DEFAULTS[token.key]}
                             spellCheck={false}
                             className={cn(
-                              "w-[90px] rounded-lg border px-2.5 py-1.5 font-mono text-xs text-fg",
+                              "w-22.5 rounded-lg border px-2.5 py-1.5 font-mono text-xs text-fg",
                               "border-fg/10 bg-fg/5 placeholder-fg/30",
                               "focus:border-accent/40 focus:outline-none",
                               interactive.transition.fast,

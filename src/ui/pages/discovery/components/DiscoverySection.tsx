@@ -163,7 +163,7 @@ export const DiscoverySection = memo(function DiscoverySection({
 
       {/* Scroll indicator gradient */}
       <div className="pointer-events-none relative">
-        <div className="absolute -top-24 right-0 h-24 w-12 bg-linear-to-l from-[#050505] to-transparent lg:hidden" />
+        <div className="absolute -top-24 right-0 h-24 w-12 bg-linear-to-l from-surface to-transparent lg:hidden" />
       </div>
     </section>
   );

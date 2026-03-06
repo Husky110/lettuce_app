@@ -1059,7 +1059,7 @@ const GalleryCard = memo(
         onPointerLeave={handlePointerLeave}
         className={cn(
           "group relative flex w-full flex-col overflow-hidden text-left",
-          "aspect-[3/4] rounded-2xl border border-white/12",
+          "aspect-3/4 rounded-2xl border border-white/12",
           interactive.transition.default,
           interactive.active.scale,
           !hasAvatar && !hasGradient ? "bg-[#1a1b23]" : "",
@@ -1078,7 +1078,7 @@ const GalleryCard = memo(
       >
         {/* Dark scrim at bottom */}
         <div className="mt-auto relative z-10">
-          <div className="absolute inset-0 -top-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+          <div className="absolute inset-0 -top-16 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
           <div className="relative p-4 pt-6">
             <h3 className="truncate font-semibold text-lg leading-tight text-white drop-shadow-md">
               {character.name}

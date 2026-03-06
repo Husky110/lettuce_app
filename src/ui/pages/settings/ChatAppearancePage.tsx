@@ -1077,7 +1077,7 @@ export function ChatAppearancePage() {
         {/* Preview column — collapsible on mobile, sticky on desktop */}
         <div
           ref={previewRef}
-          className="mb-5 lg:mb-0 lg:w-[520px] lg:shrink-0 lg:will-change-transform"
+          className="mb-5 lg:mb-0 lg:w-130 lg:shrink-0 lg:will-change-transform"
         >
           <div className="mb-2 flex items-center justify-between px-1">
             <button
@@ -1118,7 +1118,7 @@ export function ChatAppearancePage() {
           <div
             className={cn(
               "overflow-hidden transition-all duration-200",
-              mobilePreviewOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0",
+              mobilePreviewOpen ? "max-h-500 opacity-100" : "max-h-0 opacity-0",
               "lg:max-h-none lg:opacity-100",
             )}
           >

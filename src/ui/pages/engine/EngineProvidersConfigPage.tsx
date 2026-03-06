@@ -240,7 +240,7 @@ function ProvidersInner({ credential }: { credential: ProviderCredential }) {
                   return (
                     <div
                       key={provider.id}
-                      className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden"
+                      className="rounded-xl border border-white/10 bg-white/2 overflow-hidden"
                     >
                       <button
                         onClick={() => setAdding(isAdding ? null : provider.id)}

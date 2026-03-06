@@ -535,7 +535,7 @@ export default function ChatTemplateEditorPage() {
             <p className="text-sm font-medium text-fg/50">
               {t("characters.templateEditor.noMessagesYet")}
             </p>
-            <p className="mt-1 max-w-[240px] text-xs text-fg/30">
+            <p className="mt-1 max-w-60 text-xs text-fg/30">
               {t("characters.templateEditor.addMessagesDesc", { name: character.name })}
             </p>
           </div>
@@ -726,7 +726,7 @@ export default function ChatTemplateEditorPage() {
         style={{ height: "calc(100dvh - 72px - env(safe-area-inset-top))" }}
       >
         {/* Left panel (settings) — desktop only */}
-        <div className="hidden lg:flex lg:w-[280px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-fg/10">
+        <div className="hidden lg:flex lg:w-70 lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-fg/10">
           {settingsPanel}
         </div>
 

@@ -214,7 +214,7 @@ function PromptEntryMessage({
   const isLong = message.content.length > 160;
 
   return (
-    <div className="flex gap-0 overflow-hidden rounded-lg border border-fg/10 bg-fg/[0.03]">
+    <div className="flex gap-0 overflow-hidden rounded-lg border border-fg/10 bg-fg/3">
       {/* Accent bar */}
       <div className={cn("w-1 shrink-0", role.accent)} />
 

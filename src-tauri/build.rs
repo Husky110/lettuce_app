@@ -28,7 +28,9 @@ fn main() {
             setup_macos_libs().expect("Failed to setup macOS ONNX Runtime library");
         }
         "linux" => {
-            println!("cargo:warning=Detected Linux desktop build, preparing ONNX Runtime library...");
+            println!(
+                "cargo:warning=Detected Linux desktop build, preparing ONNX Runtime library..."
+            );
             setup_linux_libs().expect("Failed to setup Linux ONNX Runtime library");
         }
         _ => {
@@ -154,7 +156,10 @@ fn setup_linux_libs() -> anyhow::Result<()> {
         "https://github.com/microsoft/onnxruntime/releases/download/v{0}/onnxruntime-linux-x64-{0}.tgz",
         ORT_VERSION
     );
-    let lib_path_in_archive = format!("onnxruntime-linux-x64-{}/lib/libonnxruntime.so", ORT_VERSION);
+    let lib_path_in_archive = format!(
+        "onnxruntime-linux-x64-{}/lib/libonnxruntime.so",
+        ORT_VERSION
+    );
 
     println!(
         "cargo:warning=Downloading ONNX Runtime Linux v{}...",
@@ -459,10 +464,7 @@ fn extract_tgz_single_file(bytes: &[u8], entry_path: &str, dest_path: &Path) -> 
         return Ok(());
     }
 
-    anyhow::bail!(
-        "Could not find '{}' in ONNX Runtime archive",
-        entry_path
-    )
+    anyhow::bail!("Could not find '{}' in ONNX Runtime archive", entry_path)
 }
 
 fn extract_tgz_dylibs_from_dir(

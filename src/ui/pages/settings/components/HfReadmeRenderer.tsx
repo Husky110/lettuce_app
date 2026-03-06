@@ -539,7 +539,7 @@ function HfReadmeRendererComponent({ content, className = "" }: HfReadmeRenderer
           em: ({ children }) => <em className="opacity-80">{children}</em>,
 
           details: ({ children }) => (
-            <details className="my-2 rounded-xl border border-fg/10 bg-fg/[0.02] open:pb-3">
+            <details className="my-2 rounded-xl border border-fg/10 bg-fg/2 open:pb-3">
               {children}
             </details>
           ),

@@ -172,7 +172,7 @@ export function CreatePersonaForm({
             rows={7}
             placeholder="Write in a professional, clear, and concise style. Use formal language and focus on delivering information effectively..."
             className={cn(
-              "w-full resize-y border bg-surface-el/20 px-4 py-3.5 text-sm leading-relaxed text-fg placeholder-fg/40 backdrop-blur-xl min-h-[140px] max-h-[320px]",
+              "w-full resize-y border bg-surface-el/20 px-4 py-3.5 text-sm leading-relaxed text-fg placeholder-fg/40 backdrop-blur-xl min-h-35 max-h-80",
               radius.md,
               interactive.transition.default,
               "focus:border-fg/30 focus:bg-surface-el/30 focus:outline-none",

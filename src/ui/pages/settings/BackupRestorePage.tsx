@@ -91,7 +91,7 @@ export function BackupRestorePage() {
             className={cn(
               "w-full rounded-xl border border-fg/10 bg-fg/5 p-4 text-left",
               interactive.transition.default,
-              "hover:border-fg/20 hover:bg-fg/[0.08]",
+              "hover:border-fg/20 hover:bg-fg/8",
               "active:scale-[0.99]",
               "disabled:opacity-50",
             )}
@@ -509,7 +509,7 @@ function BackupItem({
       className={cn(
         "group w-full rounded-xl border border-fg/10 bg-fg/5 p-3 text-left",
         interactive.transition.default,
-        "hover:border-fg/20 hover:bg-fg/[0.08]",
+        "hover:border-fg/20 hover:bg-fg/8",
         "active:scale-[0.99]",
       )}
     >

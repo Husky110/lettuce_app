@@ -132,7 +132,7 @@ export function GroupChatHeader({
               <Brain size={18} strokeWidth={2.5} />
             )}
             {!effectiveMemoryBusy && !effectiveMemoryError && memoryCount > 0 && (
-              <span className="absolute right-0.5 top-0.5 inline-flex min-w-[1rem] h-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold leading-none text-white shadow-md ring-1 ring-emerald-200/40">
+              <span className="absolute right-0.5 top-0.5 inline-flex min-w-4 h-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold leading-none text-white shadow-md ring-1 ring-emerald-200/40">
                 {memoryCount > 99 ? "99+" : memoryCount}
               </span>
             )}

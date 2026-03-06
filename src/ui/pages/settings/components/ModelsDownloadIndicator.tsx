@@ -92,7 +92,7 @@ export function ModelsDownloadIndicator() {
             <div
               onClick={() => goToModel(navigate, item.modelId)}
               className={cn(
-                "rounded-xl border border-accent/15 bg-accent/[0.04] px-4 py-3 cursor-pointer",
+                "rounded-xl border border-accent/15 bg-accent/4 px-4 py-3 cursor-pointer",
                 interactive.transition.fast,
                 "hover:border-accent/25 hover:bg-accent/[0.07] active:scale-[0.99]",
               )}
@@ -167,7 +167,7 @@ export function ModelsDownloadIndicator() {
             <div
               onClick={() => goToModel(navigate, item.modelId)}
               className={cn(
-                "rounded-xl border border-emerald-400/20 bg-emerald-500/[0.04] px-4 py-3 cursor-pointer",
+                "rounded-xl border border-emerald-400/20 bg-emerald-500/4 px-4 py-3 cursor-pointer",
                 interactive.transition.fast,
                 "hover:border-emerald-400/30 hover:bg-emerald-500/[0.07] active:scale-[0.99]",
               )}
@@ -228,7 +228,7 @@ export function ModelsDownloadIndicator() {
             <div
               onClick={() => goToModel(navigate, item.modelId)}
               className={cn(
-                "rounded-xl border border-danger/15 bg-danger/[0.04] px-4 py-2.5 cursor-pointer",
+                "rounded-xl border border-danger/15 bg-danger/4 px-4 py-2.5 cursor-pointer",
                 interactive.transition.fast,
                 "hover:border-danger/25 hover:bg-danger/[0.07] active:scale-[0.99]",
               )}
@@ -268,7 +268,7 @@ export function ModelsDownloadIndicator() {
           className={cn(
             "flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] text-accent/60",
             interactive.transition.fast,
-            "hover:text-accent/80 hover:bg-fg/[0.03]",
+            "hover:text-accent/80 hover:bg-fg/3",
           )}
         >
           View in browser

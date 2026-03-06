@@ -360,7 +360,7 @@ export function BackgroundPositionModal({
                             <div
                                 ref={containerRef}
                                 className={cn(
-                                    "relative mx-auto aspect-3/4 w-full max-w-[280px] overflow-hidden",
+                                    "relative mx-auto aspect-3/4 w-full max-w-70 overflow-hidden",
                                     radius.lg,
                                     "cursor-move touch-none select-none",
                                     "border border-white/10"
@@ -488,7 +488,7 @@ export function BackgroundPositionModal({
 
                                 <div
                                     className={cn(
-                                        "flex h-12 min-w-[80px] items-center justify-center border border-white/10 bg-white/5 px-3",
+                                        "flex h-12 min-w-20 items-center justify-center border border-white/10 bg-white/5 px-3",
                                         radius.md
                                     )}
                                 >

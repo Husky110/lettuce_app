@@ -532,7 +532,7 @@ function DetailReportContent({
   return (
     <div className="space-y-1">
       <MenuLabel>{t("hfBrowser.detailSystem")}</MenuLabel>
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+      <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-1 divide-y divide-white/5">
         {row(t("hfBrowser.detailRam"), formatBytes(recData.availableRam))}
         {row(
           t("hfBrowser.detailVram"),
@@ -548,7 +548,7 @@ function DetailReportContent({
       {recData.arch && (
         <>
           <MenuLabel>{t("hfBrowser.detailArchitecture")}</MenuLabel>
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+          <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-1 divide-y divide-white/5">
             {recData.arch.architecture &&
               row(t("hfBrowser.detailArch"), recData.arch.architecture.toUpperCase())}
             {recData.arch.blockCount != null &&
@@ -580,7 +580,7 @@ function DetailReportContent({
       <MenuDivider />
 
       <MenuLabel>{t("hfBrowser.detailConfig")}</MenuLabel>
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+      <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-1 divide-y divide-white/5">
         {row(t("hfBrowser.quantization"), selectedFile.quantization)}
         {row(t("hfBrowser.detailModelSize"), formatBytes(selectedFile.size))}
         {row(t("hfBrowser.contextLength"), clampedCtx.toLocaleString() + " tokens")}
@@ -606,7 +606,7 @@ function DetailReportContent({
       </div>
 
       <MenuLabel>{t("hfBrowser.detailMemory")}</MenuLabel>
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+      <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-1 divide-y divide-white/5">
         {row(t("hfBrowser.detailWeights"), formatBytes(selectedFile.size))}
         {row(t("hfBrowser.detailKvCache"), kvBytes > 0 ? formatBytes(kvBytes) : "—")}
         {row(t("hfBrowser.detailComputeBuffer"), formatBytes(overhead))}
@@ -688,7 +688,7 @@ function DetailReportContent({
           return (
             <>
               <MenuLabel>{t("hfBrowser.detailKvDistribution")}</MenuLabel>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+              <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-1 divide-y divide-white/5">
                 {row(
                   t("hfBrowser.detailKvOnGpu"),
                   `${formatBytes(kvOnVram)} (${kvVramPct}%)`,
@@ -732,7 +732,7 @@ function DetailReportContent({
       <MenuDivider />
 
       <MenuLabel>{t("hfBrowser.detailScoreBreakdown")}</MenuLabel>
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 space-y-3">
+      <div className="rounded-xl border border-white/10 bg-white/3 px-4 py-3 space-y-3">
         {bar(
           t("hfBrowser.detailMemFitness"),
           memoryScore,
@@ -767,7 +767,7 @@ function DetailReportContent({
         )}
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 mt-2">
+      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/3 px-4 py-3 mt-2">
         <span className="text-[12px] font-semibold text-white/70">
           {t("hfBrowser.detailFinalScore")}
         </span>
@@ -1408,7 +1408,7 @@ export function HuggingFaceBrowserPage() {
                     {Array.from({ length: 12 }).map((_, i) => (
                       <div
                         key={i}
-                        className="rounded-xl border border-fg/5 bg-fg/[0.02] px-3 py-2.5 animate-pulse"
+                        className="rounded-xl border border-fg/5 bg-fg/2 px-3 py-2.5 animate-pulse"
                       >
                         <div className="flex items-center gap-2">
                           <div className="h-5 w-5 rounded-full bg-fg/8" />
@@ -1460,8 +1460,8 @@ export function HuggingFaceBrowserPage() {
                           key={model.modelId}
                           onClick={() => openModel(model.modelId)}
                           className={cn(
-                            "group rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5 text-left transition",
-                            "hover:border-fg/20 hover:bg-fg/[0.06] active:scale-[0.98]",
+                            "group rounded-xl border border-fg/10 bg-fg/3 px-3 py-2.5 text-left transition",
+                            "hover:border-fg/20 hover:bg-fg/6 active:scale-[0.98]",
                           )}
                         >
                           {/* Model name with author avatar */}
@@ -1716,7 +1716,7 @@ export function HuggingFaceBrowserPage() {
                         {/* Recommended settings tab */}
                         {filesPanelTab === "recommended" && (
                           <div className="flex-1 overflow-y-auto px-3 py-3 pb-6">
-                            <div className="rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5">
+                            <div className="rounded-xl border border-fg/10 bg-fg/3 px-3 py-2.5">
                               {recLoading || !recData ? (
                                 <div className="space-y-2.5 animate-pulse">
                                   <div className="h-8 w-24 rounded bg-fg/10" />
@@ -2217,7 +2217,7 @@ export function HuggingFaceBrowserPage() {
                               return (
                                 <div
                                   key={file.filename}
-                                  className="rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5"
+                                  className="rounded-xl border border-fg/10 bg-fg/3 px-3 py-2.5"
                                 >
                                   <p
                                     className="truncate text-[12px] font-medium text-fg"
@@ -2280,11 +2280,11 @@ export function HuggingFaceBrowserPage() {
 
       {compareOpen && recData && (
         <div
-          className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-[1px] p-4 flex items-center justify-center"
+          className="fixed inset-0 z-120 bg-black/70 backdrop-blur-[1px] p-4 flex items-center justify-center"
           onClick={() => setCompareOpen(false)}
         >
           <div
-            className="w-full max-w-[1240px] max-h-[92vh] rounded-2xl border border-fg/15 bg-surface/95 shadow-2xl overflow-hidden flex flex-col"
+            className="w-full max-w-310 max-h-[92vh] rounded-2xl border border-fg/15 bg-surface/95 shadow-2xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-fg/10 px-4 py-3">
@@ -2319,7 +2319,7 @@ export function HuggingFaceBrowserPage() {
                   {compareSelections.map((selection, index) => (
                     <div
                       key={selection.id}
-                      className="rounded-xl border border-fg/10 bg-fg/[0.03] p-2.5 space-y-2"
+                      className="rounded-xl border border-fg/10 bg-fg/3 p-2.5 space-y-2"
                     >
                       <div className="flex items-center justify-between">
                         <p className="text-[11px] font-semibold text-fg/70">Config {index + 1}</p>
@@ -2393,7 +2393,7 @@ export function HuggingFaceBrowserPage() {
             <div className="flex-1 overflow-x-auto px-4 py-3">
               <div
                 className={cn(
-                  "grid gap-3 min-w-[640px]",
+                  "grid gap-3 min-w-160",
                   compareSelections.length === 1
                     ? "grid-cols-1"
                     : compareSelections.length === 2
@@ -2410,7 +2410,7 @@ export function HuggingFaceBrowserPage() {
                   return (
                     <div
                       key={selection.id}
-                      className="rounded-xl border border-fg/10 bg-fg/[0.03] overflow-hidden flex flex-col min-h-0"
+                      className="rounded-xl border border-fg/10 bg-fg/3 overflow-hidden flex flex-col min-h-0"
                     >
                       <div className="border-b border-fg/10 px-3 py-2">
                         <p
