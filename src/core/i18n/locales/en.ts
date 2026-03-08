@@ -1271,9 +1271,9 @@ export const enMessages = {
     libraryEmptyHint: "Download GGUF models from the Model Browser, or enter a path manually.",
     libraryTitle: "Downloaded Models",
     moveToLibrary:
-      "Hey, I can move this model's file to the GGUF models folder if you want. This keeps all your models organized in one place.",
-    moveToLibraryYes: "Yes, move it",
-    moveToLibraryNo: "No, keep it where it is",
+      "This model is outside the LettuceAI GGUF library. Move it into the library to keep local models stored in a single location.",
+    moveToLibraryYes: "Move to library",
+    moveToLibraryNo: "Keep current location",
     moveToLibraryMoving: "Moving model...",
     moveToLibrarySuccess: "Model moved successfully!",
     moveToLibraryFailed: "Failed to move model",
