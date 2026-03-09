@@ -149,7 +149,7 @@ export function ReferenceSelector({
         type: "character",
         id: char.id,
         name: char.name,
-        description: char.definition || char.description,
+        description: char.description || char.definition,
         avatarPath: char.avatarPath,
         avatarCrop: char.avatarCrop ?? null,
       });
@@ -171,7 +171,11 @@ export function ReferenceSelector({
     <BottomMenu
       isOpen={isOpen}
       onClose={onClose}
-      title={type === "character" ? t("characters.referenceSelector.selectCharacter") : t("characters.referenceSelector.selectPersona")}
+      title={
+        type === "character"
+          ? t("characters.referenceSelector.selectCharacter")
+          : t("characters.referenceSelector.selectPersona")
+      }
     >
       <div className="space-y-4">
         {/* Search Input */}
@@ -263,9 +267,7 @@ export function ReferenceSelector({
                           size="md"
                         />
                         <div className="flex-1 min-w-0">
-                          <div
-                            className={cn(typography.body.size, "font-medium text-fg truncate")}
-                          >
+                          <div className={cn(typography.body.size, "font-medium text-fg truncate")}>
                             {name}
                           </div>
                           {desc && (
