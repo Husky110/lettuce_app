@@ -1795,6 +1795,7 @@ export const enMessages = {
       testDataGenerators: "Test Data Generators",
       storageMaintenance: "Storage Maintenance",
       usageTracking: "Usage Tracking",
+      crashTesting: "Crash Testing",
       environmentInfo: "Environment Info",
     },
     testData: {
@@ -1817,6 +1818,12 @@ export const enMessages = {
       recalculateAll: "Recalculate All Usage Costs",
       recalculateAllDesc:
         "Re-fetches pricing and recalculates costs for all OpenRouter usage records",
+    },
+    crashTesting: {
+      forceCrash: "Crash App Now",
+      forceCrashDesc: "Immediately terminates the native app process to test crash detection",
+      forceCrashConfirm:
+        "This will immediately crash the app to test the crash detector. Continue?",
     },
     environmentInfo: {
       mode: "Mode",

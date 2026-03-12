@@ -1,4 +1,5 @@
 mod abort_manager;
+mod android_monitor;
 mod api;
 mod chat_appearance;
 mod chat_manager;
@@ -119,6 +120,14 @@ pub fn run() {
             app.manage(abort_registry);
             let app_usage_service = Arc::new(usage::app_activity::AppActiveUsageService::new());
             app.manage(app_usage_service.clone());
+
+            #[cfg(target_os = "android")]
+            {
+                let monitor_state = android_monitor::initialize(app.handle())
+                    .expect("Failed to initialize Android crash monitor state");
+                app.manage(monitor_state);
+                android_monitor::start_heartbeat_loop(app.handle().clone());
+            }
 
             let log_manager =
                 logger::LogManager::new(app.handle()).expect("Failed to initialize log manager");
@@ -368,6 +377,7 @@ pub fn run() {
             usage::usage_recalculate_costs,
             utils::accessibility_sound_base64,
             utils::get_app_version,
+            utils::developer_force_crash,
             embedding_model::check_embedding_model,
             embedding_model::get_embedding_model_info,
             embedding_model::start_embedding_download,
@@ -388,7 +398,11 @@ pub fn run() {
             logger::delete_log_file,
             logger::clear_all_logs,
             logger::get_log_dir_path,
+            logger::get_log_export_dir,
+            logger::pick_log_export_dir,
+            logger::clear_log_export_dir,
             logger::save_log_to_downloads,
+            android_monitor::android_monitor_set_route,
             tts_manager::commands::audio_provider_list,
             tts_manager::commands::audio_provider_upsert,
             tts_manager::commands::audio_provider_delete,
@@ -576,6 +590,7 @@ pub fn run() {
                 {
                     state.flush(&handler);
                 }
+                android_monitor::mark_clean_exit(&handler);
                 let analytics_enabled = handler.state::<AnalyticsState>().enabled;
                 if analytics_enabled {
                     if let Err(e) = handler.track_event("app_exited", None) {

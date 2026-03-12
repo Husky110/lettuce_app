@@ -30,6 +30,13 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".CrashMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":monitor"
+            android:stopWithTask="false" />
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"

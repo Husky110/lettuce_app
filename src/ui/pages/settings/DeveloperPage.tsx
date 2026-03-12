@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Sparkles, User, MessageSquare, Calculator, FlaskConical } from "lucide-react";
+import {
+  Sparkles,
+  User,
+  MessageSquare,
+  Calculator,
+  FlaskConical,
+  AlertTriangle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { typography, radius, interactive, cn } from "../../design-tokens";
 import { useI18n } from "../../../core/i18n/context";
@@ -178,7 +185,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "I shut the archive door behind me and keep both hands visible. \"Captain Orin said you were the only person in Auric who could open a ledger from House Cendre without burning it.\"",
+            'I shut the archive door behind me and keep both hands visible. "Captain Orin said you were the only person in Auric who could open a ledger from House Cendre without burning it."',
           createdAt: now + 1,
           memoryRefs: [],
         },
@@ -186,7 +193,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "Mirelle doesn't touch the ledger yet. \"Orin exaggerates when he's scared. He still owes me for the winter fuel ration in Glassport, so I assume you're here because the debt finally matured.\" She flicks a glance toward the satchel. \"Set it on the dry side of the table.\"",
+            'Mirelle doesn\'t touch the ledger yet. "Orin exaggerates when he\'s scared. He still owes me for the winter fuel ration in Glassport, so I assume you\'re here because the debt finally matured." She flicks a glance toward the satchel. "Set it on the dry side of the table."',
           createdAt: now + 2,
           memoryRefs: [],
         },
@@ -194,7 +201,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"The satchel came off the Sparrow after the reef guns hit us. The compass inside keeps pointing east even when I spin it. Also, for the record, I hate clove cigarettes, so if this room starts smelling like them, it isn't me.\"",
+            '"The satchel came off the Sparrow after the reef guns hit us. The compass inside keeps pointing east even when I spin it. Also, for the record, I hate clove cigarettes, so if this room starts smelling like them, it isn\'t me."',
           createdAt: now + 3,
           memoryRefs: [],
         },
@@ -202,7 +209,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Useful.\" Mirelle finally looks up. \"I smoke clove when I'm working numbers, so now I know one thing that will annoy you.\" She nudges the broken compass with a gloved finger. \"And east is where the drowned rail tunnels run under Auric.\"",
+            '"Useful." Mirelle finally looks up. "I smoke clove when I\'m working numbers, so now I know one thing that will annoy you." She nudges the broken compass with a gloved finger. "And east is where the drowned rail tunnels run under Auric."',
           createdAt: now + 4,
           memoryRefs: [],
         },
@@ -218,7 +225,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "Her expression hardens for the first time. \"Mara Vale was my sister. The red key was hers, and nobody outside the family should know that phrase.\" Mirelle slides the ledger closer. \"If that line is genuine, this became my problem two sentences ago.\"",
+            'Her expression hardens for the first time. "Mara Vale was my sister. The red key was hers, and nobody outside the family should know that phrase." Mirelle slides the ledger closer. "If that line is genuine, this became my problem two sentences ago."',
           createdAt: now + 6,
           memoryRefs: [],
         },
@@ -226,7 +233,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"Then here's the rest of it. House Cendre paid someone called the Bellwright to sabotage the storm alarms before the Blackwake fire. My father died in that fire.\"",
+            '"Then here\'s the rest of it. House Cendre paid someone called the Bellwright to sabotage the storm alarms before the Blackwake fire. My father died in that fire."',
           createdAt: now + 7,
           memoryRefs: [],
         },
@@ -234,7 +241,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Mine too,\" Mirelle says quietly. \"Different district, same night.\" She opens the ledger with a brass pick hidden in her sleeve. \"If Cendre funded the Bellwright, the city archives were altered afterward. That means someone inside the civic watch helped bury it.\"",
+            '"Mine too," Mirelle says quietly. "Different district, same night." She opens the ledger with a brass pick hidden in her sleeve. "If Cendre funded the Bellwright, the city archives were altered afterward. That means someone inside the civic watch helped bury it."',
           createdAt: now + 8,
           memoryRefs: [],
         },
@@ -242,7 +249,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"I brought one more thing.\" I unwrap a strip of blue silk from my wrist. \"This was tied around the satchel handle. Orin said blue silk marks cargo protected by the harbor union.\"",
+            '"I brought one more thing." I unwrap a strip of blue silk from my wrist. "This was tied around the satchel handle. Orin said blue silk marks cargo protected by the harbor union."',
           createdAt: now + 9,
           memoryRefs: [],
         },
@@ -250,7 +257,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Usually, yes. But this stitch pattern is union-adjacent, not official.\" Mirelle studies it under the lamp. \"Three short, one long. Smuggler shorthand from the east docks. Whoever sent this wanted you to think the harbor union was involved when it probably wasn't.\"",
+            '"Usually, yes. But this stitch pattern is union-adjacent, not official." Mirelle studies it under the lamp. "Three short, one long. Smuggler shorthand from the east docks. Whoever sent this wanted you to think the harbor union was involved when it probably wasn\'t."',
           createdAt: now + 10,
           memoryRefs: [],
         },
@@ -266,7 +273,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Good. Keep speaking like that.\" Mirelle turns a page. \"The Bellwright is a title, not one person. At least four operators have used it in the last decade. Your contradiction is real, but it doesn't break the trail.\"",
+            '"Good. Keep speaking like that." Mirelle turns a page. "The Bellwright is a title, not one person. At least four operators have used it in the last decade. Your contradiction is real, but it doesn\'t break the trail."',
           createdAt: now + 12,
           memoryRefs: [],
         },
@@ -274,7 +281,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"I need two things from you. First, help proving Cendre tampered with the alarms. Second, no deals with Inspector Sen without asking me first. He sold my crew's route to privateers last spring.\"",
+            '"I need two things from you. First, help proving Cendre tampered with the alarms. Second, no deals with Inspector Sen without asking me first. He sold my crew\'s route to privateers last spring."',
           createdAt: now + 13,
           memoryRefs: [],
         },
@@ -282,7 +289,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Agreed on Sen. I already disliked him, but now I have a cleaner reason.\" She tears out a tiny map from the ledger's back cover. \"This marks a records vault below the archive cistern. If the original alarm manifests survived, they'll be there.\"",
+            '"Agreed on Sen. I already disliked him, but now I have a cleaner reason." She tears out a tiny map from the ledger\'s back cover. "This marks a records vault below the archive cistern. If the original alarm manifests survived, they\'ll be there."',
           createdAt: now + 14,
           memoryRefs: [],
         },
@@ -290,7 +297,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"Before we go underground, one boundary: if we get split up, don't send anyone named Joren after me. He talks too much and his lantern oil smells like sugar.\"",
+            '"Before we go underground, one boundary: if we get split up, don\'t send anyone named Joren after me. He talks too much and his lantern oil smells like sugar."',
           createdAt: now + 15,
           memoryRefs: [],
         },
@@ -298,7 +305,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "A brief smile. \"Noted. Joren stays dockside. He's loyal, but subtlety slides off him.\" Mirelle pockets the map and the blue silk. \"If we need a third hand, I'll call Tamsin instead. She can keep silent for hours.\"",
+            'A brief smile. "Noted. Joren stays dockside. He\'s loyal, but subtlety slides off him." Mirelle pockets the map and the blue silk. "If we need a third hand, I\'ll call Tamsin instead. She can keep silent for hours."',
           createdAt: now + 16,
           memoryRefs: [],
         },
@@ -306,7 +313,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"One more correction. Earlier I said I wasn't here for tunnels. That was half true. I do need the drowned rail tunnels if they connect to the cistern vault.\"",
+            '"One more correction. Earlier I said I wasn\'t here for tunnels. That was half true. I do need the drowned rail tunnels if they connect to the cistern vault."',
           createdAt: now + 17,
           memoryRefs: [],
         },
@@ -314,7 +321,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Then we'll use Tunnel Nine, not Seven. Seven collapsed last month.\" Mirelle taps the compass again, watching the needle drag east. \"This thing is probably keyed to the vault warding. Keep it close, and don't let it touch salt water.\"",
+            '"Then we\'ll use Tunnel Nine, not Seven. Seven collapsed last month." Mirelle taps the compass again, watching the needle drag east. "This thing is probably keyed to the vault warding. Keep it close, and don\'t let it touch salt water."',
           createdAt: now + 18,
           memoryRefs: [],
         },
@@ -322,7 +329,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "user",
           content:
-            "\"If we get proof tonight, I want copies sent to Captain Orin and Magistrate Elara Voss. Not the full ledger, just the alarm manifests and the payment pages.\"",
+            '"If we get proof tonight, I want copies sent to Captain Orin and Magistrate Elara Voss. Not the full ledger, just the alarm manifests and the payment pages."',
           createdAt: now + 19,
           memoryRefs: [],
         },
@@ -330,7 +337,7 @@ export function DeveloperPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "\"Voss is careful enough to survive receiving them. Orin is reckless enough to use them.\" Mirelle reseals the ledger with black wax. \"Fine. Copies for Orin and Elara Voss only, unless the evidence forces a wider leak.\"",
+            '"Voss is careful enough to survive receiving them. Orin is reckless enough to use them." Mirelle reseals the ledger with black wax. "Fine. Copies for Orin and Elara Voss only, unless the evidence forces a wider leak."',
           createdAt: now + 20,
           memoryRefs: [],
         },
@@ -362,7 +369,8 @@ export function DeveloperPage() {
       const [mirelle, tamsin, orin] = await Promise.all([
         saveCharacter({
           name: "Mirelle Vale",
-          description: "A precise archivist and intelligence broker who notices every inconsistency.",
+          description:
+            "A precise archivist and intelligence broker who notices every inconsistency.",
           definition:
             "Mirelle Vale is sharp, controlled, suspicious, and exacting. She values precision, keeps emotional distance until trust is earned, and focuses on facts, leverage, and hidden motives.",
           memoryType: "dynamic",
@@ -380,7 +388,8 @@ export function DeveloperPage() {
         }),
         saveCharacter({
           name: "Tamsin Reed",
-          description: "A quiet dockrunner and scout who speaks rarely but remembers routes perfectly.",
+          description:
+            "A quiet dockrunner and scout who speaks rarely but remembers routes perfectly.",
           definition:
             "Tamsin Reed is patient, observant, and economical with words. She dislikes noise, prefers unambiguous plans, and only interrupts when she has something useful to add.",
           memoryType: "dynamic",
@@ -388,7 +397,8 @@ export function DeveloperPage() {
         }),
         saveCharacter({
           name: "Captain Orin Vale",
-          description: "A reckless smuggler captain whose instincts are excellent and whose recollection is not.",
+          description:
+            "A reckless smuggler captain whose instincts are excellent and whose recollection is not.",
           definition:
             "Captain Orin is charismatic, fast-moving, and brave to the point of carelessness. He remembers routes and favors, but confuses names, dates, and secondary details when tired.",
           memoryType: "dynamic",
@@ -415,36 +425,168 @@ export function DeveloperPage() {
       await storageBridge.groupSessionUpdateMemoryType(session.id, "dynamic");
 
       const seededMessages = [
-        { role: "user", content: 'I place the Cendre ledger on the table. "We finally have enough pieces to stop guessing."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: 'Mirelle folds her gloves beside the ledger. "Then we stop guessing and start separating facts from Captain Orin\'s instincts."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"My instincts found the ledger," Orin says. "And the satchel. And the compass that still points east."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"It points east even when turned," Tamsin says. "I checked three times on the walk here."' },
-        { role: "user", content: '"Good. First fact: the phrase in the ledger says, \'When the sixth bell fails, ask for Mara\'s red key.\'"' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Mara Vale was my sister," Mirelle says. "Red key, family phrase, genuine reference. That part is real."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"And House Cendre paid the Bellwright before the Blackwake fire. That part was real too."' },
-        { role: "user", content: '"Both mine and Mirelle\'s fathers died in that fire. I want that remembered correctly."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Also correctly: the civic watch helped bury the sabotage after the fire," Tamsin says.' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Likely someone inside records handling, yes. The altered archive seals point that way."' },
-        { role: "user", content: '"The blue silk on the satchel wasn\'t harbor union. It was smuggler shorthand from the east docks: three short stitches, one long."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"I said union because I saw blue and was exhausted," Orin mutters. "My route memory holds up better than my symbol memory."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"That is one of the more useful admissions you\'ve made."' },
-        { role: "user", content: '"Boundary check: no deals with Inspector Sen unless I say yes first. He sold my crew to privateers last spring."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Agreed. No Sen without your consent."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"I already disliked him. Now I can pretend it was moral clarity."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Sen also keeps watchers near the west stairs. If we leave, we leave by the cistern corridor."' },
-        { role: "user", content: '"Second boundary: if I go missing, do not send Joren after me. He talks too much and smells like sugared lamp oil."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Noted. Joren stays out. If a third hand is needed, I call Tamsin."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"I prefer that arrangement."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"Joren will sulk, but quietly is beyond him."' },
-        { role: "user", content: '"The route is Tunnel Nine. Tunnel Seven collapsed last month. No one mix those up again."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Tunnel Nine reaches the cistern vault. Seven is dead stone and floodwater."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"And the compass must not touch salt water. The warding keywork reacts to contamination."' },
-        { role: "user", content: '"If we get proof, copies go to Captain Orin and Magistrate Elara Voss only. Alarm manifests and payment pages, not the whole ledger."' },
-        { role: "assistant", speakerCharacterId: orin.id, content: '"That was my idea originally," Orin says, lying with moderate confidence.' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"No, it was theirs. But yes: limited copies to Orin and Elara Voss."' },
-        { role: "assistant", speakerCharacterId: tamsin.id, content: '"And if we split, regroup at the flooded catalog rotunda, not the harbor stairs."' },
-        { role: "user", content: '"Last correction before we move: the Bellwright isn\'t one person. It\'s a title used by multiple operators."' },
-        { role: "assistant", speakerCharacterId: mirelle.id, content: '"At least four in the last decade," Mirelle says. "Now stop talking and help me open the vault map before dawn notices us."' },
+        {
+          role: "user",
+          content:
+            'I place the Cendre ledger on the table. "We finally have enough pieces to stop guessing."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content:
+            'Mirelle folds her gloves beside the ledger. "Then we stop guessing and start separating facts from Captain Orin\'s instincts."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content:
+            '"My instincts found the ledger," Orin says. "And the satchel. And the compass that still points east."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content:
+            '"It points east even when turned," Tamsin says. "I checked three times on the walk here."',
+        },
+        {
+          role: "user",
+          content:
+            "\"Good. First fact: the phrase in the ledger says, 'When the sixth bell fails, ask for Mara's red key.'\"",
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content:
+            '"Mara Vale was my sister," Mirelle says. "Red key, family phrase, genuine reference. That part is real."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content:
+            '"And House Cendre paid the Bellwright before the Blackwake fire. That part was real too."',
+        },
+        {
+          role: "user",
+          content:
+            '"Both mine and Mirelle\'s fathers died in that fire. I want that remembered correctly."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content:
+            '"Also correctly: the civic watch helped bury the sabotage after the fire," Tamsin says.',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content:
+            '"Likely someone inside records handling, yes. The altered archive seals point that way."',
+        },
+        {
+          role: "user",
+          content:
+            '"The blue silk on the satchel wasn\'t harbor union. It was smuggler shorthand from the east docks: three short stitches, one long."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content:
+            '"I said union because I saw blue and was exhausted," Orin mutters. "My route memory holds up better than my symbol memory."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content: '"That is one of the more useful admissions you\'ve made."',
+        },
+        {
+          role: "user",
+          content:
+            '"Boundary check: no deals with Inspector Sen unless I say yes first. He sold my crew to privateers last spring."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content: '"Agreed. No Sen without your consent."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content: '"I already disliked him. Now I can pretend it was moral clarity."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content:
+            '"Sen also keeps watchers near the west stairs. If we leave, we leave by the cistern corridor."',
+        },
+        {
+          role: "user",
+          content:
+            '"Second boundary: if I go missing, do not send Joren after me. He talks too much and smells like sugared lamp oil."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content: '"Noted. Joren stays out. If a third hand is needed, I call Tamsin."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content: '"I prefer that arrangement."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content: '"Joren will sulk, but quietly is beyond him."',
+        },
+        {
+          role: "user",
+          content:
+            '"The route is Tunnel Nine. Tunnel Seven collapsed last month. No one mix those up again."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content: '"Tunnel Nine reaches the cistern vault. Seven is dead stone and floodwater."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content:
+            '"And the compass must not touch salt water. The warding keywork reacts to contamination."',
+        },
+        {
+          role: "user",
+          content:
+            '"If we get proof, copies go to Captain Orin and Magistrate Elara Voss only. Alarm manifests and payment pages, not the whole ledger."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: orin.id,
+          content: '"That was my idea originally," Orin says, lying with moderate confidence.',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content: '"No, it was theirs. But yes: limited copies to Orin and Elara Voss."',
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: tamsin.id,
+          content:
+            '"And if we split, regroup at the flooded catalog rotunda, not the harbor stairs."',
+        },
+        {
+          role: "user",
+          content:
+            "\"Last correction before we move: the Bellwright isn't one person. It's a title used by multiple operators.\"",
+        },
+        {
+          role: "assistant",
+          speakerCharacterId: mirelle.id,
+          content:
+            '"At least four in the last decade," Mirelle says. "Now stop talking and help me open the vault map before dawn notices us."',
+        },
       ];
 
       for (let index = 0; index < seededMessages.length; index += 1) {
@@ -518,6 +660,22 @@ export function DeveloperPage() {
       showStatus(`✓ ${result}`);
     } catch (err) {
       showError(`Recalculation failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const forceCrash = async () => {
+    const confirmed = window.confirm(t("developer.crashTesting.forceCrashConfirm"));
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setStatus("Crashing app...");
+
+    try {
+      await invoke("developer_force_crash");
+    } catch (err) {
+      showError(`Failed to crash app: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -638,14 +796,31 @@ export function DeveloperPage() {
           />
 
           <h2 className={cn(typography.h2.size, typography.h2.weight, "text-fg mb-3 mt-6")}>
+            {t("developer.sectionTitles.crashTesting")}
+          </h2>
+          <ActionButton
+            icon={<AlertTriangle />}
+            title={t("developer.crashTesting.forceCrash")}
+            description={t("developer.crashTesting.forceCrashDesc")}
+            onClick={forceCrash}
+            variant="danger"
+          />
+
+          <h2 className={cn(typography.h2.size, typography.h2.weight, "text-fg mb-3 mt-6")}>
             {t("developer.sectionTitles.environmentInfo")}
           </h2>
 
           <InfoCard title={t("developer.environmentInfo.mode")} value={import.meta.env.MODE} />
 
-          <InfoCard title={t("developer.environmentInfo.devMode")} value={import.meta.env.DEV ? "Yes" : "No"} />
+          <InfoCard
+            title={t("developer.environmentInfo.devMode")}
+            value={import.meta.env.DEV ? "Yes" : "No"}
+          />
 
-          <InfoCard title={t("developer.environmentInfo.viteVersion")} value={import.meta.env.VITE_APP_VERSION || "N/A"} />
+          <InfoCard
+            title={t("developer.environmentInfo.viteVersion")}
+            value={import.meta.env.VITE_APP_VERSION || "N/A"}
+          />
         </section>
       </main>
     </div>

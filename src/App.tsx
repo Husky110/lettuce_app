@@ -88,6 +88,7 @@ import { V2UpgradeToast } from "./ui/components/V2UpgradeToast";
 import { ConfirmBottomMenuHost } from "./ui/components/ConfirmBottomMenu";
 import { isOnboardingCompleted } from "./core/storage/appState";
 import { TopNav, BottomNav } from "./ui/components/App";
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useAndroidBackHandler } from "./ui/hooks/useAndroidBackHandler";
 import { logManager, isLoggingEnabled } from "./core/utils/logger";
@@ -276,6 +277,7 @@ function AppContent() {
   const location = useLocation();
   console.log("AppContent render:", location.pathname, location.key);
   const mainRef = useRef<HTMLDivElement | null>(null);
+  const platform = useMemo(() => getPlatform(), []);
   const isChatRoute = location.pathname === "/chat" || location.pathname === "/";
   // Group chat detail: /group-chats/:id, /group-chats/:id/settings, /group-chats/new (NOT /group-chats list)
   const isGroupChatDetailRoute = location.pathname.startsWith("/group-chats/");
@@ -359,6 +361,15 @@ function AppContent() {
       setShowCreateMenu(false);
     }
   }, [isOnboardingRoute, isCreateRoute]);
+
+  useEffect(() => {
+    if (platform.os !== "android") return;
+    invoke("android_monitor_set_route", {
+      route: location.pathname + location.search,
+    }).catch(() => {
+      // Ignore monitor update failures; Android monitor is best-effort metadata.
+    });
+  }, [location.pathname, location.search, platform.os]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);

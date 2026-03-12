@@ -5,6 +5,14 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "android")]
+use std::path::Path;
+#[cfg(target_os = "android")]
+use tauri_plugin_android_fs::{
+    convert_dir_path_to_string, convert_file_path_to_string, convert_string_to_dir_path, AndroidFs,
+    AndroidFsExt, PersistableAccessMode, PublicGeneralPurposeDir, PublicStorage,
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: String,
@@ -17,6 +25,13 @@ pub struct LogEntry {
 pub struct LogManager {
     file: Mutex<Option<File>>,
     log_dir: PathBuf,
+}
+
+#[cfg(target_os = "android")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AndroidLogExportDirConfig {
+    dir_path_json: String,
+    display_name: String,
 }
 
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -49,7 +64,7 @@ impl LogManager {
 
     fn get_current_log_file_path(&self) -> PathBuf {
         let now = chrono::Local::now();
-        let filename = format!("app-{}.txt", now.format("%Y-%m-%d"));
+        let filename = format!("app-{}.log", now.format("%Y-%m-%d"));
         self.log_dir.join(filename)
     }
 
@@ -127,7 +142,7 @@ impl LogManager {
             .filter_map(|entry| {
                 entry.ok().and_then(|e| {
                     let path = e.path();
-                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("txt") {
+                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("log") {
                         path.file_name()
                             .and_then(|n| n.to_str())
                             .map(|s| s.to_string())
@@ -193,7 +208,7 @@ impl LogManager {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension() == Some("txt".as_ref()) {
+            if path.is_file() && path.extension() == Some("log".as_ref()) {
                 fs::remove_file(path).map_err(|e| {
                     crate::utils::err_msg(
                         module_path!(),
@@ -210,6 +225,80 @@ impl LogManager {
     pub fn get_log_dir_path(&self) -> String {
         self.log_dir.to_string_lossy().to_string()
     }
+}
+
+#[cfg(target_os = "android")]
+fn android_log_export_config_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let monitor_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to get app data dir: {}", e),
+            )
+        })?
+        .join("monitor");
+
+    fs::create_dir_all(&monitor_dir).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to create monitor directory: {}", e),
+        )
+    })?;
+
+    Ok(monitor_dir.join("log-export-dir.json"))
+}
+
+#[cfg(target_os = "android")]
+fn read_android_log_export_dir_config(
+    app_handle: &AppHandle,
+) -> Result<Option<AndroidLogExportDirConfig>, String> {
+    let path = android_log_export_config_path(app_handle)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&path).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to read Android log export config: {}", e),
+        )
+    })?;
+
+    serde_json::from_str(&content).map(Some).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to parse Android log export config: {}", e),
+        )
+    })
+}
+
+#[cfg(target_os = "android")]
+fn write_android_log_export_dir_config(
+    app_handle: &AppHandle,
+    config: &AndroidLogExportDirConfig,
+) -> Result<(), String> {
+    let path = android_log_export_config_path(app_handle)?;
+    let content = serde_json::to_string_pretty(config).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to serialize Android log export config: {}", e),
+        )
+    })?;
+
+    fs::write(path, content).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to write Android log export config: {}", e),
+        )
+    })
 }
 
 #[tauri::command]
@@ -265,6 +354,100 @@ pub async fn get_log_dir_path(app_handle: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub async fn get_log_export_dir(app_handle: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        return Ok(
+            read_android_log_export_dir_config(&app_handle)?.map(|config| config.display_name)
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app_handle;
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn pick_log_export_dir(app_handle: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        let api = app_handle.android_fs();
+        let Some(dir_path) = api.show_open_dir_dialog().map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to open directory picker: {}", e),
+            )
+        })?
+        else {
+            return Ok(None);
+        };
+
+        api.grant_persistable_dir_access(&dir_path, PersistableAccessMode::ReadAndWrite)
+            .map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to persist directory access: {}", e),
+                )
+            })?;
+
+        let display_name = api
+            .get_dir_name(&dir_path)
+            .unwrap_or_else(|_| "Selected folder".to_string());
+        let dir_path_json = convert_dir_path_to_string(&dir_path).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to serialize selected directory: {}", e),
+            )
+        })?;
+
+        write_android_log_export_dir_config(
+            &app_handle,
+            &AndroidLogExportDirConfig {
+                dir_path_json,
+                display_name: display_name.clone(),
+            },
+        )?;
+
+        return Ok(Some(display_name));
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app_handle;
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn clear_log_export_dir(app_handle: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let path = android_log_export_config_path(&app_handle)?;
+        if path.exists() {
+            fs::remove_file(path).map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to remove Android log export config: {}", e),
+                )
+            })?;
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app_handle;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn save_log_to_downloads(
     app_handle: AppHandle,
     filename: String,
@@ -274,32 +457,72 @@ pub async fn save_log_to_downloads(
 
     #[cfg(target_os = "android")]
     {
-        // Save to the public Downloads folder
-        let download_dir = std::path::PathBuf::from("/storage/emulated/0/Download");
+        let safe_filename = Path::new(&filename)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| crate::utils::err_msg(module_path!(), line!(), "Invalid log filename"))?
+            .to_string();
 
-        if !download_dir.exists() {
-            std::fs::create_dir_all(&download_dir).map_err(|e| {
+        let api = app_handle.android_fs();
+        if let Some(config) = read_android_log_export_dir_config(&app_handle)? {
+            let dir_path = convert_string_to_dir_path(&config.dir_path_json).map_err(|e| {
                 crate::utils::err_msg(
                     module_path!(),
                     line!(),
-                    format!("Failed to create downloads directory: {}", e),
+                    format!("Failed to deserialize selected log directory: {}", e),
                 )
             })?;
+
+            let saved_path = api
+                .new_file_with_contents(
+                    &dir_path,
+                    &safe_filename,
+                    Some("text/plain"),
+                    content.as_bytes(),
+                )
+                .map_err(|e| {
+                    crate::utils::err_msg(
+                        module_path!(),
+                        line!(),
+                        format!(
+                            "Failed to save Android log file to selected directory: {}",
+                            e
+                        ),
+                    )
+                })?;
+
+            let saved_name = api.get_file_name(&saved_path).unwrap_or(safe_filename);
+            let saved_uri = convert_file_path_to_string(&saved_path);
+
+            return Ok(format!(
+                "{}/{}\n{}",
+                config.display_name, saved_name, saved_uri
+            ));
         }
 
-        let file_path = download_dir.join(&filename);
-
-        std::fs::write(&file_path, content.as_bytes()).map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to write file: {}", e),
+        let saved_path = api
+            .public_storage()
+            .write(
+                PublicGeneralPurposeDir::Download,
+                format!("lettuceai/logs/{safe_filename}"),
+                Some("text/plain"),
+                content.as_bytes(),
             )
-        })?;
+            .map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to save Android log file: {}", e),
+                )
+            })?;
 
-        let path_str = file_path.to_string_lossy().to_string();
+        let saved_name = api.get_file_name(&saved_path).unwrap_or(safe_filename);
+        let saved_uri = convert_file_path_to_string(&saved_path);
 
-        Ok(path_str)
+        Ok(format!(
+            "Downloads/lettuceai/logs/{saved_name}\n{saved_uri}"
+        ))
     }
 
     #[cfg(not(target_os = "android"))]

@@ -917,7 +917,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       scoreBased: "Batay sa puntos",
       roundRobin: "Paliitan",
       takeTurns: "Palitan",
-      llmDesc: "Ginagamit ang iyong default na modelo para pumili kung sino ang magsasalita (may gastos na tokens)",
+      llmDesc:
+        "Ginagamit ang iyong default na modelo para pumili kung sino ang magsasalita (may gastos na tokens)",
       heuristicDesc: "Ginagamit ang balanse ng partisipasyon at mga pahiwatig ng konteksto (libre)",
       roundRobinDesc: "Ang mga karakter ay nagsasalita nang paliitan (libre)",
       memoryMode: "Memory Mode",
@@ -926,7 +927,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       manualDesc: "Ikaw ang mag-manage ng mga notes",
       dynamic: "Dynamic",
       dynamicDesc: "Automatic na pag-recall",
-      memoryDynamicInfo: "Awtomatikong gumagawa at kumukuha ng mga alaala ang AI mula sa mga pag-uusap",
+      memoryDynamicInfo:
+        "Awtomatikong gumagawa at kumukuha ng mga alaala ang AI mula sa mga pag-uusap",
       memoryManualInfo: "Ikaw ang nagdadagdag at nag-manage ng mga memory notes",
       characters: "Mga karakter",
       participantsActive: "{{total}} mga kalahok · {{active}} aktibo",
@@ -939,7 +941,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       minTwoRequired: "Kailangan ng minimum 2 karakter",
       removeCharacter: "Alisin ang karakter",
       groupMinCharacters: "Ang isang grupo ay nangangailangan ng hindi bababa sa 2 karakter",
-      mutedCharactersNote: "Ang mga naka-mute na karakter ay nilalaktawan sa automatic na pagpili ng speaker, ngunit maaari pa ring sumagot sa pamamagitan ng tahasang `@mention`.",
+      mutedCharactersNote:
+        "Ang mga naka-mute na karakter ay nilalaktawan sa automatic na pagpili ng speaker, ngunit maaari pa ring sumagot sa pamamagitan ng tahasang `@mention`.",
       addCharacterTitle: "Magdagdag ng karakter",
       allCharactersInGroup: "Lahat ng karakter ay nasa grupo na.",
       removeCharacterTitle: "Alisin ang karakter?",
@@ -970,7 +973,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       scoreBased: "Batay sa puntos",
       roundRobin: "Paliitan",
       takeTurns: "Palitan",
-      llmDesc: "Ginagamit ang iyong default na modelo para pumili kung sino ang magsasalita (may gastos na tokens)",
+      llmDesc:
+        "Ginagamit ang iyong default na modelo para pumili kung sino ang magsasalita (may gastos na tokens)",
       heuristicDesc: "Ginagamit ang balanse ng partisipasyon at mga pahiwatig ng konteksto (libre)",
       roundRobinDesc: "Ang mga karakter ay nagsasalita nang paliitan (libre)",
       characters: "Mga karakter",
@@ -982,7 +986,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       minTwoRequired: "Kailangan ng minimum 2 karakter",
       removeCharacter: "Alisin ang karakter",
       groupMinCharacters: "Ang isang group chat ay nangangailangan ng hindi bababa sa 2 karakter",
-      mutedCharactersNote: "Ang mga naka-mute na karakter ay nilalaktawan sa automatic na pagpili ng speaker, ngunit maaari pa ring sumagot sa pamamagitan ng tahasang `@mention`.",
+      mutedCharactersNote:
+        "Ang mga naka-mute na karakter ay nilalaktawan sa automatic na pagpili ng speaker, ngunit maaari pa ring sumagot sa pamamagitan ng tahasang `@mention`.",
       data: "Data",
       dataSubtitle: "Mag-export o mag-import ng mga pag-uusap",
       export: "I-export",
@@ -1010,7 +1015,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       withoutMessages: "Walang mensahe",
       withoutMessagesDesc: "I-clone lang ang setup (mga karakter, panimulang eksena)",
       branchWithCharacterTitle: "I-branch sa karakter",
-      branchWithCharacterDesc: "Pumili ng karakter para magpatuloy bilang 1-sa-1 na pag-uusap. Lahat ng mensahe mula sa grupong ito ay iko-convert.",
+      branchWithCharacterDesc:
+        "Pumili ng karakter para magpatuloy bilang 1-sa-1 na pag-uusap. Lahat ng mensahe mula sa grupong ito ay iko-convert.",
       continueWith: "Ipagpatuloy ang pag-uusap sa {{name}}",
       exportChatPackageTitle: "I-export ang chat package",
       includeCharacterSnapshots: "Isama ang mga character snapshot",
@@ -1022,7 +1028,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       selectCharacterPlaceholder: "Pumili ng karakter...",
       continue: "Magpatuloy",
       importChatPackageTitle: "I-import ang chat package",
-      importChatPackageDesc: "Ito ay mag-i-import ng napiling `.chatpkg` bilang bagong group session.",
+      importChatPackageDesc:
+        "Ito ay mag-i-import ng napiling `.chatpkg` bilang bagong group session.",
       importing: "Ini-import...",
     },
   },
@@ -1416,7 +1423,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameHint: "Bigyan ang iyong persona ng mapaglarawang pangalan",
       nicknameLabel: "PALAYAW (OPTIONAL)",
       nicknamePlaceholder: "hal., Work Variant, RPG Mode...",
-      nicknameHint: "Isang pribadong palayaw upang makilala ang mga variant ng persona na ito sa iyong library",
+      nicknameHint:
+        "Isang pribadong palayaw upang makilala ang mga variant ng persona na ito sa iyong library",
       descriptionLabel: "PAGLALARAWAN",
       descriptionPlaceholder:
         "Ilarawan kung paano ka dapat tawaging ng AI, ang iyong mga kagustuhan, background, o estilo ng komunikasyon...",
@@ -1828,6 +1836,7 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Mga Test Data Generator",
       storageMaintenance: "Maintenance ng Storage",
       usageTracking: "Pagsubaybay ng Paggamit",
+      crashTesting: "Pagsubok ng Crash",
       environmentInfo: "Impormasyon ng Environment",
     },
     testData: {
@@ -1850,6 +1859,12 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Muling Kalkulahin ang Lahat ng Gastos sa Paggamit",
       recalculateAllDesc:
         "Muling kumukuha ng presyo at muling kinakalkula ang mga gastos para sa lahat ng tala ng paggamit ng OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "I-crash ang App Ngayon",
+      forceCrashDesc: "Agad na ihihinto ang native app process para masubukan ang crash detector",
+      forceCrashConfirm:
+        "Agad nitong ika-crash ang app para masubukan ang crash detector. Itutuloy?",
     },
     environmentInfo: {
       mode: "Mode",

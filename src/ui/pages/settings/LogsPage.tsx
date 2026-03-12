@@ -28,12 +28,15 @@ const logger = logManager({ component: "LogsPage" });
 
 export function LogsPage() {
   const { t } = useI18n();
+  const platform = getPlatform();
+  const isAndroid = platform.os === "android";
   const [logFiles, setLogFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [logDir, setLogDir] = useState<string>("");
+  const [exportDir, setExportDir] = useState<string>("");
   const [diagnosticsText, setDiagnosticsText] = useState("");
   const [generatingDiagnostics, setGeneratingDiagnostics] = useState(false);
   const [diagnosticsExpanded, setDiagnosticsExpanded] = useState(false);
@@ -228,6 +231,16 @@ export function LogsPage() {
     }
   };
 
+  const loadLogExportDir = async () => {
+    if (!isAndroid) return;
+    try {
+      const dir = await invoke<string | null>("get_log_export_dir");
+      setExportDir(dir ?? "");
+    } catch (err) {
+      logger.error("Failed to get Android log export directory", err);
+    }
+  };
+
   const loadLogContent = async (filename: string) => {
     setLoading(true);
     try {
@@ -253,6 +266,29 @@ export function LogsPage() {
     } catch (err) {
       logger.error("Failed to download log file", err);
       alert(`Failed to save log file: ${err}`);
+    }
+  };
+
+  const pickLogExportDir = async () => {
+    try {
+      const dir = await invoke<string | null>("pick_log_export_dir");
+      if (dir) {
+        setExportDir(dir);
+        alert(`Log export folder set to:\n${dir}`);
+      }
+    } catch (err) {
+      logger.error("Failed to pick Android log export directory", err);
+      alert(`Failed to set log export folder: ${err}`);
+    }
+  };
+
+  const clearLogExportDir = async () => {
+    try {
+      await invoke("clear_log_export_dir");
+      setExportDir("");
+    } catch (err) {
+      logger.error("Failed to clear Android log export directory", err);
+      alert(`Failed to clear log export folder: ${err}`);
     }
   };
 
@@ -293,6 +329,7 @@ export function LogsPage() {
   useEffect(() => {
     loadLogFiles();
     loadLogDir();
+    loadLogExportDir();
   }, []);
 
   return (
@@ -386,14 +423,54 @@ export function LogsPage() {
         </div>
 
         {/* Log Directory Info */}
-        {logDir && (
+        {(logDir || (isAndroid && exportDir)) && (
           <div className="rounded-xl border border-fg/10 bg-fg/5 p-3">
-            <div className="flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-fg/40" />
-              <p className={cn(typography.caption.size, "text-fg/50 font-mono break-all")}>
-                {logDir}
-              </p>
-            </div>
+            {logDir && (
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-fg/40" />
+                <p className={cn(typography.caption.size, "text-fg/50 font-mono break-all")}>
+                  {logDir}
+                </p>
+              </div>
+            )}
+            {isAndroid && (
+              <div className={cn("mt-3", logDir && "pt-3 border-t border-fg/10")}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className={cn(typography.caption.size, "text-fg/50")}>Export folder</p>
+                    <p className={cn(typography.caption.size, "text-fg/80 break-all")}>
+                      {exportDir || "Downloads/lettuceai/logs"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={pickLogExportDir}
+                      className={cn(
+                        typography.caption.size,
+                        typography.caption.weight,
+                        "text-info hover:text-info/80",
+                        interactive.transition.default,
+                      )}
+                    >
+                      Choose
+                    </button>
+                    {exportDir && (
+                      <button
+                        onClick={clearLogExportDir}
+                        className={cn(
+                          typography.caption.size,
+                          typography.caption.weight,
+                          "text-fg/50 hover:text-fg/80",
+                          interactive.transition.default,
+                        )}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
