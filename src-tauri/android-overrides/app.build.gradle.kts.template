@@ -17,12 +17,12 @@ val tauriProperties = Properties().apply {
 val applicationIdOverride = providers
     .gradleProperty("lettuceApplicationId")
     .orElse(providers.environmentVariable("LETTUCE_ANDROID_APPLICATION_ID"))
-    .orElse("com.lettuceai.app")
+    .orElse("__PACKAGE__")
     .get()
 
 android {
     compileSdk = 36
-    namespace = "com.lettuceai.app"
+    namespace = "__PACKAGE__"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = applicationIdOverride

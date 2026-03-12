@@ -20,7 +20,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
             android:label="@string/main_activity_title"
-            android:name="com.lettuceai.app.MainActivity"
+            android:name="__PACKAGE__.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -31,7 +31,7 @@
         </activity>
 
         <service
-            android:name="com.lettuceai.app.CrashMonitorService"
+            android:name="__PACKAGE__.CrashMonitorService"
             android:enabled="true"
             android:exported="false"
             android:process=":monitor"

@@ -251,16 +251,14 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           VERSION="0.1.${{ github.run_number }}-dev.$SHORT_SHA"
           printf 'TAURI_CONFIG_OVERRIDE=%s\n' \
-            "{\"productName\":\"lettuceai-dev\",\"version\":\"$VERSION\",\"identifier\":\"dev.lettuceai.app\"}" \
+            "{\"productName\":\"lettuceai-dev\",\"version\":\"$VERSION\"}" \
             >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Init Android project (Dev build)
-        run: |
-          rm -rf src-tauri/gen/android
-          bun run tauri android init --ci --config "$TAURI_CONFIG_OVERRIDE"
+      - name: Apply Android overrides
+        run: node scripts/apply-android-overrides.mjs
 
       - name: Configure Android signing
         env:
@@ -293,6 +291,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          LETTUCE_ANDROID_APPLICATION_ID: dev.lettuceai.app
           RUST_BACKTRACE: 1
           RUSTFLAGS: "--cfg DEV_BUILD"
         run: |

@@ -1,4 +1,4 @@
-package com.lettuceai.app
+package __PACKAGE__
 
 import android.app.ActivityManager
 import android.app.Service
