@@ -53,7 +53,7 @@ export function ModelsPage() {
         </button>
         <button
           onClick={() => navigate(Routes.settingsModelsBrowse)}
-          className="flex items-center justify-center gap-2 rounded-full border border-fg/15 bg-fg/5 px-6 py-2 text-sm font-medium text-fg/70 transition hover:bg-fg/10 active:scale-[0.99]"
+          className="hidden items-center justify-center gap-2 rounded-full border border-fg/15 bg-fg/5 px-6 py-2 text-sm font-medium text-fg/70 transition hover:bg-fg/10 active:scale-[0.99] md:flex"
         >
           <Download size={14} />
           {t("hfBrowser.title")}
@@ -159,7 +159,7 @@ export function ModelsPage() {
           <button
             onClick={() => navigate(Routes.settingsModelsBrowse)}
             className={cn(
-              "group w-full rounded-xl border border-dashed border-fg/15 bg-fg/2 px-4 py-3 text-left transition",
+              "group hidden w-full rounded-xl border border-dashed border-fg/15 bg-fg/2 px-4 py-3 text-left transition md:block",
               "hover:border-fg/25 hover:bg-fg/5 active:scale-[0.995]",
             )}
           >
