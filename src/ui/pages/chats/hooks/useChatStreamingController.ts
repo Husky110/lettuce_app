@@ -1,18 +1,25 @@
 import { useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { Dispatch, MutableRefObject } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import { continueConversation, regenerateAssistantMessage, sendChatTurn } from "../../../../core/chat/manager";
+import {
+  continueConversation,
+  regenerateAssistantMessage,
+  sendChatTurn,
+} from "../../../../core/chat/manager";
 import { getSessionMeta, listMessages } from "../../../../core/storage/repo";
 import type { ImageAttachment, StoredMessage } from "../../../../core/storage/schemas";
-import { consumeThinkDelta, createThinkStreamState, finalizeThinkStream } from "../../../../core/utils/thinkTags";
+import {
+  consumeThinkDelta,
+  createThinkStreamState,
+  finalizeThinkStream,
+} from "../../../../core/utils/thinkTags";
+import { type ChatControllerPagingContext, isStartingSceneMessage } from "./chatControllerShared";
 import { applyLiveChatAction, setLiveChatState } from "./chatLiveState";
-import type { ChatAction, ChatState } from "./chatReducer";
 
 const INITIAL_MESSAGE_LIMIT = 50;
 
-function createStreamBatcher(dispatch: Dispatch<ChatAction>) {
+function createStreamBatcher(dispatch: ChatControllerPagingContext["dispatch"]) {
   const pendingContentByMessage = new Map<string, string>();
   const messageOrder: string[] = [];
   let rafId: number | null = null;
@@ -94,26 +101,20 @@ function createPlaceholderMessage(
 }
 
 interface UseChatStreamingControllerArgs {
-  state: ChatState;
-  dispatch: Dispatch<ChatAction>;
-  messagesRef: MutableRefObject<StoredMessage[]>;
-  hasMoreMessagesBeforeRef: MutableRefObject<boolean>;
+  context: ChatControllerPagingContext;
   runInChatImageGeneration: (assistantMessageId: string) => Promise<void> | void;
   reloadSessionStateFromStorage: (sessionId: string) => Promise<void>;
   triggerTypingHaptic: () => Promise<void>;
-  isStartingSceneMessage: (message: StoredMessage) => boolean;
 }
 
 export function useChatStreamingController({
-  state,
-  dispatch,
-  messagesRef,
-  hasMoreMessagesBeforeRef,
+  context,
   runInChatImageGeneration,
   reloadSessionStateFromStorage,
   triggerTypingHaptic,
-  isStartingSceneMessage,
 }: UseChatStreamingControllerArgs) {
+  const { state, dispatch, messagesRef, hasMoreMessagesBeforeRef } = context;
+
   const handleSend = useCallback(
     async (
       message: string,
@@ -268,7 +269,10 @@ export function useChatStreamingController({
         try {
           await reloadSessionStateFromStorage(currentSessionId);
         } catch (reloadErr) {
-          console.warn("ChatStreamingController: failed to resync session after send error", reloadErr);
+          console.warn(
+            "ChatStreamingController: failed to resync session after send error",
+            reloadErr,
+          );
           const cleaned = messagesRef.current.filter((msg) => msg.id !== assistantPlaceholder.id);
           messagesRef.current = cleaned;
           dispatch({ type: "SET_MESSAGES", payload: cleaned });
@@ -536,7 +540,9 @@ export function useChatStreamingController({
       const requestId = crypto.randomUUID();
       let unlistenNormalized: UnlistenFn | null = null;
       const regeneratingMessages = state.messages.map((candidate) =>
-        candidate.id === message.id ? { ...candidate, content: "", reasoning: undefined } : candidate,
+        candidate.id === message.id
+          ? { ...candidate, content: "", reasoning: undefined }
+          : candidate,
       );
 
       dispatch({
