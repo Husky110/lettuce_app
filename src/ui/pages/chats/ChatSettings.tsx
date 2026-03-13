@@ -779,23 +779,25 @@ function ChatSettingsContent({ character }: { character: Character }) {
       {/* Header */}
       <header
         className={cn(
-          "z-20 shrink-0 border-b border-fg/10 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sticky top-0",
+          "sticky top-0 z-20 shrink-0 border-b border-fg/10 px-3 lg:px-8",
           !backgroundImageData ? "bg-surface" : "",
         )}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 12px)",
+          paddingBottom: "12px",
+        }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center min-w-0">
-            <button
-              onClick={handleBack}
-              className="flex shrink-0 px-[0.6em] py-[0.3em] items-center justify-center -ml-2 text-fg transition hover:text-fg/80"
-              aria-label="Back to chat"
-            >
-              <ArrowLeft size={14} strokeWidth={2.5} />
-            </button>
-            <div className="min-w-0 flex-1 text-left">
-              <p className="truncate text-xl font-bold text-fg/90">Chat Settings</p>
-              <p className="mt-0.5 truncate text-xs text-fg/50">Manage conversation preferences</p>
-            </div>
+        <div className="flex h-10 items-center">
+          <button
+            onClick={handleBack}
+            className="flex shrink-0 items-center justify-center -ml-2 px-[0.6em] py-[0.3em] text-fg transition hover:text-fg/80"
+            aria-label="Back to chat"
+          >
+            <ArrowLeft size={18} strokeWidth={2.5} />
+          </button>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-xl font-bold text-fg/90">Chat Settings</p>
+            <p className="mt-0.5 truncate text-xs text-fg/50">Manage conversation preferences</p>
           </div>
         </div>
       </header>

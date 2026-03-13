@@ -1176,46 +1176,36 @@ export function ChatMemoriesPage() {
       {/* Header */}
       <header
         className={cn(
-          "sticky top-0 z-20 border-b border-white/10 px-4",
-          "pt-[calc(env(safe-area-inset-top)+24px)] pb-3",
+          "sticky top-0 z-20 border-b border-white/10 px-3 lg:px-8",
           colors.glass.strong,
         )}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 12px)",
+          paddingBottom: "12px",
+        }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center min-w-0">
-            <button
-              onClick={() =>
-                backOrReplace(
-                  characterId ? Routes.chatSession(characterId, sessionId) : Routes.chat,
-                )
-              }
-              className={cn(
-                "flex shrink-0 items-center justify-center -ml-2 px-2 py-1",
-                colors.text.primary,
-                interactive.transition.fast,
-                "hover:text-white/80",
-              )}
-              aria-label={t("common.buttons.goBack")}
-            >
-              <ArrowLeft size={14} strokeWidth={2.5} />
-            </button>
-            <div className="min-w-0 flex-1 flex items-baseline gap-2 text-left">
-              <span
-                className={cn(
-                  "shrink-0",
-                  typography.h1.size,
-                  typography.h1.weight,
-                  colors.text.primary,
-                )}
-              >
-                {t("groupChats.memories.tabMemories")}
-              </span>
-              <span className={cn("truncate text-sm font-medium", colors.text.tertiary)}>
-                {character.name}
-              </span>
-            </div>
+        <div className="flex h-10 items-center">
+          <button
+            onClick={() =>
+              backOrReplace(characterId ? Routes.chatSession(characterId, sessionId) : Routes.chat)
+            }
+            className={cn(
+              "flex shrink-0 items-center justify-center -ml-2 px-[0.6em] py-[0.3em]",
+              colors.text.primary,
+              interactive.transition.fast,
+              "hover:text-white/80",
+            )}
+            aria-label={t("common.buttons.goBack")}
+          >
+            <ArrowLeft size={18} strokeWidth={2.5} />
+          </button>
+          <div className="min-w-0 flex-1 text-left">
+            <p className={cn("truncate text-xl font-bold", colors.text.primary)}>
+              {t("groupChats.memories.tabMemories")}
+            </p>
+            <p className={cn("mt-0.5 truncate text-xs", colors.text.tertiary)}>{character.name}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 ml-auto">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {isDynamic && session.memoryStatus === "processing" && (
               <div
                 className={cn(

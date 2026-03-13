@@ -217,31 +217,33 @@ export function ChatHistoryPage() {
       {/* Header */}
       <header
         className={cn(
-          "z-20 shrink-0 border-b border-white/10 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sticky top-0",
+          "sticky top-0 z-20 shrink-0 border-b border-white/10 px-3 lg:px-8",
           "bg-surface",
         )}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 12px)",
+          paddingBottom: "12px",
+        }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center min-w-0">
-            <button
-              onClick={() =>
-                backOrReplace(
-                  characterId ? Routes.chatSettingsSession(characterId, sessionId) : Routes.chat,
-                )
-              }
-              className="flex shrink-0 px-[0.6em] py-[0.3em] items-center justify-center -ml-2 text-white transition hover:text-white/80"
-              aria-label="Back to chat settings"
-            >
-              <ArrowLeft size={14} strokeWidth={2.5} />
-            </button>
-            <div className="min-w-0 flex-1 text-left">
-              <p className="truncate text-xl font-bold text-white/90">{t("chats.chatHistory")}</p>
-              <p className="mt-0.5 truncate text-xs text-white/50">
-                {character
-                  ? t("chats.previousConversationsWithCharacter", { name: character.name })
-                  : t("chats.previousConversations")}
-              </p>
-            </div>
+        <div className="flex h-10 items-center">
+          <button
+            onClick={() =>
+              backOrReplace(
+                characterId ? Routes.chatSettingsSession(characterId, sessionId) : Routes.chat,
+              )
+            }
+            className="flex shrink-0 items-center justify-center -ml-2 px-[0.6em] py-[0.3em] text-white transition hover:text-white/80"
+            aria-label="Back to chat settings"
+          >
+            <ArrowLeft size={18} strokeWidth={2.5} />
+          </button>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-xl font-bold text-white/90">{t("chats.chatHistory")}</p>
+            <p className="mt-0.5 truncate text-xs text-white/50">
+              {character
+                ? t("chats.previousConversationsWithCharacter", { name: character.name })
+                : t("chats.previousConversations")}
+            </p>
           </div>
         </div>
       </header>
