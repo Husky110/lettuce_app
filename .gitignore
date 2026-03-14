@@ -35,6 +35,16 @@ src-tauri/gen/android/app/src/main/assets/feedback_sounds/send.mp3
 src-tauri/gen/android/app/src/main/assets/feedback_sounds/success.mp3
 .secrets
 .act/
+.tmp/
 src-tauri/gen/android/app/src/main/assets/onnxruntime/libonnxruntime.so
 docs/memory-cycle-workflow.svg
 docs/chatpkg-format.md
+docs/sync-current-flow.mmd
+docs/sync-current-flow.svg
+docs/sync-current-architecture.svg
+docs/sync-current-architecture.mmd
+docs/usc-format.md
+docs/sync-architecture-report.md
+docs/sync-current-system.md
+docs/sync-old-architecture.mmd
+docs/sync-old-architecture.svg
