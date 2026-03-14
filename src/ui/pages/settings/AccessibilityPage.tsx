@@ -10,7 +10,8 @@ import {
 } from "../../../core/storage/schemas";
 import { playAccessibilitySound } from "../../../core/utils/accessibilityAudio";
 import { cn, radius, colors, interactive } from "../../design-tokens";
-import { SUPPORTED_LOCALES, type Locale, useI18n } from "../../../core/i18n/context";
+import { useI18n } from "../../../core/i18n/context";
+import { LocaleSelector } from "../../components/LocaleSelector";
 
 const SOUND_KEYS = ["send", "success", "failure"] as const;
 
@@ -36,7 +37,7 @@ function percentToVolume(value: number): number {
 
 export function AccessibilityPage() {
   const navigate = useNavigate();
-  const { locale, setLocale, t, tLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const [accessibility, setAccessibility] = useState<AccessibilitySettings>(
     createDefaultAccessibilitySettings(),
   );
@@ -62,12 +63,6 @@ export function AccessibilityPage() {
   }, []);
 
   const isMobile = platform === "android" || platform === "ios";
-
-  const handleLanguageChange = (next: string) => {
-    if ((SUPPORTED_LOCALES as readonly string[]).includes(next)) {
-      setLocale(next as Locale);
-    }
-  };
 
   const persistAccessibility = async (next: AccessibilitySettings) => {
     try {
@@ -144,27 +139,13 @@ export function AccessibilityPage() {
             {t("accessibility.sectionTitles.language")}
           </h2>
           <div className={cn("rounded-xl border px-4 py-3", "border-fg/10 bg-fg/5")}>
-            <label htmlFor="app-language" className="text-sm font-medium text-fg">
-              {t("accessibility.language.appLanguage")}
-            </label>
-            <div className="mt-2">
-              <select
-                id="app-language"
-                value={locale}
-                onChange={(event) => handleLanguageChange(event.target.value)}
-                className={cn(
-                  "w-full rounded-lg border border-fg/15 bg-fg/6 px-3 py-2 text-sm text-fg outline-none",
-                  "focus:border-accent/50 focus:ring-1 focus:ring-accent/35",
-                )}
-              >
-                {SUPPORTED_LOCALES.map((value) => (
-                  <option key={value} value={value}>
-                    {tLocale(value)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="mt-2 text-[11px] text-fg/45">{t("accessibility.language.description")}</p>
+            <LocaleSelector
+              value={locale}
+              onChange={setLocale}
+              label={t("accessibility.language.appLanguage")}
+              description={t("accessibility.language.description")}
+              title={t("components.localeSelector.title")}
+            />
           </div>
         </div>
 
@@ -194,7 +175,9 @@ export function AccessibilityPage() {
                         <Volume2 className="h-4 w-4 text-fg/70" />
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-fg">{t(`accessibility.sounds.${key}` as const)}</div>
+                        <div className="text-sm font-medium text-fg">
+                          {t(`accessibility.sounds.${key}` as const)}
+                        </div>
                         <div className="mt-0.5 text-[11px] text-fg/45">
                           {t(`accessibility.sounds.${key}Description` as const)}
                         </div>

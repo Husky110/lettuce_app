@@ -10,3 +10,4 @@ export * from "./AdvancedModelSettingsForm";
 export * from "./PromptTemplateEditor";
 export * from "./ProviderParameterSupportInfo";
 export * from "./toast";
+export * from "./LocaleSelector";

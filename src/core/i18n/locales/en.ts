@@ -266,6 +266,9 @@ export const enMessages = {
       noResults: "No models found",
       noResultsHint: "Try a different search term",
     },
+    localeSelector: {
+      title: "Select Language",
+    },
     promptTemplate: {
       nameContentRequired: "Name and content are required",
       saveError: "Failed to save template",

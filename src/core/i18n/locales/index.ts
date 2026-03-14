@@ -49,6 +49,11 @@ export const localeRegistry = {
 
 export type Locale = keyof typeof localeRegistry;
 
+const localeIconModules = import.meta.glob("../localesIcons/*.svg", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 export const SUPPORTED_LOCALES: readonly Locale[] = [
   "en",
   "es",
@@ -69,5 +74,13 @@ export const SUPPORTED_LOCALES: readonly Locale[] = [
   "ko",
   "zh-Hant",
 ];
+
+export function getLocaleIconSrc(locale: Locale): string | null {
+  return localeIconModules[`../localesIcons/${locale}.svg`] ?? null;
+}
+
+export function getLocaleMetadata(locale: Locale): LocaleMetadata {
+  return localeRegistry[locale].metadata;
+}
 
 export type { LocaleMessages };

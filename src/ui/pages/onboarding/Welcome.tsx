@@ -14,7 +14,6 @@ import {
   CheckCircle,
   HardDrive,
   Download,
-  Globe,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -23,21 +22,16 @@ import { storageBridge } from "../../../core/storage/files";
 import logoSvg from "../../../assets/logo.svg";
 import { typography, radius, spacing, interactive, shadows, colors, cn } from "../../design-tokens";
 import { getPlatform } from "../../../core/utils/platform";
-import { useI18n, SUPPORTED_LOCALES, type Locale } from "../../../core/i18n/context";
+import { useI18n } from "../../../core/i18n/context";
+import { LocaleSelector } from "../../components/LocaleSelector";
 
 export function WelcomePage() {
-  const { locale, setLocale, t, tLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const navigate = useNavigate();
   const [showSkipWarning, setShowSkipWarning] = useState(false);
   const [showRestoreBackup, setShowRestoreBackup] = useState(false);
 
   const platform = getPlatform();
-
-  const handleLanguageChange = (next: string) => {
-    if ((SUPPORTED_LOCALES as readonly string[]).includes(next)) {
-      setLocale(next as Locale);
-    }
-  };
 
   const handleAddProvider = () => {
     navigate("/onboarding/provider");
@@ -157,46 +151,25 @@ export function WelcomePage() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.3 }}
           >
-            <div
-              className={cn(
-                "flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm",
-              )}
-            >
-              <Globe size={16} className="shrink-0 text-emerald-400" />
-              <div className="flex flex-1 flex-col gap-1">
-                <label
-                  htmlFor="welcome-language"
-                  className={cn(typography.caption.size, "font-medium text-white/70")}
-                >
-                  {t("onboarding.welcome.languageSelector.title")}
-                </label>
-                <select
-                  id="welcome-language"
-                  value={locale}
-                  onChange={(e) => handleLanguageChange(e.target.value)}
-                  className={cn(
-                    "w-full rounded-lg border border-white/10 bg-white/8 px-2.5 py-1.5 text-sm text-white outline-none",
-                    "focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/30",
-                    "appearance-none cursor-pointer",
-                  )}
-                >
-                  {SUPPORTED_LOCALES.map((value) => (
-                    <option key={value} value={value}>
-                      {tLocale(value)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <p
-              className={cn(
-                "mt-1.5 text-center lg:text-left",
+            <LocaleSelector
+              value={locale}
+              onChange={setLocale}
+              label={t("onboarding.welcome.languageSelector.title")}
+              description={t("onboarding.welcome.languageSelector.description")}
+              title={t("components.localeSelector.title")}
+              labelClassName={cn(typography.caption.size, "font-medium text-white/70")}
+              descriptionClassName={cn(
+                "text-center lg:text-left",
                 typography.caption.size,
                 "text-white/35",
               )}
-            >
-              {t("onboarding.welcome.languageSelector.description")}
-            </p>
+              triggerClassName={cn(
+                "border-white/10 bg-white/5 text-white backdrop-blur-sm",
+                "hover:border-white/20 hover:bg-white/8",
+                "focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/30",
+              )}
+              menuClassName="bg-[#0f1014]"
+            />
           </motion.div>
 
           {/* Desktop-only: Bottom hint on left side */}

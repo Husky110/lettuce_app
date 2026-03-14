@@ -44,27 +44,30 @@ function hasUsableTranslation(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function detectSupportedLocale(value: string | null | undefined): Locale | null {
+  if (!value) return null;
+  if (isSupportedLocale(value)) return value;
+
+  const normalized = value.toLowerCase();
+  if (normalized === "zh-tw" || normalized === "zh-hk" || normalized === "zh-mo") {
+    return "zh-Hant";
+  }
+
+  const base = normalized.split("-")[0];
+  return SUPPORTED_LOCALES.find((locale) => locale.toLowerCase() === base) ?? null;
+}
+
 function detectInitialLocale(): Locale {
   if (typeof window === "undefined") return "en";
 
   const saved = window.localStorage.getItem(STORAGE_KEY);
   if (isSupportedLocale(saved)) return saved;
 
-  let detected: Locale = "en";
-
-  const browserLang = window.navigator.language;
-  if (isSupportedLocale(browserLang)) {
-    detected = browserLang;
-  } else {
-    const browserLangLower = browserLang.toLowerCase();
-    if (browserLangLower.startsWith("zh")) {
-      detected = "zh-Hant";
-    } else {
-      const base = browserLangLower.split("-")[0];
-      const baseMatch = SUPPORTED_LOCALES.find((locale) => locale.toLowerCase() === base);
-      if (baseMatch) detected = baseMatch;
-    }
-  }
+  const requestedLocales = [window.navigator.language, ...(window.navigator.languages ?? [])];
+  const detected =
+    requestedLocales
+      .map((locale) => detectSupportedLocale(locale))
+      .find((locale): locale is Locale => locale !== null) ?? "en";
 
   // Persist the detected locale so it sticks across reloads (first boot)
   window.localStorage.setItem(STORAGE_KEY, detected);

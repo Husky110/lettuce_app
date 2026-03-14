@@ -6,3 +6,4 @@ export {
   type TranslationKey,
   type TranslateParams,
 } from "./context";
+export { getLocaleIconSrc, getLocaleMetadata } from "./locales";
