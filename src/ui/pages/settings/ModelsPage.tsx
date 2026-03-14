@@ -50,12 +50,23 @@ const viewModeTransition = {
   transition: { duration: 0.2, ease: "easeInOut" as const },
 };
 
-function chunkGroups<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
+function buildBalancedColumns(groups: ModelGroup[], columnCount: number): ModelGroup[][] {
+  const columns = Array.from({ length: columnCount }, () => [] as ModelGroup[]);
+  const columnWeights = Array.from({ length: columnCount }, () => 0);
+
+  for (const group of groups) {
+    let targetColumn = 0;
+    for (let index = 1; index < columnWeights.length; index += 1) {
+      if (columnWeights[index] < columnWeights[targetColumn]) {
+        targetColumn = index;
+      }
+    }
+
+    columns[targetColumn].push(group);
+    columnWeights[targetColumn] += group.models.length + 1;
   }
-  return chunks;
+
+  return columns;
 }
 
 export function ModelsPage() {
@@ -244,7 +255,10 @@ export function ModelsPage() {
     return Array.from(groups.values());
   }, [sortedModels, sortMode, getProviderLabel]);
 
-  const providerGroupRows = useMemo(() => chunkGroups(providerGroups, 2), [providerGroups]);
+  const providerGroupColumns = useMemo(
+    () => buildBalancedColumns(providerGroups, 2),
+    [providerGroups],
+  );
 
   const renderModelCard = (model: Model, compact = false) => {
     const isDefault = model.id === defaultModelId;
@@ -357,26 +371,41 @@ export function ModelsPage() {
 
           {viewMode === "grid" && sortMode === "provider" && (
             <motion.div key="grid-provider" {...viewModeTransition} className="space-y-3">
-              {providerGroupRows.map((row, rowIndex) => (
-                <div
-                  key={`provider-row-${rowIndex}`}
-                  className="grid grid-cols-1 gap-3 lg:grid-cols-2"
-                >
-                  {row.map((group) => (
-                    <section key={group.key} className="min-w-0">
-                      <div className="mb-3 flex items-center gap-3 px-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg/40">
-                          {group.label}
-                        </span>
-                        <div className="h-px flex-1 bg-fg/5" />
-                      </div>
-                      <div className="space-y-2">
-                        {group.models.map((model) => renderModelCard(model, true))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              ))}
+              <div className="space-y-3 lg:hidden">
+                {providerGroups.map((group) => (
+                  <section key={group.key} className="min-w-0">
+                    <div className="mb-3 flex items-center gap-3 px-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-fg/40">
+                        {group.label}
+                      </span>
+                      <div className="h-px flex-1 bg-fg/5" />
+                    </div>
+                    <div className="space-y-2">
+                      {group.models.map((model) => renderModelCard(model, true))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              <div className="hidden lg:grid lg:grid-cols-2 lg:items-start lg:gap-3">
+                {providerGroupColumns.map((column, columnIndex) => (
+                  <div key={`provider-column-${columnIndex}`} className="space-y-3">
+                    {column.map((group) => (
+                      <section key={group.key} className="min-w-0">
+                        <div className="mb-3 flex items-center gap-3 px-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-fg/40">
+                            {group.label}
+                          </span>
+                          <div className="h-px flex-1 bg-fg/5" />
+                        </div>
+                        <div className="space-y-2">
+                          {group.models.map((model) => renderModelCard(model, true))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
 
