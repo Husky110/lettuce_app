@@ -121,6 +121,10 @@ export const enMessages = {
       minutesAgo: "{{minutes}}m ago",
       hoursAgo: "{{hours}}h ago",
       daysAgo: "{{days}}d ago",
+      today: "Today",
+      yesterday: "Yesterday",
+      last7Days: "Last 7 Days",
+      older: "Older",
     },
   },
 
