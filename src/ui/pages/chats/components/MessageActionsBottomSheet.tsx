@@ -155,7 +155,8 @@ export function MessageActionsBottomSheet({
     }
   }, [messageAction, settings, characterDefaultModelId]);
 
-  const modelLabel = modelName ?? (settings ? t("chats.actions.unknownModel") : t("chats.actions.loadingModel"));
+  const modelLabel =
+    modelName ?? (settings ? t("chats.actions.unknownModel") : t("chats.actions.loadingModel"));
   const usedFallback = Boolean(messageAction?.message.fallbackFromModelId);
   const usedLorebookEntries = messageAction?.message.usedLorebookEntries ?? [];
   const isLlamaMessage = modelProviderId === "llamacpp";
@@ -178,7 +179,11 @@ export function MessageActionsBottomSheet({
       isOpen={Boolean(messageAction)}
       includeExitIcon={false}
       onClose={() => closeMessageActions(true)}
-      title={messageAction?.message.role === "assistant" ? t("chats.actions.assistantMessage") : t("chats.actions.userMessage")}
+      title={
+        messageAction?.message.role === "assistant"
+          ? t("chats.actions.assistantMessage")
+          : t("chats.actions.userMessage")
+      }
     >
       {messageAction && (
         <div className="text-white">
@@ -197,7 +202,10 @@ export function MessageActionsBottomSheet({
                 <div className="flex-1">
                   <span className="inline-flex items-center gap-1 text-white/60">
                     {usedFallback && (
-                      <span title={t("chats.actions.fallbackModelUsed")} aria-label={t("chats.actions.fallbackModelUsed")}>
+                      <span
+                        title={t("chats.actions.fallbackModelUsed")}
+                        aria-label={t("chats.actions.fallbackModelUsed")}
+                      >
                         <TriangleAlert size={12} className="text-amber-300" />
                       </span>
                     )}
@@ -206,7 +214,9 @@ export function MessageActionsBottomSheet({
                 </div>
                 <div className="tabular-nums">
                   {(messageAction.message.usage.totalTokens ?? 0).toLocaleString()}{" "}
-                  <span className="text-[12px] uppercase opacity-50">{t("chats.actions.total")}</span>
+                  <span className="text-[12px] uppercase opacity-50">
+                    {t("chats.actions.total")}
+                  </span>
                 </div>
               </div>
               {isLlamaMessage &&
@@ -216,7 +226,9 @@ export function MessageActionsBottomSheet({
                       <span title={t("chats.actions.timeToFirstToken")}>TTFT {firstTokenMs}ms</span>
                     )}
                     {typeof tokensPerSecond === "number" && (
-                      <span title={t("chats.actions.completionTokenSpeed")}>{tokensPerSecond.toFixed(1)} tok/s</span>
+                      <span title={t("chats.actions.completionTokenSpeed")}>
+                        {tokensPerSecond.toFixed(1)} tok/s
+                      </span>
                     )}
                   </div>
                 )}
@@ -244,7 +256,9 @@ export function MessageActionsBottomSheet({
                     <div className="flex items-center gap-2 mb-2">
                       <Brain size={14} className="text-emerald-400" />
                       <span className="text-xs font-medium text-emerald-300">
-                        {t("chats.actions.memoriesUsed", { count: messageAction.message.memoryRefs?.length ?? 0 })}
+                        {t("chats.actions.memoriesUsed", {
+                          count: messageAction.message.memoryRefs?.length ?? 0,
+                        })}
                       </span>
                     </div>
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -276,7 +290,9 @@ export function MessageActionsBottomSheet({
                 <div className="mb-3 p-3 rounded-lg border border-sky-500/20 bg-sky-500/10">
                   <div className="flex items-center gap-2 mb-2">
                     <BookOpen size={14} className="text-sky-300" />
-                    <span className="text-xs font-medium text-sky-200">{t("chats.actions.lorebookUsage")}</span>
+                    <span className="text-xs font-medium text-sky-200">
+                      {t("chats.actions.lorebookUsage")}
+                    </span>
                   </div>
                   <p className="text-xs text-sky-100/90 mb-2">
                     {t("chats.actions.lorebookUsageDesc")}
@@ -318,7 +334,9 @@ export function MessageActionsBottomSheet({
 
               <ActionRow
                 icon={messageAction.message.isPinned ? PinOff : Pin}
-                label={messageAction.message.isPinned ? t("chats.actions.unpin") : t("chats.actions.pin")}
+                label={
+                  messageAction.message.isPinned ? t("chats.actions.unpin") : t("chats.actions.pin")
+                }
                 iconBg="bg-amber-500/20"
                 onClick={() => void handleTogglePin(messageAction.message)}
                 disabled={actionBusy}
@@ -380,7 +398,11 @@ export function MessageActionsBottomSheet({
 
               <ActionRow
                 icon={Trash2}
-                label={messageAction.message.isPinned ? t("chats.actions.unpinToDelete") : t("chats.actions.delete")}
+                label={
+                  messageAction.message.isPinned
+                    ? t("chats.actions.unpinToDelete")
+                    : t("chats.actions.delete")
+                }
                 onClick={() => void handleDeleteMessage(messageAction.message)}
                 disabled={actionBusy || messageAction.message.isPinned}
                 variant="danger"
@@ -391,9 +413,9 @@ export function MessageActionsBottomSheet({
               <textarea
                 value={editDraft}
                 onChange={(event) => setEditDraft(event.target.value)}
-                rows={5}
+                rows={14}
                 className={cn(
-                  "w-full p-3 text-sm text-white placeholder-white/40",
+                  "min-h-[360px] w-full p-3 text-sm text-white placeholder-white/40",
                   "border border-white/10 bg-black/30",
                   "focus:border-white/20 focus:outline-none resize-none",
                   radius.lg,

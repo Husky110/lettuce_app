@@ -263,9 +263,9 @@ export function GroupChatMessageActionsBottomSheet({
                 <textarea
                   value={editDraft}
                   onChange={(event) => setEditDraft(event.target.value)}
-                  rows={5}
+                  rows={14}
                   className={cn(
-                    "w-full p-3 text-sm text-fg placeholder-fg/40",
+                    "min-h-[360px] w-full p-3 text-sm text-fg placeholder-fg/40",
                     "border border-fg/10 bg-surface-el/30",
                     "focus:border-fg/20 focus:outline-none resize-none",
                     radius.lg,
