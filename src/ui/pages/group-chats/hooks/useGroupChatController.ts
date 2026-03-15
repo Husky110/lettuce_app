@@ -270,11 +270,15 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
           if (event.payload?.sessionId !== groupSessionId) return;
           void loadData();
         });
+        const cancelled = await listen("group-dynamic-memory:cancelled", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          void loadData();
+        });
         const failure = await listen("group-dynamic-memory:error", (event: any) => {
           if (event.payload?.sessionId !== groupSessionId) return;
           void loadData();
         });
-        unlisteners = [processing, success, failure];
+        unlisteners = [processing, success, cancelled, failure];
       } catch (err) {
         console.error("Failed to setup group memory listeners:", err);
       }
@@ -443,7 +447,15 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
         selectedCharacterAvatarUrl: null,
       });
     }
-  }, [groupSessionId, ui.draft, ui.sending, messages.length, scrollToBottom, setUi, triggerTypingHaptic]);
+  }, [
+    groupSessionId,
+    ui.draft,
+    ui.sending,
+    messages.length,
+    scrollToBottom,
+    setUi,
+    triggerTypingHaptic,
+  ]);
 
   const handleRegenerate = useCallback(
     async (messageId: string, forceCharacterId?: string) => {
@@ -808,7 +820,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
   const handleRewindToMessage = useCallback(async () => {
     if (!ui.messageAction || !groupSessionId) return;
 
-    const messageIndex = messages.findIndex((message) => message.id === ui.messageAction?.message.id);
+    const messageIndex = messages.findIndex(
+      (message) => message.id === ui.messageAction?.message.id,
+    );
     if (messageIndex === -1) {
       setUi({ actionError: "Message not found" });
       return;
@@ -852,7 +866,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
       }
 
       const updatedMessages = messages.map((message) =>
-        message.id === ui.messageAction?.message.id ? { ...message, isPinned: nextPinned } : message,
+        message.id === ui.messageAction?.message.id
+          ? { ...message, isPinned: nextPinned }
+          : message,
       );
       setMessages(updatedMessages);
       setUi({

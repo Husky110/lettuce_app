@@ -120,11 +120,15 @@ export function GroupChatLayout() {
           if (event.payload?.sessionId !== groupSessionId) return;
           setLoadCount((c) => c + 1);
         });
+        const cancelled = await listen("group-dynamic-memory:cancelled", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          setLoadCount((c) => c + 1);
+        });
         const failure = await listen("group-dynamic-memory:error", (event: any) => {
           if (event.payload?.sessionId !== groupSessionId) return;
           setLoadCount((c) => c + 1);
         });
-        unlisteners = [processing, success, failure];
+        unlisteners = [processing, success, cancelled, failure];
       } catch (err) {
         console.error("GroupChatLayout: failed to setup memory listeners", err);
       }

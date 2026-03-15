@@ -20,6 +20,7 @@ use rusqlite::OptionalExtension;
 use crate::abort_manager::AbortRegistry;
 use crate::api::{api_request, ApiRequest, ApiResponse};
 use crate::chat_manager::service::{apply_openrouter_cost_to_usage, resolve_api_key};
+use crate::dynamic_memory_run_manager::{DynamicMemoryCancellationToken, DynamicMemoryRunManager};
 use crate::usage::add_usage_record;
 use crate::usage::tracking::{RequestUsage, UsageFinishReason, UsageOperationType};
 
@@ -166,6 +167,21 @@ fn resolve_context_length(model: &Model, settings: &Settings) -> Option<u32> {
 }
 
 const DEFAULT_LLAMA_SAMPLER_PROFILE: &str = "balanced";
+
+fn group_dynamic_memory_run_key(session_id: &str) -> String {
+    format!("group:{}", session_id)
+}
+
+fn group_dynamic_memory_request_id(session_id: &str, phase: &str) -> String {
+    format!("group-dynamic-memory:{}:{}", session_id, phase)
+}
+
+fn is_cancelled_request_error(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("aborted")
+        || normalized.contains("cancelled")
+        || normalized.contains("canceled")
+}
 
 #[derive(Clone, Copy)]
 struct LlamaSamplerProfileDefaults {
@@ -819,6 +835,51 @@ fn resolve_last_valid_group_window_end(
     Ok((0, true))
 }
 
+fn cancel_group_dynamic_memory_cycle(
+    app: &AppHandle,
+    session: &mut GroupSession,
+    pool: &SwappablePool,
+    message: &str,
+) -> Result<(), String> {
+    session.memory_status = "idle".to_string();
+    session.memory_error = None;
+    session.updated_at = crate::utils::now_millis()? as i64;
+    let conn = pool.get_connection()?;
+    group_session_update_memories_internal(
+        &conn,
+        &session.id,
+        &session.memories,
+        &session.memory_embeddings,
+        Some(&session.memory_summary),
+        session.memory_summary_token_count,
+        &session.memory_tool_events,
+        Some(&session.memory_status),
+        session.memory_error.as_deref(),
+    )?;
+    let _ = app.emit(
+        "group-dynamic-memory:cancelled",
+        json!({ "sessionId": session.id }),
+    );
+    Err(message.to_string())
+}
+
+fn ensure_group_dynamic_memory_not_cancelled(
+    app: &AppHandle,
+    session: &mut GroupSession,
+    pool: &SwappablePool,
+    token: &DynamicMemoryCancellationToken,
+) -> Result<(), String> {
+    if token.is_cancelled() {
+        return cancel_group_dynamic_memory_cycle(
+            app,
+            session,
+            pool,
+            "Request was cancelled by user",
+        );
+    }
+    Ok(())
+}
+
 fn fetch_group_conversation_messages_range(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -1250,6 +1311,7 @@ async fn send_dynamic_memory_request(
     context_length: Option<u32>,
     extra_body_fields: Option<HashMap<String, Value>>,
     tool_config: Option<&ToolConfig>,
+    request_id: Option<&str>,
 ) -> Result<ApiResponse, String> {
     let built = crate::chat_manager::request_builder::build_chat_request(
         provider_cred,
@@ -1262,7 +1324,7 @@ async fn send_dynamic_memory_request(
         max_tokens,
         context_length,
         false,
-        None,
+        request_id.map(|id| id.to_string()),
         None,
         None,
         None,
@@ -1315,7 +1377,7 @@ async fn send_dynamic_memory_request(
                     max_tokens,
                     context_length,
                     false,
-                    None,
+                    request_id.map(|id| id.to_string()),
                     None,
                     None,
                     None,
@@ -1640,6 +1702,11 @@ async fn process_group_dynamic_memory_cycle(
         return Ok(());
     }
 
+    let run_key = group_dynamic_memory_run_key(&session.id);
+    let run_manager = app.state::<DynamicMemoryRunManager>().inner().clone();
+    let run_guard = run_manager.start_run(run_key);
+    let cancel_token = run_guard.token();
+
     log_info(
         app,
         "group_dynamic_memory",
@@ -1776,6 +1843,8 @@ async fn process_group_dynamic_memory_cycle(
         json!({ "sessionId": session.id }),
     );
 
+    ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
+
     let prior_summary = if cursor_rewound || session.memory_summary.is_empty() {
         None
     } else {
@@ -1789,6 +1858,9 @@ async fn process_group_dynamic_memory_cycle(
         "invoking summarize_group_messages",
     );
 
+    let summary_request_id = group_dynamic_memory_request_id(&session.id, "summary");
+    run_guard.set_active_request_id(Some(summary_request_id.clone()));
+
     let summary = match summarize_group_messages(
         app,
         summary_provider,
@@ -1797,11 +1869,17 @@ async fn process_group_dynamic_memory_cycle(
         &convo_window,
         prior_summary.as_deref(),
         settings,
+        Some(&summary_request_id),
+        Some(&cancel_token),
     )
     .await
     {
         Ok(s) => s,
         Err(err) => {
+            run_guard.set_active_request_id(None);
+            if is_cancelled_request_error(&err) {
+                return cancel_group_dynamic_memory_cycle(app, session, &*pool, &err);
+            }
             log_error(
                 app,
                 "group_dynamic_memory",
@@ -1821,6 +1899,7 @@ async fn process_group_dynamic_memory_cycle(
             return Ok(());
         }
     };
+    run_guard.set_active_request_id(None);
 
     // Step 2: Run memory tool update
     log_info(
@@ -1828,6 +1907,11 @@ async fn process_group_dynamic_memory_cycle(
         "group_dynamic_memory",
         "invoking run_group_memory_tool_update",
     );
+
+    ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
+
+    let tools_request_id = group_dynamic_memory_request_id(&session.id, "tools");
+    run_guard.set_active_request_id(Some(tools_request_id.clone()));
 
     let actions = match run_group_memory_tool_update(
         app,
@@ -1839,11 +1923,17 @@ async fn process_group_dynamic_memory_cycle(
         &dynamic_settings,
         &summary,
         &convo_window,
+        Some(&tools_request_id),
+        Some(&cancel_token),
     )
     .await
     {
         Ok(result) => result,
         Err(err) => {
+            run_guard.set_active_request_id(None);
+            if is_cancelled_request_error(&err) {
+                return cancel_group_dynamic_memory_cycle(app, session, &*pool, &err);
+            }
             log_error(
                 app,
                 "group_dynamic_memory",
@@ -1863,6 +1953,7 @@ async fn process_group_dynamic_memory_cycle(
             return Ok(());
         }
     };
+    run_guard.set_active_request_id(None);
     log_info(
         app,
         "group_dynamic_memory",
@@ -1872,6 +1963,7 @@ async fn process_group_dynamic_memory_cycle(
             crate::tokenizer::count_tokens(app, &summary).unwrap_or(0)
         ),
     );
+    ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
     session.memory_summary = summary;
     session.memory_summary_token_count =
         crate::tokenizer::count_tokens(app, &session.memory_summary).unwrap_or(0) as i32;
@@ -1983,6 +2075,8 @@ async fn summarize_group_messages(
     convo_window: &[GroupMessage],
     prior_summary: Option<&str>,
     settings: &Settings,
+    request_id: Option<&str>,
+    cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<String, String> {
     let mut messages_for_api = Vec::new();
     let system_role = crate::chat_manager::request_builder::system_role_for(provider_cred);
@@ -2061,6 +2155,7 @@ async fn summarize_group_messages(
         context_length,
         extra_body_fields.clone(),
         Some(&summarization_tool_config()),
+        request_id,
     )
     .await;
 
@@ -2132,6 +2227,10 @@ async fn summarize_group_messages(
         ),
     );
 
+    if cancel_token.is_some_and(|token| token.is_cancelled()) {
+        return Err("Request was cancelled by user".to_string());
+    }
+
     let mut fallback_messages = messages_for_api.clone();
     fallback_messages.push(json!({
         "role": "user",
@@ -2148,6 +2247,7 @@ async fn summarize_group_messages(
         context_length,
         extra_body_fields,
         None,
+        request_id,
     )
     .await?;
 
@@ -2201,6 +2301,8 @@ async fn run_group_memory_tool_update(
     dynamic_settings: &DynamicMemorySettings,
     summary: &str,
     convo_window: &[GroupMessage],
+    request_id: Option<&str>,
+    cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<Vec<Value>, String> {
     let tool_config = build_memory_tool_config();
     let max_entries = dynamic_settings.max_entries.max(1) as usize;
@@ -2288,6 +2390,7 @@ async fn run_group_memory_tool_update(
         context_length,
         extra_body_fields.clone(),
         Some(&tool_config),
+        request_id,
     )
     .await
     {
@@ -2303,6 +2406,9 @@ async fn run_group_memory_tool_update(
                         err_message
                     ),
                 );
+                if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                    return Err("Request was cancelled by user".to_string());
+                }
                 let mut fallback_messages = messages_for_api.clone();
                 fallback_messages.push(json!({
                     "role": "user",
@@ -2319,6 +2425,7 @@ async fn run_group_memory_tool_update(
                     context_length,
                     extra_body_fields,
                     None,
+                    request_id,
                 )
                 .await?;
 
@@ -2348,6 +2455,9 @@ async fn run_group_memory_tool_update(
                         "group_dynamic_memory",
                         "memory tool request returned no tool usage; retrying with JSON fallback",
                     );
+                    if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                        return Err("Request was cancelled by user".to_string());
+                    }
                     let mut fallback_messages = messages_for_api.clone();
                     fallback_messages.push(json!({
                         "role": "user",
@@ -2364,6 +2474,7 @@ async fn run_group_memory_tool_update(
                         context_length,
                         extra_body_fields,
                         None,
+                        request_id,
                     )
                     .await?;
 
@@ -2396,6 +2507,9 @@ async fn run_group_memory_tool_update(
                     err
                 ),
             );
+            if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                return Err("Request was cancelled by user".to_string());
+            }
             let mut fallback_messages = messages_for_api.clone();
             fallback_messages.push(json!({
                 "role": "user",
@@ -2412,6 +2526,7 @@ async fn run_group_memory_tool_update(
                 context_length,
                 extra_body_fields,
                 None,
+                request_id,
             )
             .await?;
 
@@ -2883,6 +2998,7 @@ async fn run_group_memory_tag_repair(
         None,
         None,
         Some(&build_memory_tag_repair_tool_config()),
+        None,
     )
     .await
     {
@@ -2941,6 +3057,7 @@ async fn run_group_memory_tag_repair(
             api_key,
             &fallback_messages,
             512,
+            None,
             None,
             None,
             None,
@@ -5009,6 +5126,14 @@ pub async fn group_chat_retry_dynamic_memory(
     }
 
     process_group_dynamic_memory_cycle(&app, &mut session, &settings, &pool).await
+}
+
+#[tauri::command]
+pub fn group_chat_abort_dynamic_memory(app: AppHandle, session_id: String) -> Result<(), String> {
+    let run_key = group_dynamic_memory_run_key(&session_id);
+    let run_manager = app.state::<DynamicMemoryRunManager>().inner().clone();
+    let abort_registry = app.state::<AbortRegistry>();
+    run_manager.cancel_run(&abort_registry, &run_key)
 }
 
 #[tauri::command]

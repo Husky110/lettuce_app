@@ -74,6 +74,21 @@ type MemoriesTab = "memories" | "tools" | "pinned";
 type RetryStatus = "idle" | "retrying" | "success";
 type MemoryStatus = "idle" | "processing" | "failed";
 
+const isAbortError = (value: unknown) => {
+  const message =
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value && "message" in value
+        ? String((value as { message?: unknown }).message ?? "")
+        : "";
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("aborted") ||
+    normalized.includes("cancelled") ||
+    normalized.includes("canceled")
+  );
+};
+
 type UiState = {
   activeTab: MemoriesTab;
   searchTerm: string;
@@ -807,7 +822,15 @@ export function ChatMemoriesPage() {
             void reload();
           }
         });
-        unlisteners.push(u1, u2, u3);
+        const u4 = await listen("dynamic-memory:cancelled", (e: any) => {
+          if (e.payload?.sessionId === session.id) {
+            dispatch({ type: "SET_ACTION_ERROR", value: null });
+            dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+            dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+            void reload();
+          }
+        });
+        unlisteners.push(u1, u2, u3, u4);
       } catch (err) {
         console.error("Failed to setup memory event listeners", err);
       }
@@ -1100,6 +1123,12 @@ export function ChatMemoriesPage() {
       } catch (err: any) {
         console.error("Failed to retry memory processing:", err);
         dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+        if (isAbortError(err)) {
+          dispatch({ type: "SET_ACTION_ERROR", value: null });
+          dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+          void reload();
+          return;
+        }
         void reload();
       } finally {
         setRetryingWithModel(false);
@@ -1129,12 +1158,33 @@ export function ChatMemoriesPage() {
       await storageBridge.triggerDynamicMemory(sessionId);
       dispatch({ type: "SET_ACTION_ERROR", value: null });
     } catch (err: any) {
+      if (isAbortError(err)) {
+        dispatch({ type: "SET_ACTION_ERROR", value: null });
+        dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+        void reload();
+        return;
+      }
       dispatch({
         type: "SET_ACTION_ERROR",
         value: err?.message || "Failed to trigger memory processing",
       });
     }
-  }, [sessionId, isDynamic]);
+  }, [sessionId, isDynamic, reload]);
+
+  const handleAbortMemoryCycle = useCallback(async () => {
+    if (!sessionId || !isDynamic) return;
+    try {
+      await storageBridge.abortDynamicMemory(sessionId);
+      dispatch({ type: "SET_ACTION_ERROR", value: null });
+    } catch (err: any) {
+      if (!isAbortError(err)) {
+        console.error("Failed to abort memory processing:", err);
+      }
+      dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+      void reload();
+    }
+  }, [sessionId, isDynamic, reload]);
 
   if (loading) {
     return (
@@ -1717,22 +1767,28 @@ export function ChatMemoriesPage() {
                   {(session.memoryToolEvents?.length ?? 0).toLocaleString()} events
                 </span>
                 <button
-                  onClick={handleTriggerManual}
-                  disabled={session?.memoryStatus === "processing"}
+                  onClick={
+                    session?.memoryStatus === "processing"
+                      ? handleAbortMemoryCycle
+                      : handleTriggerManual
+                  }
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
                     "border border-white/10 bg-white/5",
                     "text-[11px] font-semibold text-white/50",
                     "hover:bg-white/8 hover:text-white/70",
-                    "disabled:opacity-40 disabled:pointer-events-none",
                     "transition-all active:scale-95",
                   )}
                 >
-                  <Cpu
-                    size={12}
-                    className={cn(session?.memoryStatus === "processing" && "animate-pulse")}
-                  />
-                  Run
+                  {session?.memoryStatus === "processing" ? (
+                    <X size={12} className="animate-pulse" />
+                  ) : (
+                    <Cpu
+                      size={12}
+                      className={cn(session?.memoryStatus === "processing" && "animate-pulse")}
+                    />
+                  )}
+                  {session?.memoryStatus === "processing" ? t("common.buttons.cancel") : "Run"}
                 </button>
               </div>
               <ToolLog events={(session.memoryToolEvents as MemoryToolEvent[]) || []} />

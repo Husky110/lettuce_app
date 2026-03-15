@@ -34,6 +34,7 @@ export function GroupChatHeader({
   useEffect(() => {
     let unlistenProcessing: (() => void) | undefined;
     let unlistenSuccess: (() => void) | undefined;
+    let unlistenCancelled: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
     let disposed = false;
 
@@ -57,6 +58,16 @@ export function GroupChatHeader({
         return;
       }
 
+      unlistenCancelled = await listen("group-dynamic-memory:cancelled", (event: any) => {
+        if (event.payload?.sessionId && event.payload.sessionId !== session.id) return;
+        setMemoryBusy(false);
+        setMemoryError(null);
+      });
+      if (disposed) {
+        unlistenCancelled();
+        return;
+      }
+
       unlistenError = await listen("group-dynamic-memory:error", (event: any) => {
         if (event.payload?.sessionId && event.payload.sessionId !== session.id) return;
         setMemoryBusy(false);
@@ -77,6 +88,7 @@ export function GroupChatHeader({
       disposed = true;
       unlistenProcessing?.();
       unlistenSuccess?.();
+      unlistenCancelled?.();
       unlistenError?.();
     };
   }, [session.id]);
@@ -121,11 +133,7 @@ export function GroupChatHeader({
             aria-label={t("groupChats.header.memories")}
           >
             {effectiveMemoryBusy ? (
-              <Loader2
-                size={18}
-                strokeWidth={2.5}
-                className="animate-spin text-emerald-400"
-              />
+              <Loader2 size={18} strokeWidth={2.5} className="animate-spin text-emerald-400" />
             ) : effectiveMemoryError ? (
               <AlertTriangle size={18} strokeWidth={2.5} className="text-red-400" />
             ) : (

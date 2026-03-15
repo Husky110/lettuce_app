@@ -4,9 +4,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::abort_manager::AbortRegistry;
+use crate::chat_manager::types::{ErrorEnvelope, NormalizedEvent};
 use crate::llama_cpp;
 use crate::serde_utils::truncate_for_log;
 use crate::transport;
+use crate::transport::emit_normalized;
 use crate::utils::{log_error, log_info};
 
 mod helpers;
@@ -139,24 +141,86 @@ pub async fn api_request(app: tauri::AppHandle, req: ApiRequest) -> Result<ApiRe
         );
     }
 
-    log_info(&app, "api_request", "[api_request] sending request...");
-    let response = match transport::send_with_retries(&app, "api_request", request_builder, 2).await
-    {
-        Ok(resp) => {
-            log_info(
-                &app,
-                "api_request",
-                "[api_request] request sent successfully",
-            );
-            resp
+    let mut abort_rx = if !stream {
+        request_id.as_ref().map(|req_id| {
+            use tauri::Manager;
+            let registry = app.state::<AbortRegistry>();
+            registry.register(req_id.clone())
+        })
+    } else {
+        None
+    };
+
+    let emit_abort = || {
+        if let Some(req_id) = request_id.as_ref() {
+            let envelope = ErrorEnvelope {
+                code: Some("ABORTED".to_string()),
+                message: "Request was cancelled by user".to_string(),
+                provider_id: req.provider_id.clone(),
+                request_id: Some(req_id.clone()),
+                retryable: Some(false),
+                status: None,
+            };
+            emit_normalized(&app, req_id, NormalizedEvent::Error { envelope });
         }
-        Err(err) => {
-            log_info(
-                &app,
-                "api_request",
-                format!("[api_request] request error for {}: {}", url_for_log, err),
-            );
-            return Err(err.to_string());
+    };
+
+    log_info(&app, "api_request", "[api_request] sending request...");
+    let response = if let Some(abort_rx) = abort_rx.as_mut() {
+        tokio::select! {
+            _ = abort_rx => {
+                if let Some(req_id) = request_id.as_ref() {
+                    use tauri::Manager;
+                    let registry = app.state::<AbortRegistry>();
+                    registry.unregister(req_id);
+                }
+                emit_abort();
+                return Err("Request was cancelled by user".to_string());
+            }
+            response = transport::send_with_retries(&app, "api_request", request_builder, 2) => {
+                match response {
+                    Ok(resp) => {
+                        log_info(
+                            &app,
+                            "api_request",
+                            "[api_request] request sent successfully",
+                        );
+                        resp
+                    }
+                    Err(err) => {
+                        if let Some(req_id) = request_id.as_ref() {
+                            use tauri::Manager;
+                            let registry = app.state::<AbortRegistry>();
+                            registry.unregister(req_id);
+                        }
+                        log_info(
+                            &app,
+                            "api_request",
+                            format!("[api_request] request error for {}: {}", url_for_log, err),
+                        );
+                        return Err(err.to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        match transport::send_with_retries(&app, "api_request", request_builder, 2).await {
+            Ok(resp) => {
+                log_info(
+                    &app,
+                    "api_request",
+                    "[api_request] request sent successfully",
+                );
+                resp
+            }
+            Err(err) => {
+                log_info(
+                    &app,
+                    "api_request",
+                    format!("[api_request] request error for {}: {}", url_for_log, err),
+                );
+                return Err(err.to_string());
+            }
         }
     };
     let status = response.status();
@@ -197,7 +261,31 @@ pub async fn api_request(app: tauri::AppHandle, req: ApiRequest) -> Result<ApiRe
         )
         .await?
     } else {
-        handle_non_streaming_response(&app, &req, response, request_id.clone(), status, ok).await?
+        let result = if let Some(abort_rx) = abort_rx.as_mut() {
+            tokio::select! {
+                _ = abort_rx => {
+                    if let Some(req_id) = request_id.as_ref() {
+                        use tauri::Manager;
+                        let registry = app.state::<AbortRegistry>();
+                        registry.unregister(req_id);
+                    }
+                    emit_abort();
+                    return Err("Request was cancelled by user".to_string());
+                }
+                result = handle_non_streaming_response(&app, &req, response, request_id.clone(), status, ok) => result,
+            }
+        } else {
+            handle_non_streaming_response(&app, &req, response, request_id.clone(), status, ok)
+                .await
+        };
+
+        if let Some(req_id) = request_id.as_ref() {
+            use tauri::Manager;
+            let registry = app.state::<AbortRegistry>();
+            registry.unregister(req_id);
+        }
+
+        result?
     };
 
     log_info(

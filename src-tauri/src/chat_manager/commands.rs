@@ -7,6 +7,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::api::{api_request, ApiRequest, ApiResponse};
 use crate::chat_manager::storage::{get_base_prompt, PromptType};
+use crate::dynamic_memory_run_manager::{DynamicMemoryCancellationToken, DynamicMemoryRunManager};
 use crate::embedding_model;
 use crate::storage_manager::db::open_db;
 use crate::utils::{emit_toast, log_error, log_info, log_warn, now_millis};
@@ -59,6 +60,21 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "preference",
     "other",
 ];
+
+fn dynamic_memory_run_key(session_id: &str) -> String {
+    format!("chat:{}", session_id)
+}
+
+fn dynamic_memory_request_id(session_id: &str, phase: &str) -> String {
+    format!("dynamic-memory:{}:{}", session_id, phase)
+}
+
+fn is_cancelled_request_error(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("aborted")
+        || normalized.contains("cancelled")
+        || normalized.contains("canceled")
+}
 
 #[derive(Clone, Copy)]
 struct LlamaSamplerProfileDefaults {
@@ -380,6 +396,33 @@ fn resolve_last_valid_window_end(
 
     // No event could be anchored; treat as rewind (cursor reset).
     Ok((0, true))
+}
+
+fn cancel_dynamic_memory_cycle(
+    app: &AppHandle,
+    session: &mut Session,
+    message: &str,
+) -> Result<(), String> {
+    session.memory_status = Some("idle".to_string());
+    session.memory_error = None;
+    session.updated_at = now_millis()?;
+    save_session(app, session)?;
+    let _ = app.emit(
+        "dynamic-memory:cancelled",
+        json!({ "sessionId": session.id }),
+    );
+    Err(message.to_string())
+}
+
+fn ensure_dynamic_memory_not_cancelled(
+    app: &AppHandle,
+    session: &mut Session,
+    token: &DynamicMemoryCancellationToken,
+) -> Result<(), String> {
+    if token.is_cancelled() {
+        return cancel_dynamic_memory_cycle(app, session, "Request was cancelled by user");
+    }
+    Ok(())
 }
 
 fn fetch_conversation_messages_range(
@@ -4255,6 +4298,14 @@ pub async fn trigger_dynamic_memory(app: AppHandle, session_id: String) -> Resul
     .await
 }
 
+#[tauri::command]
+pub fn abort_dynamic_memory(app: AppHandle, session_id: String) -> Result<(), String> {
+    let run_key = dynamic_memory_run_key(&session_id);
+    let run_manager = app.state::<DynamicMemoryRunManager>().inner().clone();
+    let abort_registry = app.state::<crate::abort_manager::AbortRegistry>();
+    run_manager.cancel_run(&abort_registry, &run_key)
+}
+
 async fn process_dynamic_memory_cycle(
     app: &AppHandle,
     session: &mut Session,
@@ -4424,6 +4475,11 @@ async fn process_dynamic_memory_cycle_with_model(
         return Ok(());
     }
 
+    let run_key = dynamic_memory_run_key(&session.id);
+    let run_manager = app.state::<DynamicMemoryRunManager>().inner().clone();
+    let run_guard = run_manager.start_run(run_key);
+    let cancel_token = run_guard.token();
+
     log_info(
         app,
         "dynamic_memory",
@@ -4529,6 +4585,11 @@ async fn process_dynamic_memory_cycle_with_model(
         json!({ "sessionId": session.id }),
     );
 
+    ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
+
+    let summary_request_id = dynamic_memory_request_id(&session.id, "summary");
+    run_guard.set_active_request_id(Some(summary_request_id.clone()));
+
     let summary = match summarize_messages(
         app,
         summary_provider,
@@ -4544,15 +4605,22 @@ async fn process_dynamic_memory_cycle_with_model(
         session,
         settings,
         None,
+        Some(&summary_request_id),
+        Some(&cancel_token),
     )
     .await
     {
         Ok(s) => s,
         Err(err) => {
+            run_guard.set_active_request_id(None);
+            if is_cancelled_request_error(&err) {
+                return cancel_dynamic_memory_cycle(app, session, &err);
+            }
             record_dynamic_memory_error(app, session, &err, "summarization");
             return Err(err);
         }
     };
+    run_guard.set_active_request_id(None);
     log_info(
         app,
         "dynamic_memory",
@@ -4571,6 +4639,10 @@ async fn process_dynamic_memory_cycle_with_model(
             summary.len()
         ),
     );
+    ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
+
+    let tools_request_id = dynamic_memory_request_id(&session.id, "tools");
+    run_guard.set_active_request_id(Some(tools_request_id.clone()));
     let actions = match run_memory_tool_update(
         app,
         summary_provider,
@@ -4581,11 +4653,17 @@ async fn process_dynamic_memory_cycle_with_model(
         &summary,
         &convo_window,
         character,
+        Some(&tools_request_id),
+        Some(&cancel_token),
     )
     .await
     {
         Ok(actions) => actions,
         Err(err) => {
+            run_guard.set_active_request_id(None);
+            if is_cancelled_request_error(&err) {
+                return cancel_dynamic_memory_cycle(app, session, &err);
+            }
             log_error(
                 app,
                 "dynamic_memory",
@@ -4625,6 +4703,9 @@ async fn process_dynamic_memory_cycle_with_model(
             return Ok(());
         }
     };
+    run_guard.set_active_request_id(None);
+
+    ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
 
     session.memory_summary = Some(summary.clone());
     session.memory_summary_token_count = crate::tokenizer::count_tokens(app, &summary).unwrap_or(0);
@@ -5084,6 +5165,7 @@ async fn send_dynamic_memory_request(
     context_length: Option<u32>,
     extra_body_fields: Option<HashMap<String, Value>>,
     tool_config: Option<&ToolConfig>,
+    request_id: Option<&str>,
 ) -> Result<ApiResponse, String> {
     let built = super::request_builder::build_chat_request(
         provider_cred,
@@ -5096,7 +5178,7 @@ async fn send_dynamic_memory_request(
         max_tokens,
         context_length,
         false,
-        None,
+        request_id.map(|id| id.to_string()),
         None,
         None,
         None,
@@ -5149,7 +5231,7 @@ async fn send_dynamic_memory_request(
                     max_tokens,
                     context_length,
                     false,
-                    None,
+                    request_id.map(|id| id.to_string()),
                     None,
                     None,
                     None,
@@ -5190,6 +5272,8 @@ async fn run_memory_tool_update(
     summary: &str,
     convo_window: &[StoredMessage],
     character: &super::types::Character,
+    request_id: Option<&str>,
+    cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<Vec<Value>, String> {
     let tool_config = build_memory_tool_config();
     let max_entries = dynamic_max_entries(settings);
@@ -5270,6 +5354,7 @@ async fn run_memory_tool_update(
         context_length,
         extra_body_fields.clone(),
         Some(&tool_config),
+        request_id,
     )
     .await
     {
@@ -5300,6 +5385,9 @@ async fn run_memory_tool_update(
                         err_message
                     ),
                 );
+                if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                    return Err("Request was cancelled by user".to_string());
+                }
                 let mut fallback_messages = messages_for_api.clone();
                 fallback_messages.push(json!({
                     "role": "user",
@@ -5316,6 +5404,7 @@ async fn run_memory_tool_update(
                     context_length,
                     extra_body_fields,
                     None,
+                    request_id,
                 )
                 .await?;
 
@@ -5360,6 +5449,9 @@ async fn run_memory_tool_update(
                         "dynamic_memory",
                         "memory tool request returned no tool usage; retrying with JSON fallback",
                     );
+                    if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                        return Err("Request was cancelled by user".to_string());
+                    }
                     let mut fallback_messages = messages_for_api.clone();
                     fallback_messages.push(json!({
                         "role": "user",
@@ -5375,6 +5467,7 @@ async fn run_memory_tool_update(
                         context_length,
                         extra_body_fields,
                         None,
+                        request_id,
                     )
                     .await?;
 
@@ -5422,6 +5515,9 @@ async fn run_memory_tool_update(
                     err
                 ),
             );
+            if cancel_token.is_some_and(|token| token.is_cancelled()) {
+                return Err("Request was cancelled by user".to_string());
+            }
             let mut fallback_messages = messages_for_api.clone();
             fallback_messages.push(json!({
                 "role": "user",
@@ -5437,6 +5533,7 @@ async fn run_memory_tool_update(
                 context_length,
                 extra_body_fields,
                 None,
+                request_id,
             )
             .await?;
 
@@ -5940,6 +6037,7 @@ async fn run_memory_tag_repair(
         None,
         None,
         Some(&build_memory_tag_repair_tool_config()),
+        None,
     )
     .await
     {
@@ -5998,6 +6096,7 @@ async fn run_memory_tag_repair(
             api_key,
             &fallback_messages,
             512,
+            None,
             None,
             None,
             None,
@@ -6150,6 +6249,8 @@ async fn summarize_messages(
     session: &Session,
     settings: &Settings,
     persona: Option<&super::types::Persona>,
+    request_id: Option<&str>,
+    cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<String, String> {
     let mut messages_for_api = Vec::new();
     let system_role = super::request_builder::system_role_for(provider_cred);
@@ -6222,6 +6323,7 @@ async fn summarize_messages(
         context_length,
         extra_body_fields.clone(),
         Some(&summarization_tool_config()),
+        request_id,
     )
     .await;
 
@@ -6308,6 +6410,10 @@ async fn summarize_messages(
         ),
     );
 
+    if cancel_token.is_some_and(|token| token.is_cancelled()) {
+        return Err("Request was cancelled by user".to_string());
+    }
+
     let mut fallback_messages = messages_for_api.clone();
     fallback_messages.push(json!({
         "role": "user",
@@ -6324,6 +6430,7 @@ async fn summarize_messages(
         context_length,
         extra_body_fields,
         None,
+        request_id,
     )
     .await?;
 

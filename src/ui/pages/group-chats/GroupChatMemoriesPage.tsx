@@ -93,6 +93,7 @@ export function GroupChatMemoriesPage() {
     startEdit,
     saveEdit,
     handleRunMemoryCycle,
+    handleAbortMemoryCycle,
     handleRefresh,
     handleDismissError,
     handleTogglePinnedMessage,
@@ -613,7 +614,9 @@ export function GroupChatMemoriesPage() {
                             <span>•</span>
                             <span>{new Date(message.createdAt).toLocaleDateString()}</span>
                           </div>
-                          <p className={cn(typography.bodySmall.size, "leading-relaxed text-fg/75")}>
+                          <p
+                            className={cn(typography.bodySmall.size, "leading-relaxed text-fg/75")}
+                          >
                             {message.content}
                           </p>
                         </div>
@@ -661,25 +664,27 @@ export function GroupChatMemoriesPage() {
                   {(session.memoryToolEvents?.length ?? 0).toLocaleString()} events
                 </span>
                 <button
-                  onClick={handleRunMemoryCycle}
-                  disabled={ui.retryStatus === "retrying" || session.memoryStatus === "processing"}
+                  onClick={
+                    ui.retryStatus === "retrying" || session.memoryStatus === "processing"
+                      ? handleAbortMemoryCycle
+                      : handleRunMemoryCycle
+                  }
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
                     "border border-fg/10 bg-fg/5",
                     "text-[11px] font-semibold text-fg/50",
                     "hover:bg-fg/8 hover:text-fg/70",
-                    "disabled:opacity-40 disabled:pointer-events-none",
                     "transition-all active:scale-95",
                   )}
                 >
-                  <Cpu
-                    size={12}
-                    className={cn(
-                      (ui.retryStatus === "retrying" || session.memoryStatus === "processing") &&
-                        "animate-pulse",
-                    )}
-                  />
-                  Run
+                  {ui.retryStatus === "retrying" || session.memoryStatus === "processing" ? (
+                    <X size={12} className="animate-pulse" />
+                  ) : (
+                    <Cpu size={12} />
+                  )}
+                  {ui.retryStatus === "retrying" || session.memoryStatus === "processing"
+                    ? t("common.buttons.cancel")
+                    : "Run"}
                 </button>
               </div>
               <ToolLog events={session.memoryToolEvents || []} />

@@ -60,6 +60,7 @@ export function ChatHeader({
 
     let unlistenProcessing: (() => void) | undefined;
     let unlistenSuccess: (() => void) | undefined;
+    let unlistenCancelled: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
     let disposed = false;
 
@@ -89,6 +90,17 @@ export function ChatHeader({
         return;
       }
 
+      unlistenCancelled = await listen("dynamic-memory:cancelled", (event: any) => {
+        if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
+        setMemoryBusy(false);
+        setMemoryError(null);
+        onSessionUpdate?.();
+      });
+      if (disposed) {
+        unlistenCancelled();
+        return;
+      }
+
       unlistenError = await listen("dynamic-memory:error", (event: any) => {
         if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
         setMemoryBusy(false);
@@ -109,6 +121,7 @@ export function ChatHeader({
       disposed = true;
       unlistenProcessing?.();
       unlistenSuccess?.();
+      unlistenCancelled?.();
       unlistenError?.();
     };
   }, [sessionId, onSessionUpdate, isDynamic]);

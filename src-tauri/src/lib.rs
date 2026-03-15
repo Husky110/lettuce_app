@@ -6,6 +6,7 @@ mod chat_manager;
 mod content_filter;
 mod creation_helper;
 mod discovery;
+mod dynamic_memory_run_manager;
 mod embedding_model;
 mod engine;
 mod error;
@@ -118,6 +119,9 @@ pub fn run() {
         .setup(move |app| {
             let abort_registry = abort_manager::AbortRegistry::new();
             app.manage(abort_registry);
+            let dynamic_memory_run_manager =
+                dynamic_memory_run_manager::DynamicMemoryRunManager::new();
+            app.manage(dynamic_memory_run_manager);
             let app_usage_service = Arc::new(usage::app_activity::AppActiveUsageService::new());
             app.manage(app_usage_service.clone());
 
@@ -354,6 +358,7 @@ pub fn run() {
             chat_manager::chat_generate_user_reply,
             chat_manager::retry_dynamic_memory,
             chat_manager::trigger_dynamic_memory,
+            chat_manager::abort_dynamic_memory,
             chat_manager::list_prompt_templates,
             chat_manager::export_prompt_template_as_usc,
             chat_manager::chat_template_export_as_usc,
@@ -528,6 +533,7 @@ pub fn run() {
             group_chat_manager::group_chat_get_selection_prompt,
             group_chat_manager::group_chat_generate_user_reply,
             group_chat_manager::group_chat_retry_dynamic_memory,
+            group_chat_manager::group_chat_abort_dynamic_memory,
             // Engine commands
             engine::commands::engine_health,
             engine::commands::engine_setup_status,

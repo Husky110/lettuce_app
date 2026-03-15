@@ -39,6 +39,21 @@ type MemoryStats = {
   totalTokens: number;
 };
 
+const isAbortError = (value: unknown) => {
+  const message =
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value && "message" in value
+        ? String((value as { message?: unknown }).message ?? "")
+        : "";
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("aborted") ||
+    normalized.includes("cancelled") ||
+    normalized.includes("canceled")
+  );
+};
+
 function useGroupSessionData(sessionId?: string) {
   const [session, setSession] = useState<GroupSession | null>(null);
   const [pinnedMessages, setPinnedMessages] = useState<GroupMessage[]>([]);
@@ -239,7 +254,15 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
             void reload();
           }
         });
-        unlisteners.push(u1, u2, u3);
+        const u4 = await listen("group-dynamic-memory:cancelled", (e: any) => {
+          if (e.payload?.sessionId === session.id) {
+            dispatch({ type: "SET_ACTION_ERROR", value: null });
+            dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+            dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+            void reload();
+          }
+        });
+        unlisteners.push(u1, u2, u3, u4);
       } catch (err) {
         console.error("Failed to setup memory event listeners", err);
       }
@@ -394,8 +417,29 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
     } catch (err: any) {
       console.error("Failed to retry memory processing:", err);
       dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+      if (isAbortError(err)) {
+        dispatch({ type: "SET_ACTION_ERROR", value: null });
+        dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+        void reload();
+        return;
+      }
       dispatch({ type: "SET_MEMORY_STATUS", value: "failed" });
       dispatch({ type: "SET_ACTION_ERROR", value: err?.message || "Failed to run memory cycle" });
+      void reload();
+    }
+  }, [session?.id, reload]);
+
+  const handleAbortMemoryCycle = useCallback(async () => {
+    if (!session?.id) return;
+    try {
+      await storageBridge.groupChatAbortDynamicMemory(session.id);
+      dispatch({ type: "SET_ACTION_ERROR", value: null });
+    } catch (err: any) {
+      if (!isAbortError(err)) {
+        console.error("Failed to abort memory processing:", err);
+      }
+      dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
       void reload();
     }
   }, [session?.id, reload]);
@@ -465,6 +509,7 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
     cancelEdit,
     saveEdit,
     handleRunMemoryCycle,
+    handleAbortMemoryCycle,
     handleRefresh,
     handleDismissError,
     handleTogglePinnedMessage,

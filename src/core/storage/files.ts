@@ -334,6 +334,8 @@ export const storageBridge = {
     }) as Promise<void>,
   triggerDynamicMemory: (sessionId: string) =>
     invoke("trigger_dynamic_memory", { sessionId }) as Promise<void>,
+  abortDynamicMemory: (sessionId: string) =>
+    invoke("abort_dynamic_memory", { sessionId }) as Promise<void>,
   usageSummary: () =>
     invoke("storage_usage_summary") as Promise<{
       fileCount: number;
@@ -741,6 +743,8 @@ export const storageBridge = {
     invoke<string>("group_chat_get_selection_prompt", { sessionId, userMessage }),
   groupChatRetryDynamicMemory: (sessionId: string) =>
     invoke("group_chat_retry_dynamic_memory", { sessionId }) as Promise<void>,
+  groupChatAbortDynamicMemory: (sessionId: string) =>
+    invoke("group_chat_abort_dynamic_memory", { sessionId }) as Promise<void>,
 
   // Group Session Memory Operations
   groupSessionUpdateMemories: (
