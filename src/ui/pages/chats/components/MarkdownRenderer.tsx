@@ -26,9 +26,28 @@ function sanitizeUrl(url: string): string | null {
   return match?.[1] ?? null;
 }
 
-// Pre-compiled regex patterns - avoid recreation on each render/call
-const INLINE_PATTERN =
-  /(<img\s[^>]*>|\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_|`[^`]+`|"[^"\n]+"|\[[^\]]+\]\([^)]+\)|\[[^\]]+\]|\([^)]+\)|!\[[^\]]*\]\([^)]+\))/i;
+const QUOTE_PAIRS = [
+  ['"', '"'],
+  ["“", "”"],
+  ["„", "”"],
+  ["‘", "’"],
+  ["‚", "’"],
+  ["«", "»"],
+  ["‹", "›"],
+  ["〝", "〞"],
+  ["《", "》"],
+  ["「", "」"],
+  ["『", "』"],
+  ["﹁", "﹂"],
+  ["﹃", "﹄"],
+] as const;
+const QUOTED_TEXT_PATTERN = QUOTE_PAIRS.map(
+  ([open, close]) => `${escapeRegExp(open)}[^${escapeRegExp(close)}\\n]+${escapeRegExp(close)}`,
+).join("|");
+const INLINE_PATTERN = new RegExp(
+  `(<img\\s[^>]*>|\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|_[^_]+_|\\\`[^\\\`]+\\\`|${QUOTED_TEXT_PATTERN}|\\[[^\\]]+\\]\\([^)]+\\)|\\[[^\\]]+\\]|\\([^)]+\\)|!\\[[^\\]]*\\]\\([^)]+\\))`,
+  "i",
+);
 const CRLF_PATTERN = /\r\n/g;
 const HEADING_PATTERN = /^(#{1,6})\s+(.*)$/;
 const QUOTE_PATTERN = /^>\s?/;
@@ -41,6 +60,19 @@ const HTML_IMG_SRC = /src=["']([^"']+)["']/i;
 const HTML_IMG_ALT = /alt=["']([^"']*?)["']/i;
 const HTML_IMG_WIDTH = /width=["']?(\d+)["']?/i;
 const HTML_IMG_HEIGHT = /height=["']?(\d+)["']?/i;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getQuotePair(token: string): { open: string; close: string } | null {
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (token.startsWith(open) && token.endsWith(close)) {
+      return { open, close };
+    }
+  }
+  return null;
+}
 
 function parseImgAttrs(
   tag: string,
@@ -87,6 +119,7 @@ function parseInline(
     const token = match[0];
     const afterMatch = remaining.slice(match.index + token.length);
     const key = `${keyPrefix}-${index++}`;
+    const quotePair = getQuotePair(token);
 
     if (token.startsWith("<img") || token.startsWith("<IMG")) {
       const attrs = parseImgAttrs(token);
@@ -142,11 +175,13 @@ function parseInline(
           {token.slice(1, -1)}
         </code>,
       );
-    } else if (token[0] === '"') {
-      const inner = token.slice(1, -1);
+    } else if (quotePair) {
+      const inner = token.slice(quotePair.open.length, token.length - quotePair.close.length);
       nodes.push(
         <span key={key} style={textColors?.texts ? { color: textColors.texts } : undefined}>
-          "{parseInline(inner, key, onImageClick, textColors)}"
+          {quotePair.open}
+          {parseInline(inner, key, onImageClick, textColors)}
+          {quotePair.close}
         </span>,
       );
     } else if (token[0] === "[" && token.includes("](")) {
