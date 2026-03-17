@@ -1,10 +1,11 @@
-import { BookOpen } from "lucide-react";
 import { cn, typography } from "../../../design-tokens";
 import { useI18n } from "../../../../core/i18n/context";
+import { LorebookAvatar } from "../../../components/LorebookAvatar";
 
 interface LorebookPreview {
   id?: string;
   name?: string;
+  avatarPath?: string;
 }
 
 interface LorebookEntryPreview {
@@ -34,8 +35,13 @@ export function LorebookPreviewCard({
     <div className="rounded-2xl border border-fg/10 bg-fg/5 overflow-hidden">
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="h-12 w-12 rounded-xl border border-fg/10 bg-fg/5 flex items-center justify-center">
-            <BookOpen className="h-5 w-5 text-fg/60" />
+          <div className="h-12 w-12 overflow-hidden rounded-xl border border-fg/10 bg-fg/5">
+            <LorebookAvatar
+              avatarPath={lorebook?.avatarPath}
+              name={name}
+              iconClassName="h-5 w-5 text-fg/60"
+              fallbackClassName="bg-fg/5"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className={cn(typography.h2.size, typography.h2.weight, "text-fg truncate")}>
@@ -48,14 +54,17 @@ export function LorebookPreviewCard({
         </div>
 
         <div className="mt-4">
-          <p className="text-xs text-fg/40 uppercase tracking-wider mb-2">{t("characters.lorebookPreview.entries")}</p>
+          <p className="text-xs text-fg/40 uppercase tracking-wider mb-2">
+            {t("characters.lorebookPreview.entries")}
+          </p>
           {entryCount === 0 ? (
             <p className="text-sm text-fg/50">{t("characters.lorebookPreview.noEntriesYet")}</p>
           ) : (
             <div className="space-y-2">
               {previewEntries.map((entry) => {
                 const title = entry.title?.trim() || t("characters.lorebookPreview.untitledEntry");
-                const content = entry.content?.trim() || t("characters.lorebookPreview.noContentYet");
+                const content =
+                  entry.content?.trim() || t("characters.lorebookPreview.noContentYet");
                 const keywords = entry.keywords?.filter(Boolean) ?? [];
                 return (
                   <div

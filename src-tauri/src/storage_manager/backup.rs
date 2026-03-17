@@ -787,7 +787,7 @@ fn export_lorebooks(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
 
     let mut stmt = conn
-        .prepare("SELECT id, name, created_at, updated_at FROM lorebooks")
+        .prepare("SELECT id, name, avatar_path, created_at, updated_at FROM lorebooks")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let lorebooks: Vec<(String, JsonValue)> = stmt
@@ -796,8 +796,9 @@ fn export_lorebooks(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
             let json = serde_json::json!({
                 "id": id.clone(),
                 "name": r.get::<_, String>(1)?,
-                "created_at": r.get::<_, i64>(2)?,
-                "updated_at": r.get::<_, i64>(3)?,
+                "avatar_path": r.get::<_, Option<String>>(2)?,
+                "created_at": r.get::<_, i64>(3)?,
+                "updated_at": r.get::<_, i64>(4)?,
             });
             Ok((id, json))
         })
@@ -2205,11 +2206,12 @@ fn import_lorebooks(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Stri
             let lorebook_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
             conn.execute(
-                "INSERT INTO lorebooks (id, name, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO lorebooks (id, name, avatar_path, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     lorebook_id,
                     item.get("name").and_then(|v| v.as_str()),
+                    item.get("avatar_path").and_then(|v| v.as_str()),
                     item.get("created_at").and_then(|v| v.as_i64()),
                     item.get("updated_at").and_then(|v| v.as_i64()),
                 ],

@@ -592,6 +592,7 @@ export async function saveLorebook(
   const entity = {
     id: lorebook.id ?? uuidv4(),
     name: lorebook.name,
+    avatarPath: lorebook.avatarPath,
     createdAt: lorebook.createdAt ?? timestamp,
     updatedAt: timestamp,
   };

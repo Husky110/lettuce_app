@@ -1781,8 +1781,14 @@ fn apply_lorebooks_snapshot(conn: &mut DbConnection, payload: &[u8]) -> Result<(
         .collect::<Vec<_>>();
     for lorebook in snapshot.lorebooks {
         tx.execute(
-            "INSERT OR REPLACE INTO lorebooks (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            params![lorebook.id, lorebook.name, lorebook.created_at, lorebook.updated_at],
+            "INSERT OR REPLACE INTO lorebooks (id, name, avatar_path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                lorebook.id,
+                lorebook.name,
+                lorebook.avatar_path,
+                lorebook.created_at,
+                lorebook.updated_at
+            ],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
@@ -2598,7 +2604,7 @@ fn fetch_lorebooks(conn: &DbConnection, ids: &[String]) -> Result<Vec<u8>, Strin
 
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql_lb = format!(
-        "SELECT id, name, created_at, updated_at FROM lorebooks WHERE id IN ({})",
+        "SELECT id, name, avatar_path, created_at, updated_at FROM lorebooks WHERE id IN ({})",
         placeholders
     );
 
@@ -2610,8 +2616,9 @@ fn fetch_lorebooks(conn: &DbConnection, ids: &[String]) -> Result<Vec<u8>, Strin
             Ok(SyncLorebook {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                created_at: r.get(2)?,
-                updated_at: r.get(3)?,
+                avatar_path: r.get(2)?,
+                created_at: r.get(3)?,
+                updated_at: r.get(4)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?

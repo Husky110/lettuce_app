@@ -751,6 +751,7 @@ mod tests {
         let lorebook = Lorebook {
             id: "lorebook-1".into(),
             name: "World".into(),
+            avatar_path: None,
             created_at: 1,
             updated_at: 2,
         };

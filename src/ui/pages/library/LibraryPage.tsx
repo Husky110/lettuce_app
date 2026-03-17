@@ -10,6 +10,7 @@ import {
   deleteLorebook,
   saveLorebook,
 } from "../../../core/storage/repo";
+import { deleteImageRef } from "../../../core/storage";
 import type { Character, Persona, Lorebook } from "../../../core/storage/schemas";
 import { typography, interactive, cn } from "../../design-tokens";
 import { useAvatar } from "../../hooks/useAvatar";
@@ -17,6 +18,7 @@ import { useAvatarGradient } from "../../hooks/useAvatarGradient";
 import { useRocketEasterEgg } from "../../hooks/useRocketEasterEgg";
 import { useNavigate } from "react-router-dom";
 import { BottomMenu, CharacterExportMenu } from "../../components";
+import { LorebookAvatar } from "../../components/LorebookAvatar";
 import {
   MessageCircle,
   Edit2,
@@ -119,7 +121,11 @@ export function LibraryPage() {
       setRenaming(true);
       // Only lorebooks can be renamed this way for now
       if (renameItem.itemType === "lorebook") {
-        await saveLorebook({ id: renameItem.id, name: renameName.trim() });
+        await saveLorebook({
+          id: renameItem.id,
+          name: renameName.trim(),
+          avatarPath: renameItem.avatarPath,
+        });
       }
       setRenameItem(null);
       setRenameName("");
@@ -176,6 +182,9 @@ export function LibraryPage() {
         const list = await listPersonas();
         setPersonas(list);
       } else {
+        if (selectedItem.avatarPath) {
+          await deleteImageRef(selectedItem.avatarPath);
+        }
         await deleteLorebook(selectedItem.id);
         const list = await listLorebooks();
         setLorebooks(list);
@@ -627,14 +636,11 @@ function getItemDescription(item: LibraryItem, t?: (key: any) => string): string
 const ItemAvatar = memo(({ item, className }: { item: LibraryItem; className?: string }) => {
   if (item.itemType === "lorebook") {
     return (
-      <div
-        className={cn(
-          "flex h-full w-full items-center justify-center bg-linear-to-br from-warning/20 to-warning/80/30",
-          className,
-        )}
-      >
-        <BookOpen className="h-12 w-12 text-warning/80" />
-      </div>
+      <LorebookAvatar
+        avatarPath={(item as Lorebook).avatarPath}
+        name={getItemName(item)}
+        className={className}
+      />
     );
   }
 

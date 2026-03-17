@@ -330,6 +330,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         CREATE TABLE IF NOT EXISTS lorebooks (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          avatar_path TEXT,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );

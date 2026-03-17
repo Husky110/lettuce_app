@@ -7,7 +7,7 @@ use crate::storage_manager::{settings::storage_read_settings, settings::storage_
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 44;
+pub const CURRENT_MIGRATION_VERSION: u32 = 45;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -477,6 +477,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v43_to_v44(app)?;
         version = 44;
+    }
+
+    if version < 45 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v44 -> v45: Add avatar_path to lorebooks",
+        );
+        migrate_v44_to_v45(app)?;
+        version = 45;
     }
 
     // Update the stored version
@@ -2682,5 +2692,11 @@ fn migrate_v43_to_v44(app: &AppHandle) -> Result<(), String> {
         "ALTER TABLE group_characters ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'manual'",
         [],
     );
+    Ok(())
+}
+
+fn migrate_v44_to_v45(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    let _ = conn.execute("ALTER TABLE lorebooks ADD COLUMN avatar_path TEXT", []);
     Ok(())
 }

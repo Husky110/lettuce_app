@@ -23,6 +23,7 @@ import {
   reorderLorebookEntries,
   saveLorebook,
 } from "../../../core/storage/repo";
+import { convertToImageRef, deleteImageRef } from "../../../core/storage";
 import {
   exportLorebook,
   exportLorebookAsUsc,
@@ -32,6 +33,7 @@ import {
 import { BottomMenu, LorebookExportMenu, MenuButton } from "../../components";
 import { confirmBottomMenu } from "../../components/ConfirmBottomMenu";
 import { TopNav } from "../../components/App";
+import { LorebookAvatar } from "../../components/LorebookAvatar";
 import { useI18n } from "../../../core/i18n/context";
 import { toast } from "../../components/toast";
 import type { LorebookExportFormat } from "../../components/LorebookExportMenu";
@@ -483,9 +485,11 @@ export function StandaloneLorebookEditor() {
   // Rename lorebook state
   const [showRenameMenu, setShowRenameMenu] = useState(false);
   const [newName, setNewName] = useState("");
+  const [avatarDraftPath, setAvatarDraftPath] = useState<string | null>(null);
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadData();
@@ -593,15 +597,50 @@ export function StandaloneLorebookEditor() {
 
   const handleRename = async () => {
     if (!lorebook || !newName.trim()) return;
+    let replacementAvatarPath: string | undefined;
     try {
-      const updated = { ...lorebook, name: newName.trim() };
-      await saveLorebook(updated);
-      setLorebook(updated);
+      let nextAvatarPath = lorebook.avatarPath;
+
+      if (!avatarDraftPath) {
+        nextAvatarPath = undefined;
+      } else if (avatarDraftPath.startsWith("data:")) {
+        const storedAvatarPath = await convertToImageRef(avatarDraftPath);
+        if (!storedAvatarPath) {
+          throw new Error("Failed to save lorebook image");
+        }
+        nextAvatarPath = storedAvatarPath;
+        replacementAvatarPath = storedAvatarPath;
+      } else {
+        nextAvatarPath = avatarDraftPath;
+      }
+
+      const updated = { ...lorebook, name: newName.trim(), avatarPath: nextAvatarPath };
+      const saved = await saveLorebook(updated);
+      if (lorebook.avatarPath && lorebook.avatarPath !== saved.avatarPath) {
+        await deleteImageRef(lorebook.avatarPath);
+      }
+      setLorebook(saved);
       setShowRenameMenu(false);
       setNewName("");
+      setAvatarDraftPath(saved.avatarPath ?? null);
     } catch (error) {
+      if (replacementAvatarPath) {
+        await deleteImageRef(replacementAvatarPath);
+      }
       console.error("Failed to rename lorebook:", error);
     }
+  };
+
+  const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatarDraftPath(typeof reader.result === "string" ? reader.result : null);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
   };
 
   const handleExportLorebook = async (format: LorebookExportFormat) => {
@@ -697,6 +736,17 @@ export function StandaloneLorebookEditor() {
         onBackOverride={() => navigate("/library")}
         rightAction={
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                setNewName(lorebook.name);
+                setAvatarDraftPath(lorebook.avatarPath ?? null);
+                setShowRenameMenu(true);
+              }}
+              className="flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full text-fg/70 hover:text-fg hover:bg-fg/10 transition"
+              aria-label="Edit lorebook"
+            >
+              <Edit2 size={18} className="text-fg" />
+            </button>
             <button
               onClick={() => setShowExportMenu(true)}
               disabled={isExporting}
@@ -867,10 +917,47 @@ export function StandaloneLorebookEditor() {
           onClose={() => {
             setShowRenameMenu(false);
             setNewName("");
+            setAvatarDraftPath(lorebook.avatarPath ?? null);
           }}
           title={t("library.actions.renameLorebook")}
         >
           <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-fg/10 bg-fg/5">
+                <LorebookAvatar
+                  avatarPath={avatarDraftPath}
+                  name={newName.trim() || lorebook.name}
+                  iconClassName="h-8 w-8 text-fg/55"
+                  fallbackClassName="bg-fg/5"
+                />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="rounded-xl border border-fg/10 bg-fg/5 px-3 py-2 text-sm font-medium text-fg transition hover:border-fg/20 hover:bg-fg/10"
+                >
+                  {avatarDraftPath ? t("common.buttons.edit") : t("common.buttons.add")}
+                </button>
+                {avatarDraftPath && (
+                  <button
+                    type="button"
+                    onClick={() => setAvatarDraftPath(null)}
+                    className="rounded-xl border border-danger/25 bg-danger/10 px-3 py-2 text-sm font-medium text-danger transition hover:border-danger/40 hover:bg-danger/15"
+                  >
+                    {t("common.buttons.remove")}
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <label className="text-[11px] font-medium text-fg/70">
                 {t("characters.lorebook.nameLabel")}
@@ -887,7 +974,11 @@ export function StandaloneLorebookEditor() {
 
             <button
               onClick={handleRename}
-              disabled={!newName.trim() || newName.trim() === lorebook.name}
+              disabled={
+                !newName.trim() ||
+                (newName.trim() === lorebook.name &&
+                  (avatarDraftPath ?? "") === (lorebook.avatarPath ?? ""))
+              }
               className="w-full rounded-xl border border-accent/40 bg-accent/20 px-4 py-3.5 text-sm font-semibold text-accent/70 transition hover:bg-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("common.buttons.save")}

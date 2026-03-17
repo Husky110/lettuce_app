@@ -12,6 +12,7 @@ use crate::utils::now_millis;
 pub struct Lorebook {
     pub id: String,
     pub name: String,
+    pub avatar_path: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -21,8 +22,9 @@ impl Lorebook {
         Ok(Lorebook {
             id: row.get(0)?,
             name: row.get(1)?,
-            created_at: row.get(2)?,
-            updated_at: row.get(3)?,
+            avatar_path: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
         })
     }
 }
@@ -137,7 +139,7 @@ pub fn list_lorebooks(conn: &DbConnection) -> Result<Vec<Lorebook>, String> {
     let mut stmt = conn
         .prepare(
             r#"
-            SELECT id, name, created_at, updated_at
+            SELECT id, name, avatar_path, created_at, updated_at
             FROM lorebooks
             ORDER BY updated_at DESC
             "#,
@@ -173,7 +175,7 @@ pub fn list_lorebooks(conn: &DbConnection) -> Result<Vec<Lorebook>, String> {
 
 pub fn get_lorebook(conn: &DbConnection, lorebook_id: &str) -> Result<Option<Lorebook>, String> {
     conn.query_row(
-        "SELECT id, name, created_at, updated_at FROM lorebooks WHERE id = ?1",
+        "SELECT id, name, avatar_path, created_at, updated_at FROM lorebooks WHERE id = ?1",
         params![lorebook_id],
         Lorebook::from_row,
     )
@@ -208,8 +210,8 @@ pub fn upsert_lorebook(conn: &DbConnection, lorebook: &Lorebook) -> Result<Loreb
 
     if exists {
         conn.execute(
-            "UPDATE lorebooks SET name = ?2, updated_at = ?3 WHERE id = ?1",
-            params![lorebook.id, lorebook.name, now],
+            "UPDATE lorebooks SET name = ?2, avatar_path = ?3, updated_at = ?4 WHERE id = ?1",
+            params![lorebook.id, lorebook.name, lorebook.avatar_path, now],
         )
         .map_err(|e| {
             crate::utils::err_msg(
@@ -220,8 +222,14 @@ pub fn upsert_lorebook(conn: &DbConnection, lorebook: &Lorebook) -> Result<Loreb
         })?;
     } else {
         conn.execute(
-            "INSERT INTO lorebooks (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            params![lorebook.id, lorebook.name, lorebook.created_at, now],
+            "INSERT INTO lorebooks (id, name, avatar_path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                lorebook.id,
+                lorebook.name,
+                lorebook.avatar_path,
+                lorebook.created_at,
+                now
+            ],
         )
         .map_err(|e| {
             crate::utils::err_msg(
@@ -255,7 +263,7 @@ pub fn list_character_lorebooks(
     let mut stmt = conn
         .prepare(
             r#"
-            SELECT l.id, l.name, l.created_at, l.updated_at
+            SELECT l.id, l.name, l.avatar_path, l.created_at, l.updated_at
             FROM character_lorebooks cl
             JOIN lorebooks l ON l.id = cl.lorebook_id
             WHERE cl.character_id = ?1 AND cl.enabled = 1
@@ -1024,6 +1032,7 @@ pub fn lorebook_import(app: tauri::AppHandle, import_json: String) -> Result<Str
     let lorebook = Lorebook {
         id: Uuid::new_v4().to_string(),
         name: parsed.name.trim().to_string(),
+        avatar_path: None,
         created_at: now,
         updated_at: now,
     };

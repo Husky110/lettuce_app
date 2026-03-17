@@ -1188,6 +1188,7 @@ pub async fn discovery_import_character(app: AppHandle, path: String) -> Result<
                 let lorebook_record = Lorebook {
                     id: lorebook_id.clone(),
                     name: lorebook_name,
+                    avatar_path: None,
                     created_at: now,
                     updated_at: now,
                 };

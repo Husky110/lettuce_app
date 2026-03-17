@@ -177,6 +177,7 @@ pub struct GroupCharacter {
 pub struct SyncLorebook {
     pub id: String,
     pub name: String,
+    pub avatar_path: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
