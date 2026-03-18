@@ -25,13 +25,6 @@ export interface ChatContinueResult {
   assistantMessage: StoredMessage;
 }
 
-export interface ChatRetryLastUserResult {
-  sessionId: string;
-  sessionUpdatedAt: number;
-  requestId?: string;
-  assistantMessage: StoredMessage;
-}
-
 export async function sendChatTurn(params: {
   sessionId: string;
   characterId: string;
@@ -95,40 +88,6 @@ export async function continueConversation(params: {
   if (requestId) beginAsyncAction(requestId, "chat_continue");
   try {
     return await invoke<ChatContinueResult>("chat_continue", {
-      args: {
-        sessionId,
-        characterId,
-        personaId: personaId ?? null,
-        swapPlaces,
-        stream,
-        requestId: requestId ?? null,
-      },
-    });
-  } finally {
-    if (requestId) endAsyncAction(requestId);
-  }
-}
-
-export async function retryLastUserMessage(params: {
-  sessionId: string;
-  characterId: string;
-  personaId?: string | null;
-  swapPlaces?: boolean;
-  stream?: boolean;
-  requestId?: string;
-}): Promise<ChatRetryLastUserResult> {
-  const {
-    sessionId,
-    characterId,
-    personaId,
-    swapPlaces = false,
-    stream = true,
-    requestId,
-  } = params;
-
-  if (requestId) beginAsyncAction(requestId, "chat_retry_last_user");
-  try {
-    return await invoke<ChatRetryLastUserResult>("chat_retry_last_user", {
       args: {
         sessionId,
         characterId,

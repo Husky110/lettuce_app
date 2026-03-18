@@ -242,7 +242,6 @@ export function ChatConversationPage() {
     removePendingAttachment,
     handleSend,
     handleContinue,
-    handleRetryLastUser,
     handleRegenerate,
     handleAbort,
     hasMoreMessagesBefore,
@@ -257,11 +256,6 @@ export function ChatConversationPage() {
     isStartingSceneMessage,
     streamingReasoning,
   } = chatController;
-
-  const lastMessage = messages[messages.length - 1];
-  const shouldResendLastUserMessage =
-    lastMessage?.role === "user" &&
-    (lastMessage.content.trim().length > 0 || (lastMessage.attachments?.length ?? 0) > 0);
 
   const selectedSceneContent = useMemo(() => {
     if (!character) return "";
@@ -1336,9 +1330,6 @@ export function ChatConversationPage() {
       const content = draft.trim();
       playAccessibilitySound("send", accessibilitySettings);
       await handleSend(content, undefined, { swapPlaces });
-    } else if (shouldResendLastUserMessage && lastMessage?.role === "user") {
-      playAccessibilitySound("send", accessibilitySettings);
-      await handleRetryLastUser({ swapPlaces });
     } else {
       playAccessibilitySound("send", accessibilitySettings);
       await handleContinue({ swapPlaces });
@@ -1350,11 +1341,8 @@ export function ChatConversationPage() {
     setDraft,
     handleSend,
     handleContinue,
-    handleRetryLastUser,
     pendingAttachments,
     accessibilitySettings,
-    lastMessage,
-    shouldResendLastUserMessage,
     swapPlaces,
   ]);
 
@@ -1764,7 +1752,6 @@ export function ChatConversationPage() {
           sending={sending}
           character={character}
           onSendMessage={handleSendMessage}
-          emptyDraftAction={shouldResendLastUserMessage ? "send" : "continue"}
           onAbort={handleAbortWithFlag}
           hasBackgroundImage={!!backgroundImageData}
           footerOverlayClassName={theme.footerOverlay}

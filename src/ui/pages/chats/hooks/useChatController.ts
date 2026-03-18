@@ -64,7 +64,6 @@ export interface ChatController {
     options?: { swapPlaces?: boolean },
   ) => Promise<void>;
   handleContinue: (options?: { swapPlaces?: boolean }) => Promise<void>;
-  handleRetryLastUser: (options?: { swapPlaces?: boolean }) => Promise<void>;
   handleRegenerate: (message: StoredMessage, options?: { swapPlaces?: boolean }) => Promise<void>;
   handleAbort: () => Promise<void>;
   getVariantState: (message: StoredMessage) => VariantState;
@@ -139,13 +138,12 @@ export function useChatController(
       sessionId,
     });
 
-  const { handleSend, handleContinue, handleRetryLastUser, handleRegenerate } =
-    useChatStreamingController({
-      context: pagingContext,
-      runInChatImageGeneration,
-      reloadSessionStateFromStorage,
-      triggerTypingHaptic,
-    });
+  const { handleSend, handleContinue, handleRegenerate } = useChatStreamingController({
+    context: pagingContext,
+    runInChatImageGeneration,
+    reloadSessionStateFromStorage,
+    triggerTypingHaptic,
+  });
   const {
     resetMessageActions,
     getVariantState,
@@ -250,7 +248,6 @@ export function useChatController(
     // Actions
     handleSend,
     handleContinue,
-    handleRetryLastUser,
     handleRegenerate,
     handleAbort,
     loadOlderMessages,

@@ -39,10 +39,9 @@ use super::storage::{
 use super::tooling::{parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition};
 use super::types::{
     Character, ChatAddMessageAttachmentArgs, ChatCompletionArgs, ChatContinueArgs,
-    ChatRegenerateArgs, ChatRetryLastUserArgs, ChatTurnResult, ContinueResult, MemoryEmbedding,
-    MemoryRetrievalStrategy, Model, Persona, PromptEntryPosition, PromptScope, ProviderCredential,
-    RegenerateResult, RetryLastUserResult, Session, Settings, StoredMessage, SystemPromptEntry,
-    SystemPromptTemplate,
+    ChatRegenerateArgs, ChatTurnResult, ContinueResult, MemoryEmbedding, MemoryRetrievalStrategy,
+    Model, Persona, PromptEntryPosition, PromptScope, ProviderCredential, RegenerateResult,
+    Session, Settings, StoredMessage, SystemPromptEntry, SystemPromptTemplate,
 };
 use crate::storage_manager::sessions::{
     messages_upsert_batch, session_conversation_count, session_upsert_meta,
@@ -1757,8 +1756,17 @@ pub async fn chat_completion(
 
     let user_msg_id = uuid::Uuid::new_v4().to_string();
 
+    let persisted_attachments = persist_attachments(
+        &app,
+        &character_id,
+        &session_id,
+        &user_msg_id,
+        "user",
+        attachments,
+    )?;
+
     let user_msg = StoredMessage {
-        id: user_msg_id.clone(),
+        id: user_msg_id,
         role: "user".into(),
         content: user_message.clone(),
         created_at: now,
@@ -1768,23 +1776,23 @@ pub async fn chat_completion(
         memory_refs: Vec::new(),
         used_lorebook_entries: Vec::new(),
         is_pinned: false,
-        attachments,
+        attachments: persisted_attachments,
         reasoning: None,
         model_id: None,
         fallback_from_model_id: None,
     };
-    let mut working_session = session.clone();
-    working_session.messages.push(user_msg.clone());
-    working_session.updated_at = now;
+    session.messages.push(user_msg.clone());
+    session.updated_at = now;
+    save_session(&app, &session)?;
 
     emit_debug(
         &app,
-        "chat_completion_prepared",
+        "session_saved",
         json!({
-            "stage": "before_provider_request",
-            "sessionId": working_session.id,
-            "messageCount": working_session.messages.len(),
-            "updatedAt": working_session.updated_at,
+            "stage": "after_user_message",
+            "sessionId": session.id,
+            "messageCount": session.messages.len(),
+            "updatedAt": session.updated_at,
         }),
     );
 
@@ -1795,20 +1803,20 @@ pub async fn chat_completion(
                 &prompt_character,
                 model,
                 prompt_persona.as_ref(),
-                &working_session,
+                &session,
             ),
             settings,
         )
     } else {
         append_image_directive_instructions(
-            context.build_system_prompt(&character, model, persona, &working_session),
+            context.build_system_prompt(&character, model, persona, &session),
             settings,
         )
     };
     let used_lorebook_entries = super::prompt_engine::resolve_used_lorebook_entries(
         &app,
         &character.id,
-        &working_session,
+        &session,
         &prompt_entries,
     );
     let (relative_entries, in_chat_entries) = partition_prompt_entries(prompt_entries);
@@ -1817,69 +1825,65 @@ pub async fn chat_completion(
     // or recent_messages for manual memory (includes all recent non-scene messages)
     // For dynamic memory with pinned messages: pinned messages are always included but don't count in the limit
     let (pinned_msgs, recent_msgs) = if dynamic_memory_enabled {
-        let (pinned, unpinned) =
-            conversation_window_with_pinned(&working_session.messages, dynamic_window);
+        let (pinned, unpinned) = conversation_window_with_pinned(&session.messages, dynamic_window);
         (pinned, unpinned)
     } else {
         (
             Vec::new(),
-            recent_messages(&working_session, manual_window_size(settings)),
+            recent_messages(&session, manual_window_size(settings)),
         )
     };
 
     // Retrieve top-k relevant memories for this turn.
     // - Dynamic memory: use semantic search over memory embeddings
     // - Manual memory: memories are injected via system prompt (see below)
-    let relevant_memories =
-        if dynamic_memory_enabled && !working_session.memory_embeddings.is_empty() {
-            let fixed = ensure_pinned_hot(&mut working_session.memory_embeddings);
-            if fixed > 0 {
-                log_info(
-                    &app,
-                    "dynamic_memory",
-                    format!("Restored {} pinned memories to hot", fixed),
-                );
-            }
-
-            // Build search query - use enriched query (last 2 msgs) if enabled, else just user message
-            let search_query = if context_enrichment_enabled(settings) {
-                build_enriched_query(&working_session.messages)
-            } else {
-                user_message.clone()
-            };
-
-            crate::utils::log_info(
+    let relevant_memories = if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
+        let fixed = ensure_pinned_hot(&mut session.memory_embeddings);
+        if fixed > 0 {
+            log_info(
                 &app,
-                "memory_retrieval",
-                format!(
-                    "Search query ({} chars, enriched={})",
-                    search_query.len(),
-                    context_enrichment_enabled(settings)
-                ),
+                "dynamic_memory",
+                format!("Restored {} pinned memories to hot", fixed),
             );
+        }
 
-            select_relevant_memories(
-                &app,
-                &working_session,
-                &search_query,
-                dynamic_retrieval_limit(settings),
-                dynamic_min_similarity(settings),
-                dynamic_retrieval_strategy(settings),
-            )
-            .await
+        // Build search query - use enriched query (last 2 msgs) if enabled, else just user message
+        let search_query = if context_enrichment_enabled(settings) {
+            build_enriched_query(&session.messages)
         } else {
-            Vec::new()
+            user_message.clone()
         };
+
+        crate::utils::log_info(
+            &app,
+            "memory_retrieval",
+            format!(
+                "Search query ({} chars, enriched={})",
+                search_query.len(),
+                context_enrichment_enabled(settings)
+            ),
+        );
+
+        select_relevant_memories(
+            &app,
+            &session,
+            &search_query,
+            dynamic_retrieval_limit(settings),
+            dynamic_min_similarity(settings),
+            dynamic_retrieval_strategy(settings),
+        )
+        .await
+    } else {
+        Vec::new()
+    };
 
     // Update access tracking for retrieved memories
     if !relevant_memories.is_empty() {
         let memory_ids: Vec<String> = relevant_memories.iter().map(|m| m.id.clone()).collect();
         // Promote any cold memories that were recalled via keyword search
         let now = now_millis().unwrap_or_default();
-        let promoted =
-            promote_cold_memories(&mut working_session.memory_embeddings, &memory_ids, now);
-        let accessed =
-            mark_memories_accessed(&mut working_session.memory_embeddings, &memory_ids, now);
+        let promoted = promote_cold_memories(&mut session.memory_embeddings, &memory_ids, now);
+        let accessed = mark_memories_accessed(&mut session.memory_embeddings, &memory_ids, now);
         if promoted > 0 {
             log_info(
                 &app,
@@ -1935,9 +1939,9 @@ pub async fn chat_completion(
                     .join("\n"),
             )
         }
-    } else if !working_session.memories.is_empty() {
+    } else if !session.memories.is_empty() {
         Some(
-            working_session
+            session
                 .memories
                 .iter()
                 .map(|m| format!("- {}", m))
@@ -2430,19 +2434,6 @@ pub async fn chat_completion(
 
     let assistant_message_id = Uuid::new_v4().to_string();
 
-    let persisted_user_attachments = persist_attachments(
-        &app,
-        &character_id,
-        &session_id,
-        &user_msg_id,
-        "user",
-        user_msg.attachments.clone(),
-    )?;
-    let persisted_user_message = StoredMessage {
-        attachments: persisted_user_attachments,
-        ..user_msg.clone()
-    };
-
     let mut assistant_generated_attachments: Vec<ImageAttachment> = Vec::new();
     for data_url in images_from_sse {
         // Best-effort mime type inference from data URL header; fallback to PNG.
@@ -2502,16 +2493,8 @@ pub async fn chat_completion(
         fallback_from_model_id: fallback_from_model_id.clone(),
     };
 
-    if let Some(last_message) = working_session.messages.last_mut() {
-        *last_message = persisted_user_message.clone();
-    } else {
-        working_session
-            .messages
-            .push(persisted_user_message.clone());
-    }
-    working_session.messages.push(assistant_message.clone());
-    working_session.updated_at = now_millis()?;
-    session = working_session;
+    session.messages.push(assistant_message.clone());
+    session.updated_at = now_millis()?;
     save_session(&app, &session)?;
 
     log_info(
@@ -2566,7 +2549,7 @@ pub async fn chat_completion(
         session_id: session.id,
         session_updated_at: session.updated_at,
         request_id,
-        user_message: persisted_user_message,
+        user_message: user_msg,
         assistant_message,
         usage,
     })
@@ -3284,673 +3267,6 @@ pub async fn chat_regenerate(
         session_updated_at: session.updated_at,
         request_id,
         assistant_message: assistant_clone,
-    })
-}
-
-#[tauri::command]
-pub async fn chat_retry_last_user(
-    app: AppHandle,
-    args: ChatRetryLastUserArgs,
-) -> Result<RetryLastUserResult, String> {
-    let ChatRetryLastUserArgs {
-        session_id,
-        character_id,
-        persona_id,
-        swap_places,
-        stream,
-        request_id,
-    } = args;
-    let swap_places = role_swap_enabled(swap_places);
-
-    let context = ChatContext::initialize(app.clone())?;
-    let settings = &context.settings;
-
-    log_info(
-        &app,
-        "chat_retry_last_user",
-        format!(
-            "start session={} character={} stream={:?} request_id={:?}",
-            &session_id, &character_id, stream, request_id
-        ),
-    );
-
-    let mut session = match context.load_session(&session_id)? {
-        Some(s) => s,
-        None => {
-            log_error(
-                &app,
-                "chat_retry_last_user",
-                format!("session {} not found", &session_id),
-            );
-            return Err(crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                "Session not found",
-            ));
-        }
-    };
-
-    if session.messages.is_empty() {
-        return Err(crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            "No messages available to retry",
-        ));
-    }
-
-    let last_user_message = session
-        .messages
-        .last()
-        .filter(|message| message.role == "user")
-        .cloned()
-        .ok_or_else(|| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                "Latest message is not a user message",
-            )
-        })?;
-
-    emit_debug(
-        &app,
-        "retry_last_user_start",
-        json!({
-            "sessionId": session.id,
-            "characterId": character_id,
-            "messageCount": session.messages.len(),
-            "lastUserMessageId": last_user_message.id,
-        }),
-    );
-
-    let character = match context.find_character(&character_id) {
-        Ok(found) => found,
-        Err(err) => {
-            log_error(
-                &app,
-                "chat_retry_last_user",
-                format!("character {} not found", &character_id),
-            );
-            return Err(err);
-        }
-    };
-
-    let effective_persona_id = resolve_persona_id(&session, persona_id.as_deref());
-    let persona = context.choose_persona(effective_persona_id);
-
-    let (model, provider_cred) = context.select_model(&character)?;
-
-    log_info(
-        &app,
-        "chat_retry_last_user",
-        format!(
-            "selected provider={} model={} credential={}",
-            provider_cred.provider_id.as_str(),
-            model.name.as_str(),
-            provider_cred.id.as_str()
-        ),
-    );
-
-    emit_debug(
-        &app,
-        "retry_last_user_model_selected",
-        json!({
-            "providerId": provider_cred.provider_id,
-            "model": model.name,
-            "credentialId": provider_cred.id,
-        }),
-    );
-
-    let dynamic_memory_enabled = is_dynamic_memory_active(settings, &character);
-    let dynamic_window = dynamic_window_size(settings);
-
-    let relevant_memories = if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
-        let fixed = ensure_pinned_hot(&mut session.memory_embeddings);
-        if fixed > 0 {
-            log_info(
-                &app,
-                "dynamic_memory",
-                format!("Restored {} pinned memories to hot", fixed),
-            );
-        }
-
-        let search_query = if context_enrichment_enabled(&context.settings) {
-            build_enriched_query(&session.messages)
-        } else {
-            last_user_message.content.clone()
-        };
-        select_relevant_memories(
-            &app,
-            &session,
-            &search_query,
-            dynamic_retrieval_limit(&context.settings),
-            dynamic_min_similarity(&context.settings),
-            dynamic_retrieval_strategy(&context.settings),
-        )
-        .await
-    } else {
-        Vec::new()
-    };
-
-    if !relevant_memories.is_empty() {
-        let memory_ids: Vec<String> = relevant_memories.iter().map(|m| m.id.clone()).collect();
-        let now = now_millis().unwrap_or_default();
-        let promoted = promote_cold_memories(&mut session.memory_embeddings, &memory_ids, now);
-        let accessed = mark_memories_accessed(&mut session.memory_embeddings, &memory_ids, now);
-        if promoted > 0 {
-            log_info(
-                &app,
-                "dynamic_memory",
-                format!("Promoted {} cold memories to hot", promoted),
-            );
-        }
-        if accessed > 0 {
-            log_info(
-                &app,
-                "dynamic_memory",
-                format!("Marked {} memories as accessed", accessed),
-            );
-        }
-    }
-
-    let prompt_entries = if swap_places {
-        let (prompt_character, prompt_persona) = swapped_prompt_entities(&character, persona);
-        append_image_directive_instructions(
-            context.build_system_prompt(
-                &prompt_character,
-                model,
-                prompt_persona.as_ref(),
-                &session,
-            ),
-            settings,
-        )
-    } else {
-        append_image_directive_instructions(
-            context.build_system_prompt(&character, model, persona, &session),
-            settings,
-        )
-    };
-    let used_lorebook_entries = super::prompt_engine::resolve_used_lorebook_entries(
-        &app,
-        &character.id,
-        &session,
-        &prompt_entries,
-    );
-    let (relative_entries, in_chat_entries) = partition_prompt_entries(prompt_entries);
-
-    let (pinned_msgs, recent_msgs) = if dynamic_memory_enabled {
-        let (pinned, unpinned) = conversation_window_with_pinned(&session.messages, dynamic_window);
-        (pinned, unpinned)
-    } else {
-        (
-            Vec::new(),
-            recent_messages(&session, manual_window_size(settings)),
-        )
-    };
-
-    let system_role = super::request_builder::system_role_for(provider_cred);
-    let mut messages_for_api = Vec::new();
-    for entry in &relative_entries {
-        crate::chat_manager::messages::push_prompt_entry_message(
-            &mut messages_for_api,
-            &system_role,
-            entry,
-        );
-    }
-    if swap_places {
-        let persona_title = persona
-            .map(|p| p.title.clone())
-            .unwrap_or_else(|| "the user persona".to_string());
-        crate::chat_manager::messages::push_system_message(
-            &mut messages_for_api,
-            &system_role,
-            Some(format!(
-                "Swap places mode is active for this turn. The human is speaking as character '{}' and you must respond as persona '{}'. Keep the response in first person as '{}'.",
-                character.name, persona_title, persona_title
-            )),
-        );
-    }
-
-    let char_name = if swap_places {
-        persona.map(|p| p.title.as_str()).unwrap_or("User")
-    } else {
-        character.name.as_str()
-    };
-    let persona_name = if swap_places {
-        character.name.as_str()
-    } else {
-        persona.map(|p| p.title.as_str()).unwrap_or("")
-    };
-    let allow_image_input = model
-        .input_scopes
-        .iter()
-        .any(|scope| scope.eq_ignore_ascii_case("image"));
-
-    let mut chat_messages = Vec::new();
-    for msg in &pinned_msgs {
-        let msg_with_data = load_attachment_data(&app, msg);
-        let msg_with_data = maybe_swap_message_for_api(&msg_with_data, swap_places);
-        crate::chat_manager::messages::push_user_or_assistant_message_with_context(
-            &mut chat_messages,
-            &msg_with_data,
-            char_name,
-            persona_name,
-            allow_image_input,
-        );
-    }
-
-    for msg in &recent_msgs {
-        let msg_with_data = load_attachment_data(&app, msg);
-        let msg_with_data = maybe_swap_message_for_api(&msg_with_data, swap_places);
-        crate::chat_manager::messages::push_user_or_assistant_message_with_context(
-            &mut chat_messages,
-            &msg_with_data,
-            char_name,
-            persona_name,
-            allow_image_input,
-        );
-    }
-    insert_in_chat_prompt_entries(&mut chat_messages, &system_role, &in_chat_entries);
-    messages_for_api.extend(chat_messages);
-    crate::chat_manager::messages::sanitize_placeholders_in_api_messages(
-        &mut messages_for_api,
-        char_name,
-        persona_name,
-    );
-
-    let should_stream = stream.unwrap_or(true);
-    let request_id = if should_stream {
-        request_id.or_else(|| Some(Uuid::new_v4().to_string()))
-    } else {
-        None
-    };
-    let attempts = build_model_attempts(
-        &app,
-        settings,
-        &character,
-        model,
-        provider_cred,
-        "chat_retry_last_user",
-    );
-
-    let mut selected_model = model;
-    let mut selected_provider_cred = provider_cred;
-    let mut selected_api_key = String::new();
-    let mut fallback_from_model_id: Option<String> = None;
-    let mut successful_response = None;
-    let mut last_error = "request failed".to_string();
-    let mut fallback_toast_shown = false;
-
-    for (idx, (attempt_model, attempt_provider_cred, is_fallback_attempt)) in
-        attempts.iter().enumerate()
-    {
-        let has_next_attempt = idx + 1 < attempts.len();
-
-        let attempt_api_key =
-            match resolve_api_key(&app, attempt_provider_cred, "chat_retry_last_user") {
-                Ok(key) => key,
-                Err(err) => {
-                    last_error = err;
-                    if has_next_attempt {
-                        emit_fallback_retry_toast(&app, &mut fallback_toast_shown);
-                        continue;
-                    }
-                    return Err(last_error);
-                }
-            };
-
-        let temperature = resolve_temperature(&session, attempt_model, &settings);
-        let top_p = resolve_top_p(&session, attempt_model, &settings);
-        let max_tokens = resolve_max_tokens(&session, attempt_model, &settings);
-        let context_length = resolve_context_length(&session, attempt_model, &settings);
-        let frequency_penalty = resolve_frequency_penalty(&session, attempt_model, &settings);
-        let presence_penalty = resolve_presence_penalty(&session, attempt_model, &settings);
-        let top_k = resolve_top_k(&session, attempt_model, &settings);
-        let reasoning_enabled = resolve_reasoning_enabled(&session, attempt_model, &settings);
-        let reasoning_effort = resolve_reasoning_effort(&session, attempt_model, &settings);
-        let reasoning_budget = resolve_reasoning_budget(
-            &session,
-            attempt_model,
-            &settings,
-            reasoning_effort.as_deref(),
-        );
-        let extra_body_fields = if attempt_provider_cred.provider_id == "llamacpp" {
-            build_llama_extra_fields(&session, attempt_model, &settings)
-        } else if attempt_provider_cred.provider_id == "ollama" {
-            build_ollama_extra_fields(
-                &session,
-                attempt_model,
-                &settings,
-                context_length,
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                frequency_penalty,
-                presence_penalty,
-            )
-        } else {
-            None
-        };
-
-        let built = super::request_builder::build_chat_request(
-            attempt_provider_cred,
-            &attempt_api_key,
-            &attempt_model.name,
-            &messages_for_api,
-            None,
-            temperature,
-            top_p,
-            max_tokens,
-            context_length,
-            should_stream,
-            request_id.clone(),
-            frequency_penalty,
-            presence_penalty,
-            top_k,
-            None,
-            reasoning_enabled,
-            reasoning_effort,
-            reasoning_budget,
-            extra_body_fields,
-        );
-
-        emit_debug(
-            &app,
-            "retry_last_user_request",
-            json!({
-                "providerId": attempt_provider_cred.provider_id,
-                "model": attempt_model.name,
-                "stream": should_stream,
-                "requestId": request_id,
-                "endpoint": built.url,
-                "fallbackAttempt": is_fallback_attempt,
-            }),
-        );
-
-        let api_request_payload = ApiRequest {
-            url: built.url,
-            method: Some("POST".into()),
-            headers: Some(built.headers),
-            query: None,
-            body: Some(built.body),
-            timeout_ms: Some(900_000),
-            stream: Some(built.stream),
-            request_id: built.request_id.clone(),
-            provider_id: Some(attempt_provider_cred.provider_id.clone()),
-        };
-
-        let api_response = match api_request(app.clone(), api_request_payload).await {
-            Ok(resp) => resp,
-            Err(err) => {
-                last_error = err;
-                if has_next_attempt {
-                    emit_fallback_retry_toast(&app, &mut fallback_toast_shown);
-                    continue;
-                }
-                return Err(last_error);
-            }
-        };
-
-        emit_debug(
-            &app,
-            "retry_last_user_response",
-            json!({
-                "status": api_response.status,
-                "ok": api_response.ok,
-                "model": attempt_model.name,
-            }),
-        );
-
-        if !api_response.ok {
-            let fallback = format!("Provider returned status {}", api_response.status);
-            let err_message =
-                extract_error_message(api_response.data()).unwrap_or(fallback.clone());
-            let failed_usage = extract_usage(api_response.data());
-            emit_debug(
-                &app,
-                "retry_last_user_provider_error",
-                json!({
-                    "status": api_response.status,
-                    "message": err_message,
-                    "usage": failed_usage,
-                    "model": attempt_model.name,
-                }),
-            );
-            if !has_next_attempt {
-                record_failed_usage(
-                    &app,
-                    &failed_usage,
-                    &session,
-                    &character,
-                    attempt_model,
-                    attempt_provider_cred,
-                    UsageOperationType::Chat,
-                    &err_message,
-                    "chat_retry_last_user",
-                );
-            }
-            last_error = if err_message == fallback {
-                err_message
-            } else {
-                format!("{} (status {})", err_message, api_response.status)
-            };
-            if has_next_attempt {
-                emit_fallback_retry_toast(&app, &mut fallback_toast_shown);
-                continue;
-            }
-            return Err(last_error);
-        }
-
-        selected_model = attempt_model;
-        selected_provider_cred = attempt_provider_cred;
-        selected_api_key = attempt_api_key;
-        fallback_from_model_id = if *is_fallback_attempt {
-            Some(model.id.clone())
-        } else {
-            None
-        };
-        successful_response = Some(api_response);
-        break;
-    }
-
-    let api_response = match successful_response {
-        Some(resp) => resp,
-        None => return Err(last_error),
-    };
-
-    let images_from_sse = match api_response.data() {
-        Value::String(s) if s.contains("data:") => {
-            super::sse::accumulate_image_data_urls_from_sse(s)
-        }
-        _ => Vec::new(),
-    };
-
-    let text = extract_text(
-        api_response.data(),
-        Some(&selected_provider_cred.provider_id),
-    )
-    .unwrap_or_default();
-    let usage = extract_usage(api_response.data());
-    let reasoning = extract_reasoning(
-        api_response.data(),
-        Some(&selected_provider_cred.provider_id),
-    );
-
-    if text.trim().is_empty() && images_from_sse.is_empty() {
-        let preview =
-            serde_json::to_string(api_response.data()).unwrap_or_else(|_| "<non-json>".into());
-
-        let has_reasoning = reasoning.as_ref().map_or(false, |r| !r.trim().is_empty());
-        let error_detail = if has_reasoning {
-            "Model completed reasoning but generated no response text. This may indicate the model ran out of tokens or encountered an issue during generation."
-        } else {
-            "Empty response from provider"
-        };
-
-        log_warn(
-            &app,
-            "chat_retry_last_user",
-            format!(
-                "empty response from provider, has_reasoning={}, preview={}",
-                has_reasoning, &preview
-            ),
-        );
-        emit_debug(
-            &app,
-            "retry_last_user_empty_response",
-            json!({ "preview": preview, "hasReasoning": has_reasoning }),
-        );
-        return Err(error_detail.to_string());
-    }
-
-    if let Some(filter) = app.try_state::<crate::content_filter::ContentFilter>() {
-        if filter.is_enabled() {
-            let result = filter.check_text(&text);
-            if result.blocked {
-                log_warn(
-                    &app,
-                    "chat_retry_last_user",
-                    format!(
-                        "Content blocked by Pure Mode (score={:.1}, terms={:?})",
-                        result.score, result.matched_terms
-                    ),
-                );
-                return Err(
-                    "Response blocked by Pure Mode. Try rephrasing your message.".to_string(),
-                );
-            }
-        }
-    }
-
-    emit_debug(
-        &app,
-        "retry_last_user_assistant_reply",
-        json!({
-            "length": text.len(),
-        }),
-    );
-
-    let assistant_created_at = now_millis()?;
-    let variant = new_assistant_variant(text.clone(), usage.clone(), assistant_created_at);
-    let variant_id = variant.id.clone();
-
-    let assistant_message_id = Uuid::new_v4().to_string();
-
-    let mut assistant_generated_attachments: Vec<ImageAttachment> = Vec::new();
-    for data_url in images_from_sse {
-        let mime_type = data_url
-            .split_once(";base64,")
-            .and_then(|(prefix, _)| prefix.strip_prefix("data:"))
-            .unwrap_or("image/png")
-            .to_string();
-        assistant_generated_attachments.push(ImageAttachment {
-            id: Uuid::new_v4().to_string(),
-            data: data_url,
-            mime_type,
-            filename: None,
-            width: None,
-            height: None,
-            storage_path: None,
-        });
-    }
-
-    let persisted_assistant_attachments = persist_attachments(
-        &app,
-        &character_id,
-        &session_id,
-        &assistant_message_id,
-        "assistant",
-        assistant_generated_attachments,
-    )?;
-
-    let assistant_message = StoredMessage {
-        id: assistant_message_id,
-        role: "assistant".into(),
-        content: text.clone(),
-        created_at: assistant_created_at,
-        usage: usage.clone(),
-        variants: vec![variant],
-        selected_variant_id: Some(variant_id),
-        memory_refs: if dynamic_memory_enabled {
-            relevant_memories
-                .iter()
-                .map(|m| {
-                    if let Some(score) = m.match_score {
-                        format!("{}::{}", score, m.text)
-                    } else {
-                        m.text.clone()
-                    }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        },
-        used_lorebook_entries,
-        is_pinned: false,
-        attachments: persisted_assistant_attachments,
-        reasoning,
-        model_id: Some(selected_model.id.clone()),
-        fallback_from_model_id: fallback_from_model_id.clone(),
-    };
-
-    session.messages.push(assistant_message.clone());
-    session.updated_at = now_millis()?;
-    save_session(&app, &session)?;
-
-    emit_debug(
-        &app,
-        "retry_last_user_session_saved",
-        json!({
-            "sessionId": session.id,
-            "messageCount": session.messages.len(),
-            "updatedAt": session.updated_at,
-        }),
-    );
-
-    log_info(
-        &app,
-        "chat_retry_last_user",
-        format!(
-            "assistant retry saved for last_user_message_id={} assistant_message_id={} total_messages={} convo_messages={} request_id={:?}",
-            last_user_message.id.as_str(),
-            assistant_message.id.as_str(),
-            session.messages.len(),
-            conversation_count(&session.messages),
-            &request_id
-        ),
-    );
-
-    record_usage_if_available(
-        &context,
-        &usage,
-        &session,
-        &character,
-        selected_model,
-        selected_provider_cred,
-        &selected_api_key,
-        assistant_created_at,
-        UsageOperationType::Chat,
-        "chat_retry_last_user",
-    )
-    .await;
-
-    if dynamic_memory_enabled {
-        if let Err(err) =
-            process_dynamic_memory_cycle(&app, &mut session, settings, &character).await
-        {
-            log_error(
-                &app,
-                "chat_retry_last_user",
-                format!("dynamic memory cycle failed: {}", err),
-            );
-        }
-    }
-
-    Ok(RetryLastUserResult {
-        session_id: session.id,
-        session_updated_at: session.updated_at,
-        request_id,
-        assistant_message,
     })
 }
 

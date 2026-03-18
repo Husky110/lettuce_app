@@ -676,22 +676,6 @@ pub struct ChatContinueArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatRetryLastUserArgs {
-    #[serde(alias = "sessionId")]
-    pub session_id: String,
-    #[serde(alias = "characterId")]
-    pub character_id: String,
-    #[serde(alias = "personaId")]
-    pub persona_id: Option<String>,
-    #[serde(default, alias = "swapPlaces")]
-    pub swap_places: Option<bool>,
-    pub stream: Option<bool>,
-    #[serde(alias = "requestId")]
-    pub request_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ChatAddMessageAttachmentArgs {
     #[serde(alias = "sessionId")]
     pub session_id: String,
@@ -727,15 +711,6 @@ pub struct RegenerateResult {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContinueResult {
-    pub session_id: String,
-    pub session_updated_at: u64,
-    pub request_id: Option<String>,
-    pub assistant_message: StoredMessage,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RetryLastUserResult {
     pub session_id: String,
     pub session_updated_at: u64,
     pub request_id: Option<String>,
