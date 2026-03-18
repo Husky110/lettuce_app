@@ -321,7 +321,7 @@ impl Default for AdvancedModelSettings {
         Self {
             temperature: Some(0.7),
             top_p: Some(1.0),
-            max_output_tokens: Some(1024),
+            max_output_tokens: Some(2048),
             context_length: None,
             frequency_penalty: None,
             presence_penalty: None,

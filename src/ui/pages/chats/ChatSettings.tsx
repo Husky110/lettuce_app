@@ -1451,7 +1451,7 @@ function ChatSettingsContent({ character }: { character: Character }) {
                         onClick={() =>
                           setSessionAdvancedDraft({
                             ...sessionAdvancedDraft,
-                            maxOutputTokens: 1024,
+                            maxOutputTokens: 2048,
                           })
                         }
                         className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -1478,7 +1478,7 @@ function ChatSettingsContent({ character }: { character: Character }) {
                               maxOutputTokens: Number(e.target.value),
                             })
                           }
-                          placeholder="1024"
+                          placeholder="2048"
                           className="w-full rounded-lg border border-white/10 bg-black/20 px-3.5 py-3 text-base text-white placeholder-white/40 focus:border-white/30 focus:outline-none"
                         />
                       )}

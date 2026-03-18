@@ -2266,6 +2266,6 @@ export function createDefaultAdvancedModelSettings(): AdvancedModelSettings {
   return {
     temperature: 0.7,
     topP: 1,
-    maxOutputTokens: 1024,
+    maxOutputTokens: 2048,
   };
 }
