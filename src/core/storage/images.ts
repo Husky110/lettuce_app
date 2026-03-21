@@ -84,6 +84,31 @@ export async function convertToImageUrl(imageIdOrDataUrl: string): Promise<strin
   }
 }
 
+export async function convertFilePathToDataUrl(filePath: string): Promise<string | null> {
+  if (!filePath) {
+    return null;
+  }
+
+  try {
+    const assetUrl = convertFileSrc(filePath);
+    const response = await fetch(assetUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to read image asset (${response.status})`);
+    }
+
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Failed to convert image asset to data URL"));
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error("Failed to convert file path to data URL:", error);
+    return null;
+  }
+}
+
 /**
  * Preloads multiple image URLs for performance optimization
  * Call this when entering the Chat component to eagerly load images

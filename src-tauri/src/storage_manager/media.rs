@@ -108,10 +108,16 @@ fn scan_image_dir(
             continue;
         }
 
-        if path.file_name().and_then(|name| name.to_str()) == Some("avatar.webp") {
-            let sibling = path.with_file_name("avatar_base.webp");
-            if sibling.exists() {
+        if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+            if file_name == "avatar_round.webp" {
                 continue;
+            }
+
+            if file_name == "avatar.webp" {
+                let sibling = path.with_file_name("avatar_base.webp");
+                if sibling.exists() {
+                    continue;
+                }
             }
         }
 

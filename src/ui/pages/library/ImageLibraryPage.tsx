@@ -1,8 +1,9 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { motion } from "framer-motion";
 import { Copy, Download, Image as ImageIcon, Loader2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   downloadImageLibraryItem,
@@ -14,6 +15,10 @@ import { BottomMenu } from "../../components";
 import { cn } from "../../design-tokens";
 import { toast } from "../../components/toast";
 import { isRenderableImageUrl } from "../../../core/utils/image";
+import {
+  buildAvatarLibrarySelectionKey,
+  type AvatarLibrarySelectionPayload,
+} from "../../components/AvatarPicker/librarySelection";
 
 type FilterOption = "All" | "Backgrounds" | "Avatars" | "Attachments" | "Other";
 type SortOption = "Newest" | "Largest" | "Name";
@@ -251,9 +256,13 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
 export function ImageLibraryPanel({
   scrollContainerRef,
   embedded: _embedded = false,
+  mode = "default",
+  onUseItem,
 }: {
   scrollContainerRef: RefObject<HTMLElement | null>;
   embedded?: boolean;
+  mode?: "default" | "picker";
+  onUseItem?: (item: ImageLibraryItem) => Promise<void> | void;
 }) {
   const [items, setItems] = useState<ImageLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,6 +273,7 @@ export function ImageLibraryPanel({
   const [selectedItem, setSelectedItem] = useState<ImageLibraryItem | null>(null);
   const [backgroundIds, setBackgroundIds] = useState<Set<string>>(new Set());
   const [downloadingItemId, setDownloadingItemId] = useState<string | null>(null);
+  const [usingItemId, setUsingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -334,6 +344,25 @@ export function ImageLibraryPanel({
       setDownloadingItemId((current) => (current === item.id ? null : current));
     }
   };
+
+  const handleUseItem = useCallback(
+    async (item: ImageLibraryItem) => {
+      if (!onUseItem) return;
+      try {
+        setUsingItemId(item.id);
+        await onUseItem(item);
+      } catch (error) {
+        console.error("Failed to use image library item:", error);
+        toast.error(
+          "Could not use this image",
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setUsingItemId((current) => (current === item.id ? null : current));
+      }
+    },
+    [onUseItem],
+  );
 
   return (
     <>
@@ -451,7 +480,7 @@ export function ImageLibraryPanel({
         title={selectedItem?.filename ?? ""}
       >
         {selectedItem && (
-          <div className="space-y-4">
+          <div className={mode === "picker" ? "space-y-3" : "space-y-4"}>
             <div className="overflow-hidden rounded-2xl border border-fg/10 bg-fg/[0.03]">
               <img
                 src={getAssetUrl(selectedItem.filePath)}
@@ -460,133 +489,199 @@ export function ImageLibraryPanel({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "Kind", value: imageKindLabel(getImageKind(selectedItem, backgroundIds)) },
-                { label: "Type", value: selectedItem.mimeType },
-                {
-                  label: "Dimensions",
-                  value:
-                    selectedItem.width && selectedItem.height
-                      ? `${selectedItem.width} × ${selectedItem.height}`
-                      : "Unknown",
-                },
-                { label: "Size", value: formatBytes(selectedItem.sizeBytes) },
-                { label: "Updated", value: formatDate(selectedItem.updatedAt) },
-                {
-                  label: "Scope",
-                  value:
-                    getImageKind(selectedItem, backgroundIds) === "Backgrounds"
-                      ? "Chat background"
-                      : (selectedItem.variant ?? "Standard"),
-                },
-              ].map((field) => (
-                <div
-                  key={field.label}
-                  className="rounded-xl border border-fg/10 bg-surface-el/60 px-3 py-2.5"
-                >
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                    {field.label}
-                  </div>
-                  <div className="mt-1 text-[13px] font-medium text-fg">{field.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <details className="rounded-xl border border-fg/10 bg-surface-el/60">
-              <summary className="cursor-pointer list-none px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                      Storage Path
-                    </div>
-                    <div className="mt-1 truncate font-mono text-[11px] text-fg/60">
-                      {compactPath(selectedItem.storagePath)}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
-                </div>
-              </summary>
-              <div className="border-t border-fg/10 px-3 pb-3 pt-2">
-                <div className="break-all font-mono text-xs text-fg/75">
-                  {selectedItem.storagePath}
-                </div>
-              </div>
-            </details>
-
-            {(selectedItem.entityId || selectedItem.sessionId || selectedItem.characterId) && (
-              <details className="rounded-xl border border-fg/10 bg-surface-el/60">
-                <summary className="cursor-pointer list-none px-3 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                        Context
-                      </div>
-                      <div className="mt-1 truncate text-xs text-fg/60">
-                        {[selectedItem.entityType, selectedItem.characterId, selectedItem.sessionId]
-                          .filter(Boolean)
-                          .join(" • ") || "Linked record"}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
-                  </div>
-                </summary>
-                <div className="border-t border-fg/10 px-3 pb-3 pt-2">
-                  <div className="space-y-1 text-sm text-fg/75">
-                    {selectedItem.entityType && selectedItem.entityId && (
-                      <p>
-                        {selectedItem.entityType}:{" "}
-                        <span className="font-mono">{selectedItem.entityId}</span>
-                      </p>
-                    )}
-                    {selectedItem.characterId && (
-                      <p>
-                        character: <span className="font-mono">{selectedItem.characterId}</span>
-                      </p>
-                    )}
-                    {selectedItem.sessionId && (
-                      <p>
-                        session: <span className="font-mono">{selectedItem.sessionId}</span>
-                      </p>
-                    )}
-                    {selectedItem.role && <p>role: {selectedItem.role}</p>}
-                  </div>
-                </div>
-              </details>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
+            {mode === "picker" ? (
               <button
                 type="button"
-                onClick={() => copyToClipboard(selectedItem.storagePath, "Storage path")}
-                className="flex items-center justify-center gap-2 rounded-xl border border-fg/10 bg-fg/[0.04] px-4 py-3 text-sm font-medium text-fg/75 transition hover:bg-fg/[0.08] hover:text-fg"
-              >
-                <Copy className="h-4 w-4" />
-                Copy path
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDownload(selectedItem)}
-                disabled={downloadingItemId === selectedItem.id}
+                onClick={() => void handleUseItem(selectedItem)}
+                disabled={usingItemId === selectedItem.id}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
-                  downloadingItemId === selectedItem.id
+                  "flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                  usingItemId === selectedItem.id
                     ? "cursor-wait border-fg/10 bg-fg/[0.06] text-fg/55"
-                    : "border-fg/10 bg-fg/[0.04] text-fg/75 hover:bg-fg/[0.08] hover:text-fg",
+                    : "border-fg/10 bg-fg/[0.04] text-fg/80 hover:bg-fg/[0.08] hover:text-fg",
                 )}
               >
-                {downloadingItemId === selectedItem.id ? (
+                {usingItemId === selectedItem.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {downloadingItemId === selectedItem.id ? "Saving..." : "Download"}
+                ) : null}
+                {usingItemId === selectedItem.id ? "Using..." : "Use this"}
               </button>
-            </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    {
+                      label: "Kind",
+                      value: imageKindLabel(getImageKind(selectedItem, backgroundIds)),
+                    },
+                    { label: "Type", value: selectedItem.mimeType },
+                    {
+                      label: "Dimensions",
+                      value:
+                        selectedItem.width && selectedItem.height
+                          ? `${selectedItem.width} × ${selectedItem.height}`
+                          : "Unknown",
+                    },
+                    { label: "Size", value: formatBytes(selectedItem.sizeBytes) },
+                    { label: "Updated", value: formatDate(selectedItem.updatedAt) },
+                    {
+                      label: "Scope",
+                      value:
+                        getImageKind(selectedItem, backgroundIds) === "Backgrounds"
+                          ? "Chat background"
+                          : (selectedItem.variant ?? "Standard"),
+                    },
+                  ].map((field) => (
+                    <div
+                      key={field.label}
+                      className="rounded-xl border border-fg/10 bg-surface-el/60 px-3 py-2.5"
+                    >
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                        {field.label}
+                      </div>
+                      <div className="mt-1 text-[13px] font-medium text-fg">{field.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <details className="rounded-xl border border-fg/10 bg-surface-el/60">
+                  <summary className="cursor-pointer list-none px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                          Storage Path
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[11px] text-fg/60">
+                          {compactPath(selectedItem.storagePath)}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
+                    </div>
+                  </summary>
+                  <div className="border-t border-fg/10 px-3 pb-3 pt-2">
+                    <div className="break-all font-mono text-xs text-fg/75">
+                      {selectedItem.storagePath}
+                    </div>
+                  </div>
+                </details>
+
+                {(selectedItem.entityId || selectedItem.sessionId || selectedItem.characterId) && (
+                  <details className="rounded-xl border border-fg/10 bg-surface-el/60">
+                    <summary className="cursor-pointer list-none px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                            Context
+                          </div>
+                          <div className="mt-1 truncate text-xs text-fg/60">
+                            {[
+                              selectedItem.entityType,
+                              selectedItem.characterId,
+                              selectedItem.sessionId,
+                            ]
+                              .filter(Boolean)
+                              .join(" • ") || "Linked record"}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
+                      </div>
+                    </summary>
+                    <div className="border-t border-fg/10 px-3 pb-3 pt-2">
+                      <div className="space-y-1 text-sm text-fg/75">
+                        {selectedItem.entityType && selectedItem.entityId && (
+                          <p>
+                            {selectedItem.entityType}:{" "}
+                            <span className="font-mono">{selectedItem.entityId}</span>
+                          </p>
+                        )}
+                        {selectedItem.characterId && (
+                          <p>
+                            character: <span className="font-mono">{selectedItem.characterId}</span>
+                          </p>
+                        )}
+                        {selectedItem.sessionId && (
+                          <p>
+                            session: <span className="font-mono">{selectedItem.sessionId}</span>
+                          </p>
+                        )}
+                        {selectedItem.role && <p>role: {selectedItem.role}</p>}
+                      </div>
+                    </div>
+                  </details>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(selectedItem.storagePath, "Storage path")}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-fg/10 bg-fg/[0.04] px-4 py-3 text-sm font-medium text-fg/75 transition hover:bg-fg/[0.08] hover:text-fg"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy path
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDownload(selectedItem)}
+                    disabled={downloadingItemId === selectedItem.id}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                      downloadingItemId === selectedItem.id
+                        ? "cursor-wait border-fg/10 bg-fg/[0.06] text-fg/55"
+                        : "border-fg/10 bg-fg/[0.04] text-fg/75 hover:bg-fg/[0.08] hover:text-fg",
+                    )}
+                  >
+                    {downloadingItemId === selectedItem.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    {downloadingItemId === selectedItem.id ? "Saving..." : "Download"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </BottomMenu>
     </>
+  );
+}
+
+export function AvatarLibraryPickerPage() {
+  const mainRef = useRef<HTMLElement | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleUseItem = useCallback(
+    async (item: ImageLibraryItem) => {
+      const returnPath =
+        typeof location.state === "object" &&
+        location.state &&
+        "returnPath" in location.state &&
+        typeof (location.state as { returnPath?: unknown }).returnPath === "string"
+          ? (location.state as { returnPath: string }).returnPath
+          : null;
+
+      if (!returnPath) {
+        navigate("/library", { replace: true });
+        return;
+      }
+
+      const payload: AvatarLibrarySelectionPayload = {
+        filePath: item.filePath,
+      };
+      sessionStorage.setItem(buildAvatarLibrarySelectionKey(returnPath), JSON.stringify(payload));
+      navigate(-1);
+    },
+    [location.state, navigate],
+  );
+
+  return (
+    <div className="flex h-full flex-col text-fg/85">
+      <main ref={mainRef} className="flex-1 overflow-y-auto px-4 pb-24 pt-4">
+        <ImageLibraryPanel scrollContainerRef={mainRef} mode="picker" onUseItem={handleUseItem} />
+      </main>
+    </div>
   );
 }
 

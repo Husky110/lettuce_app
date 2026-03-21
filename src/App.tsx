@@ -56,6 +56,7 @@ import ChatTemplateListPage from "./ui/pages/characters/ChatTemplateListPage";
 import ChatTemplateEditorPage from "./ui/pages/characters/ChatTemplateEditorPage";
 import { SearchPage } from "./ui/pages/search";
 import { LibraryPage } from "./ui/pages/library/LibraryPage";
+import { AvatarLibraryPickerPage } from "./ui/pages/library/ImageLibraryPage";
 import { StandaloneLorebookEditor } from "./ui/pages/library/StandaloneLorebookEditor";
 import { SyncPage } from "./ui/pages/sync/SyncPage";
 import {
@@ -272,6 +273,7 @@ function AppContent() {
   const isChatDetailRoute =
     location.pathname.startsWith("/chat/") || isGroupChatDetailRoute || isEngineChatRoute;
   const isSearchRoute = location.pathname === "/search";
+  const isAvatarLibraryPickerRoute = location.pathname === "/library/images/pick";
   const isOnboardingRoute = useMemo(
     () =>
       location.pathname.startsWith("/welcome") ||
@@ -316,6 +318,7 @@ function AppContent() {
     !isChatDetailRoute &&
     !isCreateRoute &&
     !isSearchRoute &&
+    !isAvatarLibraryPickerRoute &&
     !isLorebookEditorRoute &&
     !isDiscoveryRoute;
 
@@ -574,7 +577,12 @@ function AppContent() {
           isChatDetailRoute ? "max-w-full" : "max-w-md lg:max-w-none"
         } flex-col ${showBottomNav ? "pb-[calc(72px+env(safe-area-inset-bottom))]" : "pb-0"}`}
       >
-        {showTopNav && <TopNav currentPath={location.pathname + location.search} />}
+        {showTopNav && (
+          <TopNav
+            currentPath={location.pathname + location.search}
+            titleOverride={isAvatarLibraryPickerRoute ? "Select from library" : undefined}
+          />
+        )}
 
         <main
           ref={mainRef}
@@ -656,6 +664,7 @@ function AppContent() {
               <Route path="/discover/browse" element={<DiscoveryBrowsePage />} />
               <Route path="/discover/card/:path" element={<DiscoveryCardDetailPage />} />
               <Route path="/library" element={<LibraryPage />} />
+              <Route path="/library/images/pick" element={<AvatarLibraryPickerPage />} />
               <Route
                 path="/library/images"
                 element={<Navigate to="/library?view=images" replace />}

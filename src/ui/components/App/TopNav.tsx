@@ -121,6 +121,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
       { match: (p) => p.startsWith("/onboarding"), titleKey: "common.nav.setup" },
       { match: (p) => p.startsWith("/welcome"), titleKey: "common.nav.welcome" },
       { match: (p) => p.startsWith("/chat/"), titleKey: "common.nav.conversation" },
+      { match: (p) => p === "/library/images/pick", titleKey: "common.nav.library" },
       { match: (p) => p === "/library", titleKey: "common.nav.library" },
       { match: (p) => p === "/group-chats", titleKey: "common.nav.groupChats" },
       { match: (p) => p.startsWith("/group-chats/"), titleKey: "common.nav.groupChat" },
@@ -134,6 +135,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
     if (onBackOverride) return true;
     if (basePath.startsWith("/settings/") || basePath === "/settings") return true;
     if (basePath.startsWith("/create/")) return true;
+    if (basePath.startsWith("/library/")) return true;
     if (basePath.startsWith("/library/lorebooks")) return true;
     if (basePath === "/group-chats/new") return true;
     return false;

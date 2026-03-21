@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Camera } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { cn, radius, interactive } from "../../design-tokens";
 import { resolveAvatarGenerationOptions } from "../../../core/image-generation";
+import { convertFilePathToDataUrl } from "../../../core/storage/images";
 import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
 import type { AvatarCrop } from "../../../core/storage/schemas";
 import { AvatarImage } from "../AvatarImage";
@@ -10,6 +12,10 @@ import { AvatarSourceMenu } from "./AvatarSourceMenu";
 import { AvatarCurrentEditMenu } from "./AvatarCurrentEditMenu";
 import { AvatarGenerationSheet } from "./AvatarGenerationSheet";
 import { AvatarPositionModal } from "./AvatarPositionModal";
+import {
+  buildAvatarLibrarySelectionKey,
+  type AvatarLibrarySelectionPayload,
+} from "./librarySelection";
 
 export { AvatarSourceMenu, AvatarCurrentEditMenu, AvatarGenerationSheet, AvatarPositionModal };
 
@@ -42,6 +48,8 @@ export function AvatarPicker({
   placeholder,
   size = "lg",
 }: AvatarPickerProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [showMenu, setShowMenu] = useState(false);
   const [showEditCurrentMenu, setShowEditCurrentMenu] = useState(false);
   const [showGenerationSheet, setShowGenerationSheet] = useState(false);
@@ -52,6 +60,7 @@ export function AvatarPicker({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const returnPath = `${location.pathname}${location.search}`;
 
   useEffect(() => {
     const loadAvailability = async () => {
@@ -82,6 +91,14 @@ export function AvatarPicker({
   const handleChooseImage = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  const handleChooseFromLibrary = useCallback(() => {
+    navigate("/library/images/pick", {
+      state: {
+        returnPath,
+      },
+    });
+  }, [navigate, returnPath]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,6 +153,42 @@ export function AvatarPicker({
     setShowPositionModal(false);
     setPendingImageSrc(null);
   }, []);
+
+  useEffect(() => {
+    const storageKey = buildAvatarLibrarySelectionKey(returnPath);
+    const rawSelection = sessionStorage.getItem(storageKey);
+    if (!rawSelection) {
+      return;
+    }
+
+    sessionStorage.removeItem(storageKey);
+
+    let parsed: AvatarLibrarySelectionPayload | null = null;
+    try {
+      parsed = JSON.parse(rawSelection) as AvatarLibrarySelectionPayload;
+    } catch (error) {
+      console.error("Failed to parse avatar library selection:", error);
+      return;
+    }
+
+    if (!parsed?.filePath) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const dataUrl = await convertFilePathToDataUrl(parsed.filePath);
+      if (!dataUrl || cancelled) {
+        return;
+      }
+      setPendingImageSrc(dataUrl);
+      setShowPositionModal(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [returnPath]);
 
   return (
     <div className="relative inline-block">
@@ -205,6 +258,7 @@ export function AvatarPicker({
           setGenerationMode("create");
           setShowGenerationSheet(true);
         }}
+        onChooseFromLibrary={handleChooseFromLibrary}
         onChooseImage={handleChooseImage}
         onEditCurrent={handleEditCurrent}
         hasImageGenerationModels={hasImageGenModels}
