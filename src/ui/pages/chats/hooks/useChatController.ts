@@ -99,6 +99,7 @@ export function useChatController(
   const { sessionId } = options;
 
   const messagesRef = useRef<StoredMessage[]>([]);
+  const abortedRequestIdsRef = useRef<Set<string>>(new Set());
   const hasMoreMessagesBeforeRef = useRef<boolean>(true);
   const loadingOlderRef = useRef<boolean>(false);
   const sessionOperationRef = useRef<boolean>(false);
@@ -122,6 +123,7 @@ export function useChatController(
     state,
     dispatch,
     messagesRef,
+    abortedRequestIdsRef,
     sessionOperationRef,
     log,
     persistSession,
@@ -172,6 +174,7 @@ export function useChatController(
   });
   const { handleAbort } = useChatAbortController({
     context: controllerContext,
+    reloadSessionStateFromStorage,
   });
 
   useEffect(() => {

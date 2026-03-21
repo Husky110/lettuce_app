@@ -34,7 +34,7 @@ interface UseChatEnhancementsControllerArgs {
 }
 
 export function useChatEnhancementsController({ context }: UseChatEnhancementsControllerArgs) {
-  const { state, dispatch, messagesRef, persistSession } = context;
+  const { state, dispatch, messagesRef, abortedRequestIdsRef, persistSession } = context;
   const longPressTimerRef = useRef<number | null>(null);
   const processedImageDirectiveMessagesRef = useRef<Set<string>>(new Set());
   const imageGenConfigRef = useRef<ImageGenConfig | null>(null);
@@ -218,9 +218,17 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
   }, []);
 
   const runInChatImageGeneration = useCallback(
-    async (assistantMessageId: string, options?: { scenePrompt?: string | null }) => {
+    async (
+      assistantMessageId: string,
+      options?: { scenePrompt?: string | null; requestId?: string | null },
+    ) => {
       if (!state.session || !state.character) return;
+      const currentSession = state.session;
+      const currentCharacter = state.character;
       if (processedImageDirectiveMessagesRef.current.has(assistantMessageId)) return;
+      const originatingRequestId = options?.requestId?.trim() ?? null;
+      const requestWasAborted = () =>
+        Boolean(originatingRequestId && abortedRequestIdsRef.current.has(originatingRequestId));
 
       const currentMessage = messagesRef.current.find(
         (message) => message.id === assistantMessageId,
@@ -237,6 +245,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       const runnableDirectives = config ? directives : [];
 
       if (runnableDirectives.length === 0 && !scenePrompt) return;
+      if (requestWasAborted()) return;
 
       processedImageDirectiveMessagesRef.current.add(assistantMessageId);
 
@@ -267,6 +276,48 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
         placeholderAttachments.push(scenePlaceholder);
       }
 
+      const cleanupPlaceholderAttachments = async (placeholderIds: Iterable<string>) => {
+        const ids = new Set(Array.from(placeholderIds));
+        if (ids.size === 0) return;
+
+        const latestMessage = messagesRef.current.find(
+          (message) => message.id === assistantMessageId,
+        );
+        if (!latestMessage) return;
+
+        const cleanedMessage: StoredMessage = {
+          ...latestMessage,
+          attachments: (latestMessage.attachments ?? []).filter(
+            (attachment) => !ids.has(attachment.id),
+          ),
+        };
+
+        const nextMessages = messagesRef.current.map((message) =>
+          message.id === cleanedMessage.id ? cleanedMessage : message,
+        );
+        messagesRef.current = nextMessages;
+
+        const nextSession: Session = {
+          ...currentSession,
+          messages: nextMessages,
+          updatedAt: Date.now(),
+        };
+
+        dispatch({
+          type: "BATCH",
+          actions: [
+            { type: "SET_MESSAGES", payload: nextMessages },
+            { type: "SET_SESSION", payload: nextSession },
+          ],
+        });
+
+        try {
+          await persistSession(nextSession);
+        } catch {
+          // keep in-memory cleanup if persistence fails
+        }
+      };
+
       const updatedMessage: StoredMessage = {
         ...currentMessage,
         content: cleanContent,
@@ -279,7 +330,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       messagesRef.current = updatedMessages;
 
       const updatedSession: Session = {
-        ...state.session,
+        ...currentSession,
         messages: updatedMessages,
         updatedAt: Date.now(),
       };
@@ -298,6 +349,13 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
         // allow generation to continue even if placeholder persistence fails
       }
 
+      if (requestWasAborted()) {
+        await cleanupPlaceholderAttachments(
+          placeholderAttachments.map((attachment) => attachment.id),
+        );
+        return;
+      }
+
       for (
         let directiveIndex = 0, placeholderIndex = 0;
         directiveIndex < runnableDirectives.length;
@@ -310,6 +368,15 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
           placeholderIndex + count,
         );
         placeholderIndex += count;
+
+        if (requestWasAborted()) {
+          await cleanupPlaceholderAttachments(
+            placeholderAttachments
+              .slice(placeholderIndex - count)
+              .map((attachment) => attachment.id),
+          );
+          return;
+        }
 
         const request: ImageGenerationRequest = {
           prompt: directive.prompt,
@@ -324,6 +391,14 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
 
         try {
           const response = await generateImage(request);
+          if (requestWasAborted()) {
+            await cleanupPlaceholderAttachments(
+              placeholderAttachments
+                .slice(placeholderIndex - count)
+                .map((attachment) => attachment.id),
+            );
+            return;
+          }
           const images = response.images.slice(0, placeholdersForDirective.length);
 
           for (let index = 0; index < images.length; index++) {
@@ -334,8 +409,8 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
             const info = await imageInfoFromDataUrl(dataUrl);
 
             const updated = await addChatMessageAttachment({
-              sessionId: state.session.id,
-              characterId: state.character.id,
+              sessionId: currentSession.id,
+              characterId: currentCharacter.id,
               messageId: assistantMessageId,
               role: "assistant",
               attachmentId: placeholderId,
@@ -374,7 +449,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
           messagesRef.current = nextMessages;
 
           const nextSession: Session = {
-            ...state.session,
+            ...currentSession,
             messages: nextMessages,
             updatedAt: Date.now(),
           };
@@ -396,9 +471,13 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       }
 
       if (scenePrompt && scenePlaceholder) {
+        if (requestWasAborted()) {
+          await cleanupPlaceholderAttachments([scenePlaceholder.id]);
+          return;
+        }
         try {
           const updated = await generateSceneImageForMessage({
-            sessionId: state.session.id,
+            sessionId: currentSession.id,
             messageId: assistantMessageId,
             attachmentId: scenePlaceholder.id,
             scenePrompt,
@@ -426,7 +505,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
             messagesRef.current = nextMessages;
 
             const nextSession: Session = {
-              ...state.session,
+              ...currentSession,
               messages: nextMessages,
               updatedAt: Date.now(),
             };
@@ -451,6 +530,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       }
     },
     [
+      abortedRequestIdsRef,
       dataUrlFromGeneratedImage,
       dispatch,
       getErrorMessage,

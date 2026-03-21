@@ -15,6 +15,7 @@ export interface ChatControllerModuleContext {
   state: ChatState;
   dispatch: Dispatch<ChatAction>;
   messagesRef: MutableRefObject<StoredMessage[]>;
+  abortedRequestIdsRef: MutableRefObject<Set<string>>;
   sessionOperationRef: MutableRefObject<boolean>;
   log: LoggerLike;
   persistSession: (session: Session) => Promise<void>;

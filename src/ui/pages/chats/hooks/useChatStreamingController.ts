@@ -110,7 +110,7 @@ interface UseChatStreamingControllerArgs {
   context: ChatControllerPagingContext;
   runInChatImageGeneration: (
     assistantMessageId: string,
-    options?: { scenePrompt?: string | null },
+    options?: { scenePrompt?: string | null; requestId?: string | null },
   ) => Promise<void> | void;
   reloadSessionStateFromStorage: (sessionId: string) => Promise<void>;
   triggerTypingHaptic: () => Promise<void>;
@@ -122,7 +122,14 @@ export function useChatStreamingController({
   reloadSessionStateFromStorage,
   triggerTypingHaptic,
 }: UseChatStreamingControllerArgs) {
-  const { state, dispatch, messagesRef, hasMoreMessagesBeforeRef, persistSession } = context;
+  const {
+    state,
+    dispatch,
+    messagesRef,
+    abortedRequestIdsRef,
+    hasMoreMessagesBeforeRef,
+    persistSession,
+  } = context;
 
   const requestOwnsSession = useCallback((sessionId: string, requestId: string) => {
     return getLiveChatState(sessionId)?.activeRequestId === requestId;
@@ -137,6 +144,7 @@ export function useChatStreamingController({
       if (!state.session || !state.character) return;
       const currentSessionId = state.session.id;
       const requestId = crypto.randomUUID();
+      abortedRequestIdsRef.current.delete(requestId);
       const messageAttachments = attachments ?? state.pendingAttachments;
       const userPlaceholder = createPlaceholderMessage("user", message, messageAttachments);
       const assistantPlaceholder = createPlaceholderMessage("assistant", "");
@@ -308,7 +316,7 @@ export function useChatStreamingController({
           }
         }
 
-        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt });
+        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt, requestId });
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         console.error("ChatStreamingController: send failed", err);
@@ -389,6 +397,7 @@ export function useChatStreamingController({
     },
     [
       dispatch,
+      abortedRequestIdsRef,
       messagesRef,
       persistSession,
       requestOwnsSession,
@@ -404,6 +413,7 @@ export function useChatStreamingController({
       if (!state.session || !state.character) return;
       const currentSessionId = state.session.id;
       const requestId = crypto.randomUUID();
+      abortedRequestIdsRef.current.delete(requestId);
       const assistantPlaceholder = createPlaceholderMessage("assistant", "");
       const optimisticMessages = [...state.messages, assistantPlaceholder];
 
@@ -566,7 +576,7 @@ export function useChatStreamingController({
           }
         }
 
-        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt });
+        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt, requestId });
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         console.error("ChatStreamingController: continue failed", err);
@@ -645,6 +655,7 @@ export function useChatStreamingController({
     },
     [
       dispatch,
+      abortedRequestIdsRef,
       messagesRef,
       persistSession,
       requestOwnsSession,
@@ -677,6 +688,7 @@ export function useChatStreamingController({
       }
 
       const requestId = crypto.randomUUID();
+      abortedRequestIdsRef.current.delete(requestId);
       let unlistenNormalized: UnlistenFn | null = null;
       const regeneratingMessages = state.messages.map((candidate) =>
         candidate.id === message.id
@@ -839,7 +851,7 @@ export function useChatStreamingController({
           }
         }
 
-        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt });
+        void runInChatImageGeneration(finalAssistantMessage.id, { scenePrompt, requestId });
 
         if (state.messageAction?.message.id === message.id) {
           dispatch({
@@ -942,6 +954,7 @@ export function useChatStreamingController({
     },
     [
       dispatch,
+      abortedRequestIdsRef,
       hasMoreMessagesBeforeRef,
       isStartingSceneMessage,
       messagesRef,
