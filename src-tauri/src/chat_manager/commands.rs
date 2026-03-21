@@ -7,7 +7,7 @@ use uuid::Uuid;
 use rusqlite::{params, OptionalExtension};
 
 use crate::api::{api_request, ApiRequest, ApiResponse};
-use crate::chat_manager::storage::{get_base_prompt, PromptType};
+use crate::chat_manager::storage::{get_base_prompt, get_base_prompt_entries, PromptType};
 use crate::dynamic_memory_run_manager::{DynamicMemoryCancellationToken, DynamicMemoryRunManager};
 use crate::embedding_model;
 use crate::image_generator::types::ImageGenerationRequest;
@@ -6754,9 +6754,10 @@ enum SceneReferenceSource {
 }
 
 struct SceneReferenceImages {
-    images: Vec<String>,
+    character_images: Vec<String>,
     character_reference_count: usize,
     character_reference_source: SceneReferenceSource,
+    persona_images: Vec<String>,
     persona_reference_count: usize,
     persona_reference_source: SceneReferenceSource,
 }
@@ -6779,26 +6780,32 @@ fn build_scene_reference_images(
     character: &Character,
     persona: Option<&Persona>,
 ) -> SceneReferenceImages {
-    let mut images = Vec::new();
     let character_design_images =
         resolve_design_reference_images(app, &character.design_reference_image_ids);
-    let (character_reference_count, character_reference_source) =
+    let (character_images, character_reference_count, character_reference_source) =
         if !character_design_images.is_empty() {
             let count = character_design_images.len();
-            images.extend(character_design_images);
-            (count, SceneReferenceSource::DesignImages)
+            (
+                character_design_images,
+                count,
+                SceneReferenceSource::DesignImages,
+            )
         } else if let Some(character_image) = resolve_avatar_reference_data(
             app,
             "character",
             &character.id,
             character.avatar_path.as_deref(),
         ) {
-            images.push(character_image);
-            (1, SceneReferenceSource::AvatarFallback)
+            (
+                vec![character_image],
+                1,
+                SceneReferenceSource::AvatarFallback,
+            )
         } else {
-            (0, SceneReferenceSource::None)
+            (Vec::new(), 0, SceneReferenceSource::None)
         };
 
+    let mut persona_images = Vec::new();
     let mut persona_reference_count = 0;
     let mut persona_reference_source = SceneReferenceSource::None;
     if let Some(persona) = persona {
@@ -6807,23 +6814,24 @@ fn build_scene_reference_images(
         if !persona_design_images.is_empty() {
             persona_reference_count = persona_design_images.len();
             persona_reference_source = SceneReferenceSource::DesignImages;
-            images.extend(persona_design_images);
+            persona_images = persona_design_images;
         } else if let Some(persona_image) = resolve_avatar_reference_data(
             app,
             "persona",
             &persona.id,
             persona.avatar_path.as_deref(),
         ) {
-            images.push(persona_image);
+            persona_images.push(persona_image);
             persona_reference_count = 1;
             persona_reference_source = SceneReferenceSource::AvatarFallback;
         }
     }
 
     SceneReferenceImages {
-        images,
+        character_images,
         character_reference_count,
         character_reference_source,
+        persona_images,
         persona_reference_count,
         persona_reference_source,
     }
@@ -6873,8 +6881,77 @@ fn build_scene_prompt_reference_hint(
     }
 }
 
-fn build_scene_generation_system_prompt() -> String {
-    "Write exactly one polished image-generation prompt from the user's scene context. Do not explain your reasoning and do not wrap the result in tags, quotes, or code fences.".to_string()
+fn build_scene_prompt_reference_text(
+    entity_name: &str,
+    design_description: Option<&str>,
+    reference_count: usize,
+    reference_source: SceneReferenceSource,
+) -> String {
+    let mut sections = Vec::new();
+
+    if let Some(description) = design_description
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        sections.push(format!(
+            "# {} Reference Notes\n{}",
+            entity_name, description
+        ));
+    }
+
+    let reference_hint =
+        build_scene_prompt_reference_hint(entity_name, reference_count, reference_source);
+    if !reference_hint.is_empty() {
+        sections.push(reference_hint);
+    }
+
+    sections.join("\n\n")
+}
+
+fn build_scene_prompt_image_parts(images: &[String]) -> Vec<Value> {
+    images
+        .iter()
+        .filter(|image| !image.trim().is_empty())
+        .map(|image| {
+            json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": image,
+                    "detail": "auto"
+                }
+            })
+        })
+        .collect()
+}
+
+fn build_scene_prompt_content_with_images(
+    content: &str,
+    reference_images: &SceneReferenceImages,
+) -> Option<Value> {
+    const CHARACTER_TOKEN: &str = "{{image[character]}}";
+    const PERSONA_TOKEN: &str = "{{image[persona]}}";
+
+    if !content.contains(CHARACTER_TOKEN) && !content.contains(PERSONA_TOKEN) {
+        return None;
+    }
+
+    let mut parts: Vec<Value> = Vec::new();
+    if content.contains(CHARACTER_TOKEN) {
+        parts.extend(build_scene_prompt_image_parts(
+            &reference_images.character_images,
+        ));
+    }
+    if content.contains(PERSONA_TOKEN) {
+        parts.extend(build_scene_prompt_image_parts(
+            &reference_images.persona_images,
+        ));
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(Value::Array(parts))
+    }
 }
 
 fn build_scene_generation_request(
@@ -6886,13 +6963,16 @@ fn build_scene_generation_request(
     reference_images: SceneReferenceImages,
 ) -> ImageGenerationRequest {
     let SceneReferenceImages {
-        images: input_images,
+        character_images,
         character_reference_count,
         character_reference_source,
+        persona_images,
         persona_reference_count,
         persona_reference_source,
     } = reference_images;
     let mut prompt_sections = Vec::new();
+    let mut input_images = character_images.clone();
+    input_images.extend(persona_images.clone());
     let has_character_reference = character_reference_count > 0;
     let has_persona_reference = persona_reference_count > 0;
 
@@ -7084,13 +7164,13 @@ fn condense_prompt_whitespace(input: String) -> String {
     output.trim().to_string()
 }
 
-fn render_scene_generation_prompt(
-    app: &AppHandle,
+fn render_scene_generation_prompt_content(
+    template_content: &str,
     character: &Character,
     persona: Option<&Persona>,
     recent_messages_text: &str,
 ) -> String {
-    let mut prompt = prompts::get_scene_generation_prompt(app);
+    let mut prompt = template_content.to_string();
     let char_name = character.name.as_str();
     let mut char_desc_parts = Vec::new();
     if let Some(value) = character
@@ -7128,8 +7208,9 @@ fn render_scene_generation_prompt(
         persona_desc_parts.push(format!("Visual design notes: {}", value));
     }
     let persona_desc = persona_desc_parts.join("\n\n");
-    let character_reference_hint = build_scene_prompt_reference_hint(
+    let character_reference_text = build_scene_prompt_reference_text(
         char_name,
+        character.design_description.as_deref(),
         character.design_reference_image_ids.len(),
         if !character.design_reference_image_ids.is_empty() {
             SceneReferenceSource::DesignImages
@@ -7139,9 +7220,10 @@ fn render_scene_generation_prompt(
             SceneReferenceSource::None
         },
     );
-    let persona_reference_hint = if let Some(persona) = persona {
-        build_scene_prompt_reference_hint(
+    let persona_reference_text = if let Some(persona) = persona {
+        build_scene_prompt_reference_text(
             &persona_scene_name(Some(persona)),
+            persona.design_description.as_deref(),
             persona.design_reference_image_ids.len(),
             if !persona.design_reference_image_ids.is_empty() {
                 SceneReferenceSource::DesignImages
@@ -7154,7 +7236,6 @@ fn render_scene_generation_prompt(
     } else {
         String::new()
     };
-
     prompt = prompt.replace("{{char.name}}", char_name);
     prompt = prompt.replace("{{char}}", char_name);
     prompt = prompt.replace("{{user}}", persona_name);
@@ -7175,10 +7256,204 @@ fn render_scene_generation_prompt(
         )
     };
     prompt = prompt.replace("{{scene_request}}", &scene_request);
-    prompt = prompt.replace("{{image[character]}}", &character_reference_hint);
-    prompt = prompt.replace("{{image[persona]}}", &persona_reference_hint);
+    prompt = prompt.replace("{{reference[character]}}", &character_reference_text);
+    prompt = prompt.replace("{{reference[persona]}}", &persona_reference_text);
 
     condense_prompt_whitespace(prompt)
+}
+
+fn condense_scene_generation_entries(entries: Vec<SystemPromptEntry>) -> Vec<SystemPromptEntry> {
+    let merged = entries
+        .into_iter()
+        .filter_map(|entry| {
+            let trimmed = entry.content.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    if merged.trim().is_empty() {
+        return Vec::new();
+    }
+
+    vec![SystemPromptEntry {
+        id: "scene_gen_condensed_system".to_string(),
+        name: "Condensed Scene Generation Prompt".to_string(),
+        role: super::types::PromptEntryRole::System,
+        content: merged,
+        enabled: true,
+        injection_position: PromptEntryPosition::Relative,
+        injection_depth: 0,
+        conditional_min_messages: None,
+        interval_turns: None,
+        system_prompt: true,
+    }]
+}
+
+fn load_scene_generation_prompt_entries(app: &AppHandle) -> (Vec<SystemPromptEntry>, bool) {
+    match prompts::get_template(app, prompts::APP_SCENE_GENERATION_TEMPLATE_ID) {
+        Ok(Some(template)) => {
+            if !template.entries.is_empty() {
+                (template.entries, template.condense_prompt_entries)
+            } else if !template.content.trim().is_empty() {
+                (
+                    vec![SystemPromptEntry {
+                        id: "scene_gen_single_entry".to_string(),
+                        name: "Scene Generation Prompt".to_string(),
+                        role: super::types::PromptEntryRole::System,
+                        content: template.content,
+                        enabled: true,
+                        injection_position: PromptEntryPosition::Relative,
+                        injection_depth: 0,
+                        conditional_min_messages: None,
+                        interval_turns: None,
+                        system_prompt: true,
+                    }],
+                    template.condense_prompt_entries,
+                )
+            } else {
+                (
+                    get_base_prompt_entries(PromptType::SceneGenerationPrompt),
+                    false,
+                )
+            }
+        }
+        _ => (
+            get_base_prompt_entries(PromptType::SceneGenerationPrompt),
+            false,
+        ),
+    }
+}
+
+fn render_scene_generation_prompt_entries(
+    app: &AppHandle,
+    character: &Character,
+    persona: Option<&Persona>,
+    recent_messages_text: &str,
+) -> Vec<SystemPromptEntry> {
+    let (template_entries, condense_prompt_entries) = load_scene_generation_prompt_entries(app);
+    let mut rendered_entries = Vec::new();
+
+    for entry in template_entries {
+        if !entry.enabled && !entry.system_prompt {
+            continue;
+        }
+        let rendered = render_scene_generation_prompt_content(
+            &entry.content,
+            character,
+            persona,
+            recent_messages_text,
+        );
+        if rendered.trim().is_empty() {
+            continue;
+        }
+        let mut next_entry = entry.clone();
+        next_entry.content = rendered;
+        rendered_entries.push(next_entry);
+    }
+
+    if condense_prompt_entries {
+        condense_scene_generation_entries(rendered_entries)
+    } else {
+        rendered_entries
+    }
+}
+
+fn scene_prompt_entry_to_message(
+    entry: &SystemPromptEntry,
+    system_role: &str,
+    reference_images: &SceneReferenceImages,
+    character: &Character,
+    persona: Option<&Persona>,
+) -> Option<Value> {
+    if let Some(content) = build_scene_prompt_content_with_images(&entry.content, reference_images)
+    {
+        return Some(json!({ "role": "user", "content": content }));
+    }
+
+    let role = match entry.role {
+        super::types::PromptEntryRole::System => system_role,
+        super::types::PromptEntryRole::User => "user",
+        super::types::PromptEntryRole::Assistant => "assistant",
+    };
+
+    let content = if role == system_role {
+        Value::String(content_with_scene_image_hints(
+            &entry.content,
+            reference_images,
+            character,
+            persona,
+        ))
+    } else {
+        Value::String(entry.content.clone())
+    };
+
+    Some(json!({ "role": role, "content": content }))
+}
+
+fn content_with_scene_image_hints(
+    content: &str,
+    reference_images: &SceneReferenceImages,
+    character: &Character,
+    persona: Option<&Persona>,
+) -> String {
+    content
+        .replace(
+            "{{image[character]}}",
+            &build_scene_prompt_reference_hint(
+                character.name.as_str(),
+                reference_images.character_reference_count,
+                reference_images.character_reference_source,
+            ),
+        )
+        .replace(
+            "{{image[persona]}}",
+            &build_scene_prompt_reference_hint(
+                &persona_scene_name(persona),
+                reference_images.persona_reference_count,
+                reference_images.persona_reference_source,
+            ),
+        )
+}
+
+fn insert_scene_in_chat_prompt_entries(
+    messages: &mut Vec<Value>,
+    system_role: &str,
+    entries: &[SystemPromptEntry],
+    reference_images: &SceneReferenceImages,
+    character: &Character,
+    persona: Option<&Persona>,
+) {
+    if entries.is_empty() {
+        return;
+    }
+    let base_len = messages.len();
+    let turn_count = base_len;
+    let mut inserts: Vec<(usize, usize, &SystemPromptEntry)> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, entry)| {
+            if !should_insert_in_chat_prompt_entry(entry, turn_count) {
+                return None;
+            }
+            let depth = entry.injection_depth as usize;
+            let pos = base_len.saturating_sub(depth);
+            Some((pos, idx, entry))
+        })
+        .collect();
+    inserts.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    for (offset, (pos, _, entry)) in inserts.into_iter().enumerate() {
+        let insert_at = (pos + offset).min(messages.len());
+        if let Some(message) =
+            scene_prompt_entry_to_message(entry, system_role, reference_images, character, persona)
+        {
+            messages.insert(insert_at, message);
+        }
+    }
 }
 
 #[tauri::command]
@@ -7426,14 +7701,28 @@ pub async fn chat_generate_scene_prompt(
     let api_key = resolve_api_key(&app, provider_cred, "scene_prompt")?;
 
     let recent_messages_text = build_scene_prompt_context_messages(&session, &message_id)?;
-    let system_prompt = build_scene_generation_system_prompt();
-    let user_prompt =
-        render_scene_generation_prompt(&app, &character, persona, &recent_messages_text);
+    let reference_images = build_scene_reference_images(&app, &character, persona);
+    let prompt_entries =
+        render_scene_generation_prompt_entries(&app, &character, persona, &recent_messages_text);
+    if prompt_entries.is_empty() {
+        return Err("Scene generation prompt template rendered no usable entries".to_string());
+    }
 
-    let messages_for_api: Vec<Value> = vec![
-        json!({ "role": "system", "content": system_prompt }),
-        json!({ "role": "user", "content": user_prompt }),
-    ];
+    let (relative_entries, in_chat_entries) = partition_prompt_entries(prompt_entries);
+    let mut messages_for_api: Vec<Value> = relative_entries
+        .iter()
+        .filter_map(|entry| {
+            scene_prompt_entry_to_message(entry, "system", &reference_images, &character, persona)
+        })
+        .collect();
+    insert_scene_in_chat_prompt_entries(
+        &mut messages_for_api,
+        "system",
+        &in_chat_entries,
+        &reference_images,
+        &character,
+        persona,
+    );
 
     let context_length = resolve_context_length(&session, model, settings);
     let extra_body_fields = if provider_cred.provider_id == "llamacpp" {

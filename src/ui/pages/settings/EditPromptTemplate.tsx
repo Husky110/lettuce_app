@@ -146,9 +146,19 @@ const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
       desc: "Injected image block for the character avatar reference",
     },
     {
+      var: "{{reference[character]}}",
+      label: "Character Reference Text",
+      desc: "Rendered text notes for the character design references",
+    },
+    {
       var: "{{image[persona]}}",
       label: "Persona Reference Image",
       desc: "Injected image block for the persona avatar reference",
+    },
+    {
+      var: "{{reference[persona]}}",
+      label: "Persona Reference Text",
+      desc: "Rendered text notes for the persona design references",
     },
     {
       var: "{{recent_messages}}",

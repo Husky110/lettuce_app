@@ -130,6 +130,56 @@ fn append_missing_entry(
     Ok(())
 }
 
+fn migrate_legacy_scene_generation_entry_roles(app: &AppHandle) -> Result<(), String> {
+    let Some(template) = get_template(app, APP_SCENE_GENERATION_TEMPLATE_ID)? else {
+        return Ok(());
+    };
+    if template.entries.is_empty() {
+        return Ok(());
+    }
+
+    let mut changed = false;
+    let mut next_entries = template.entries.clone();
+    for entry in next_entries.iter_mut() {
+        let is_scene_user_payload = matches!(
+            entry.id.as_str(),
+            "scene_gen_context"
+                | "scene_gen_character_image"
+                | "scene_gen_persona_image"
+                | "scene_gen_request"
+        );
+        let looks_like_legacy_default = matches!(entry.role, PromptEntryRole::System)
+            && matches!(entry.injection_position, PromptEntryPosition::Relative);
+
+        if is_scene_user_payload && looks_like_legacy_default {
+            entry.role = PromptEntryRole::User;
+            entry.injection_position = PromptEntryPosition::InChat;
+            entry.injection_depth = 0;
+            entry.conditional_min_messages = None;
+            entry.interval_turns = None;
+            changed = true;
+        }
+    }
+
+    if !changed {
+        return Ok(());
+    }
+
+    let content = template_entries_to_content(&next_entries);
+    let _ = update_template(
+        app,
+        APP_SCENE_GENERATION_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        None,
+        Some(content),
+        Some(next_entries),
+        Some(template.condense_prompt_entries),
+    )?;
+
+    Ok(())
+}
+
 /// Get required variables for a specific template ID
 pub fn get_required_variables(template_id: &str) -> Vec<String> {
     match template_id {
@@ -757,6 +807,32 @@ pub fn ensure_scene_generation_template(app: &AppHandle) -> Result<(), String> {
             PromptType::SceneGenerationPrompt,
             get_base_prompt_entries(PromptType::SceneGenerationPrompt),
         );
+        let scene_entries = get_base_prompt_entries(PromptType::SceneGenerationPrompt);
+        if let Some(entry) = scene_entries
+            .iter()
+            .find(|entry| entry.id == "scene_gen_character_reference")
+            .cloned()
+        {
+            let _ = append_missing_entry(
+                app,
+                APP_SCENE_GENERATION_TEMPLATE_ID,
+                "scene_gen_character_reference",
+                entry,
+            );
+        }
+        if let Some(entry) = scene_entries
+            .iter()
+            .find(|entry| entry.id == "scene_gen_persona_reference")
+            .cloned()
+        {
+            let _ = append_missing_entry(
+                app,
+                APP_SCENE_GENERATION_TEMPLATE_ID,
+                "scene_gen_persona_reference",
+                entry,
+            );
+        }
+        let _ = migrate_legacy_scene_generation_entry_roles(app);
     }
 
     Ok(())
@@ -863,20 +939,6 @@ pub fn get_help_me_reply_prompt(app: &AppHandle, style: &str) -> String {
             }
         }
         _ => get_base_prompt(prompt_type),
-    }
-}
-
-pub fn get_scene_generation_prompt(app: &AppHandle) -> String {
-    match get_template(app, APP_SCENE_GENERATION_TEMPLATE_ID) {
-        Ok(Some(template)) => {
-            let merged = template_entries_to_content(&template.entries);
-            if merged.is_empty() {
-                template.content
-            } else {
-                merged
-            }
-        }
-        _ => get_base_prompt(PromptType::SceneGenerationPrompt),
     }
 }
 
