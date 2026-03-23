@@ -1,4 +1,6 @@
-name: iOS Build (Tauri)
+name: Build / Release / iOS
+
+run-name: iOS release build by @${{ github.actor }}
 
 on:
   workflow_dispatch:

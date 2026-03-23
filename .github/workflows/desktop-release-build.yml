@@ -1,4 +1,6 @@
-name: Desktop Release Build (Tauri)
+name: Build / Release / Desktop
+
+run-name: Desktop release build by @${{ github.actor }}
 
 on:
   workflow_dispatch:

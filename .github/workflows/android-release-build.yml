@@ -1,12 +1,12 @@
-name: Build / Dev / Android
+name: Build / Release / Android
 
-run-name: Android dev build by @${{ github.actor }}
+run-name: Android release build by @${{ github.actor }}
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: android-build-${{ github.ref }}
+  group: android-release-build-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -34,19 +34,19 @@ jobs:
         id: meta
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="android-dev-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
-          NAME="Android Dev Build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT} (${SHORT_SHA})"
+          TAG="android-release-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
+          NAME="Android Release Build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT} (${SHORT_SHA})"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Build release body (include commits since last Android build)
+      - name: Build release body (include commits since last Android release build)
         id: release_body
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
-          TAG_PREFIX="android-dev"
+          TAG_PREFIX="android-release"
           PREV_TAG=""
 
           print_commit_range() {
@@ -126,32 +126,32 @@ jobs:
           BODY_DELIM="BODY_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           {
             echo "body<<${BODY_DELIM}"
-            echo "Automated Android build artifacts for commit \`${GITHUB_SHA}\`."
+            echo "Automated Android release build artifacts for commit \`${GITHUB_SHA}\`."
             echo "Workflow run: ${REPO_URL}/actions/runs/${GITHUB_RUN_ID}"
             echo
 
             if [[ -n "$PREV_TAG" ]]; then
               PREV_SHA="$(git rev-list -n 1 "${PREV_TAG}")"
-              echo "### Changes since previous Android build \`${PREV_TAG}\`"
+              echo "### Changes since previous Android release build \`${PREV_TAG}\`"
               echo "Compare: ${REPO_URL}/compare/${PREV_TAG}...${GITHUB_SHA}"
               echo
 
               if git merge-base --is-ancestor "${PREV_SHA}" "${GITHUB_SHA}"; then
-                print_commit_range "${PREV_TAG}..${GITHUB_SHA}" "No new commits since the previous Android build."
+                print_commit_range "${PREV_TAG}..${GITHUB_SHA}" "No new commits since the previous Android release build."
               elif git merge-base --is-ancestor "${GITHUB_SHA}" "${PREV_SHA}"; then
-                echo "- This build is on an older commit than the previous Android build."
-                echo "- Commits in previous build but not this build:"
+                echo "- This build is on an older commit than the previous Android release build."
+                echo "- Commits in previous release build but not this build:"
                 print_commit_range "${GITHUB_SHA}..${PREV_TAG}" "No differing commits found."
               else
-                echo "- Current and previous Android builds are on different branches."
+                echo "- Current and previous Android release builds are on different branches."
                 echo "- Commits only in this build:"
                 print_commit_range "${PREV_TAG}..${GITHUB_SHA}" "No unique commits in this build."
-                echo "- Commits only in previous build:"
-                print_commit_range "${GITHUB_SHA}..${PREV_TAG}" "No unique commits in previous build."
+                echo "- Commits only in previous release build:"
+                print_commit_range "${GITHUB_SHA}..${PREV_TAG}" "No unique commits in previous release build."
               fi
             else
               echo "### Changes"
-              echo "- No previous successful Android build tag found."
+              echo "- No previous successful Android release build tag found."
             fi
             echo "${BODY_DELIM}"
           } >> "$GITHUB_OUTPUT"
@@ -162,7 +162,7 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: ${{ steps.meta.outputs.name }}
-          prerelease: true
+          prerelease: false
           generate_release_notes: false
           body: ${{ steps.release_body.outputs.body }}
 
@@ -248,19 +248,8 @@ jobs:
             sudo ln -sf "$TOOLCHAIN/llvm-ranlib" "/usr/local/bin/${triple}-ranlib"
           done
 
-      - name: Set Tauri config overrides
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          VERSION="0.1.${{ github.run_number }}-dev.$SHORT_SHA"
-          printf 'TAURI_CONFIG_OVERRIDE=%s\n' \
-            "{\"productName\":\"lettuceai-dev\",\"version\":\"$VERSION\"}" \
-            >> "$GITHUB_ENV"
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Apply Android overrides
-        run: node scripts/apply-android-overrides.mjs
 
       - name: Configure Android signing
         env:
@@ -286,18 +275,16 @@ jobs:
             echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Build Tauri Android app (Dev build)
+      - name: Build Tauri Android app (Release build)
         env:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
           ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          LETTUCE_ANDROID_APPLICATION_ID: dev.lettuceai.app
           RUST_BACKTRACE: 1
-          RUSTFLAGS: "--cfg DEV_BUILD"
         run: |
-          bun run tauri android build --ci --config "$TAURI_CONFIG_OVERRIDE" --apk
+          bun run tauri android build --ci --apk
 
       - name: Ensure signed APK output
         env:
