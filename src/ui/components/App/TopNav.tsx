@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   Grid3X3,
   Upload,
+  Eye,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { typography, interactive, cn } from "../../design-tokens";
@@ -299,6 +300,22 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
     isChatAppearanceEdit ||
     isColorCustomizationEdit ||
     isTemplateEdit;
+
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 1023px)").matches : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const syncViewport = () => setIsMobileViewport(mediaQuery.matches);
+    syncViewport();
+    mediaQuery.addEventListener("change", syncViewport);
+    return () => mediaQuery.removeEventListener("change", syncViewport);
+  }, []);
+
+  const showChatAppearancePreviewButton = isChatAppearanceEdit && isMobileViewport;
+  const chatAppearancePreviewLabel = t("chatAppearance.preview.label");
 
   // Track save button state from window globals
   const [canSave, setCanSave] = useState(false);
@@ -614,6 +631,26 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
               aria-label={t("common.buttons.import")}
             >
               <Upload size={20} strokeWidth={2.5} className="text-fg" />
+            </button>
+          )}
+          {showChatAppearancePreviewButton && (
+            <button
+              onClick={() => {
+                const globalWindow = window as any;
+                if (typeof globalWindow.__openChatAppearancePreview === "function") {
+                  globalWindow.__openChatAppearancePreview();
+                }
+              }}
+              className={cn(
+                "flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full",
+                "text-fg/70 hover:text-fg hover:bg-fg/10",
+                interactive.transition.fast,
+                interactive.active.scale,
+              )}
+              aria-label={chatAppearancePreviewLabel}
+              title={chatAppearancePreviewLabel}
+            >
+              <Eye size={20} strokeWidth={2.5} className="text-fg" />
             </button>
           )}
           {showAddButton && (
