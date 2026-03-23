@@ -47,7 +47,7 @@ const SAMPLE_MESSAGES: { role: "assistant" | "user"; text: string }[] = [
   },
   {
     role: "user",
-    text: 'Oh right, that one. Did you find anything *actually* "quiet", or just the **usual crowded spots** people keep recommending?',
+    text: 'Oh right, that one. Did you find anything *actually* "quiet", or just the **usual crowded spots** people keep recommending? I can check the `route` after dinner.',
   },
   {
     role: "assistant",
@@ -63,6 +63,11 @@ function normalizeOverride(override: ChatAppearanceOverride): ChatAppearanceOver
   const normalized = { ...override } as ChatAppearanceOverride;
   normalized.userBubbleColorHex = normalizeHexColor(override.userBubbleColorHex);
   normalized.assistantBubbleColorHex = normalizeHexColor(override.assistantBubbleColorHex);
+  normalized.messageTextColorHex = normalizeHexColor(override.messageTextColorHex);
+  normalized.plainTextColorHex = normalizeHexColor(override.plainTextColorHex);
+  normalized.italicTextColorHex = normalizeHexColor(override.italicTextColorHex);
+  normalized.quotedTextColorHex = normalizeHexColor(override.quotedTextColorHex);
+  normalized.inlineCodeTextColorHex = normalizeHexColor(override.inlineCodeTextColorHex);
   return Object.fromEntries(
     Object.entries(normalized)
       .filter(([_, value]) => value !== undefined)
@@ -83,6 +88,11 @@ function normalizeSettings(settings: ChatAppearanceSettings): ChatAppearanceSett
     ...settings,
     userBubbleColorHex: normalizeHexColor(settings.userBubbleColorHex),
     assistantBubbleColorHex: normalizeHexColor(settings.assistantBubbleColorHex),
+    messageTextColorHex: normalizeHexColor(settings.messageTextColorHex),
+    plainTextColorHex: normalizeHexColor(settings.plainTextColorHex),
+    italicTextColorHex: normalizeHexColor(settings.italicTextColorHex),
+    quotedTextColorHex: normalizeHexColor(settings.quotedTextColorHex),
+    inlineCodeTextColorHex: normalizeHexColor(settings.inlineCodeTextColorHex),
   };
 }
 
@@ -423,6 +433,7 @@ function LivePreview({
     plain: settings.plainTextColorHex ?? "currentColor",
     italic: settings.italicTextColorHex ?? "currentColor",
     quoted: settings.quotedTextColorHex ?? "currentColor",
+    code: settings.inlineCodeTextColorHex ?? "currentColor",
   };
 
   const useLive = liveMode && character;
@@ -1095,6 +1106,13 @@ export function ChatAppearancePage() {
             onChange={(v) => updateField("quotedTextColorHex", v)}
             overridden={isOverridden("quotedTextColorHex")}
             onReset={mode === "character" ? () => resetField("quotedTextColorHex") : undefined}
+          />
+          <HexColorControl
+            label={t("chatAppearance.colors.inlineCodeTextHex")}
+            value={effectiveSettings.inlineCodeTextColorHex}
+            onChange={(v) => updateField("inlineCodeTextColorHex", v)}
+            overridden={isOverridden("inlineCodeTextColorHex")}
+            onReset={mode === "character" ? () => resetField("inlineCodeTextColorHex") : undefined}
           />
         </div>
       </div>

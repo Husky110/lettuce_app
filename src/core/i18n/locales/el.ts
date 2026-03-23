@@ -1630,6 +1630,7 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Χρώμα παράθεσης μπλοκ",
+      inlineCodeTextHex: "Χρώμα ενσωματωμένου κώδικα",
     },
     backgroundTransparency: {
       label: "Φόντο & Διαφάνεια",

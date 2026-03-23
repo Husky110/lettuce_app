@@ -1613,6 +1613,7 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Màu trích dẫn khối",
+      inlineCodeTextHex: "Màu mã nội dòng",
     },
     backgroundTransparency: {
       label: "Nền & Trong suốt",

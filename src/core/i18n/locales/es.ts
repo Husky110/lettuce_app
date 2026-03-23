@@ -1630,6 +1630,7 @@ export const esMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Color de cita en bloque",
+      inlineCodeTextHex: "Color de código en línea",
     },
     backgroundTransparency: {
       label: "Fondo y transparencia",

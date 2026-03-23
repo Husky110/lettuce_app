@@ -614,12 +614,14 @@ function ChatMessageInner({
                 chatAppearance?.messageTextColorHex ||
                 chatAppearance?.plainTextColorHex ||
                 chatAppearance?.italicTextColorHex ||
-                chatAppearance?.quotedTextColorHex
+                chatAppearance?.quotedTextColorHex ||
+                chatAppearance?.inlineCodeTextColorHex
                   ? {
                       texts: chatAppearance.messageTextColorHex ?? chatAppearance.plainTextColorHex,
                       plain: chatAppearance.plainTextColorHex,
                       italic: chatAppearance.italicTextColorHex,
                       quoted: chatAppearance.quotedTextColorHex,
+                      code: chatAppearance.inlineCodeTextColorHex,
                     }
                   : undefined
               }

@@ -1616,6 +1616,7 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "ब्लॉक उद्धरण रंग",
+      inlineCodeTextHex: "इनलाइन कोड रंग",
     },
     backgroundTransparency: {
       label: "पृष्ठभूमि और पारदर्शिता",

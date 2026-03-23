@@ -7,6 +7,7 @@ type TextColors = {
   plain?: string;
   italic?: string;
   quoted?: string;
+  code?: string;
 };
 
 type MarkdownRendererProps = {
@@ -172,7 +173,11 @@ function parseInline(
       );
     } else if (token[0] === "`") {
       nodes.push(
-        <code key={key} className="rounded bg-black/40 px-1 py-0.5">
+        <code
+          key={key}
+          className="rounded bg-black/40 px-1 py-0.5"
+          style={textColors?.code ? { color: textColors.code } : undefined}
+        >
           {token.slice(1, -1)}
         </code>,
       );

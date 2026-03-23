@@ -1617,6 +1617,7 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Warna kutipan blok",
+      inlineCodeTextHex: "Warna kode inline",
     },
     backgroundTransparency: {
       label: "Latar Belakang & Transparansi",

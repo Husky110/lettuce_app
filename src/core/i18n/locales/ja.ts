@@ -1615,6 +1615,7 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "ブロック引用の色",
+      inlineCodeTextHex: "インラインコードの色",
     },
     backgroundTransparency: {
       label: "背景と透明度",

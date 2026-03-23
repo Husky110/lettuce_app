@@ -1613,6 +1613,7 @@ export const enMessages = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Block Quote Color",
+      inlineCodeTextHex: "Inline Code Color",
     },
     backgroundTransparency: {
       label: "Background & Transparency",

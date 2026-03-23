@@ -1621,6 +1621,7 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Kolor cytatu blokowego",
+      inlineCodeTextHex: "Kolor kodu inline",
     },
     backgroundTransparency: {
       label: "Tło i przezroczystość",

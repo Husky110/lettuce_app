@@ -1621,6 +1621,7 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Farge for blokksitat",
+      inlineCodeTextHex: "Farge for inline-kode",
     },
     backgroundTransparency: {
       label: "Bakgrunn og gjennomsiktighet",

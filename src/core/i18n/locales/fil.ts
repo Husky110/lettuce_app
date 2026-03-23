@@ -1654,6 +1654,7 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Kulay ng block quote",
+      inlineCodeTextHex: "Kulay ng inline code",
     },
     backgroundTransparency: {
       label: "Background at Transparency",

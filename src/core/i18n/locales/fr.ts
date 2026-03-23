@@ -1637,6 +1637,7 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Couleur des citations en bloc",
+      inlineCodeTextHex: "Couleur du code en ligne",
     },
     backgroundTransparency: {
       label: "Arrière-plan et transparence",

@@ -1629,6 +1629,7 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Kleur van blokcitaten",
+      inlineCodeTextHex: "Kleur van inline code",
     },
     backgroundTransparency: {
       label: "Achtergrond & Transparantie",

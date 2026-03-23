@@ -1617,6 +1617,7 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       plainTextHex: "Plain Text Color",
       italicTextHex: "Italic Text Color",
       quotedTextHex: "Цвет блочной цитаты",
+      inlineCodeTextHex: "Цвет встроенного кода",
     },
     backgroundTransparency: {
       label: "Фон и прозрачность",
