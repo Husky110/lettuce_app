@@ -4,6 +4,12 @@ run-name: Android release build by @${{ github.actor }}
 
 on:
   workflow_dispatch:
+    inputs:
+      version_override:
+        description: "Optional Tauri/app version override for this release build"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: android-release-build-${{ github.ref }}
@@ -34,8 +40,22 @@ jobs:
         id: meta
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="android-release-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
-          NAME="Android Release Build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT} (${SHORT_SHA})"
+          VERSION_OVERRIDE='${{ inputs.version_override }}'
+
+          if [[ -n "${VERSION_OVERRIDE}" ]]; then
+            SAFE_VERSION="$(printf '%s' "${VERSION_OVERRIDE}" | tr -cs '[:alnum:]._-' '-')"
+            SAFE_VERSION="${SAFE_VERSION#-}"
+            SAFE_VERSION="${SAFE_VERSION%-}"
+            TAG="android-release-${SAFE_VERSION}"
+            NAME="Android Release ${VERSION_OVERRIDE}"
+            if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+              TAG="${TAG}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
+              NAME="${NAME} (${SHORT_SHA}, attempt ${GITHUB_RUN_ATTEMPT})"
+            fi
+          else
+            TAG="android-release-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
+            NAME="Android Release Build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT} (${SHORT_SHA})"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
@@ -251,6 +271,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Write Tauri version override
+        if: ${{ inputs.version_override != '' }}
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          node -e "require('fs').writeFileSync('tauri-version-override.json', JSON.stringify({ version: process.env.VERSION_OVERRIDE }))"
+
       - name: Configure Android signing
         env:
           ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
@@ -284,7 +311,12 @@ jobs:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           RUST_BACKTRACE: 1
         run: |
-          bun run tauri android build --ci --apk
+          BUILD_ARGS=(android build --ci)
+          if [ -f tauri-version-override.json ]; then
+            BUILD_ARGS+=(--config tauri-version-override.json)
+          fi
+          BUILD_ARGS+=(--apk)
+          bun run tauri "${BUILD_ARGS[@]}"
 
       - name: Ensure signed APK output
         env:
