@@ -10,9 +10,7 @@ use std::panic::Location;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_fs::FsExt;
 use tracing::{Event, Subscriber};
 use tracing_subscriber::field::Visit;
 use tracing_subscriber::filter::LevelFilter;
@@ -580,27 +578,6 @@ pub fn get_local_ip() -> Result<String, String> {
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
-fn read_resource_as_base64(app: &AppHandle, path: &str) -> Result<String, String> {
-    let resource_path = app
-        .path()
-        .resolve(path, BaseDirectory::Resource)
-        .map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to resolve resource {}: {}", path, e),
-            )
-        })?;
-    let bytes = app.fs().read(resource_path).map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to read resource {}: {}", path, e),
-        )
-    })?;
-    Ok(STANDARD.encode(&bytes))
-}
-
 #[derive(Clone, Serialize)]
 pub struct AccessibilitySoundBase64 {
     pub send: String,
@@ -612,7 +589,7 @@ static ACCESSIBILITY_SOUND_CACHE: OnceLock<Mutex<Option<AccessibilitySoundBase64
     OnceLock::new();
 
 #[tauri::command]
-pub fn accessibility_sound_base64(app: AppHandle) -> Result<AccessibilitySoundBase64, String> {
+pub fn accessibility_sound_base64(_app: AppHandle) -> Result<AccessibilitySoundBase64, String> {
     let cache = ACCESSIBILITY_SOUND_CACHE.get_or_init(|| Mutex::new(None));
     let mut guard = cache
         .lock()
@@ -622,9 +599,9 @@ pub fn accessibility_sound_base64(app: AppHandle) -> Result<AccessibilitySoundBa
     }
 
     let sounds = AccessibilitySoundBase64 {
-        send: read_resource_as_base64(&app, "feedback_sounds/send.mp3")?,
-        success: read_resource_as_base64(&app, "feedback_sounds/success.mp3")?,
-        failure: read_resource_as_base64(&app, "feedback_sounds/fail.mp3")?,
+        send: STANDARD.encode(include_bytes!("../../feedback_sounds/send.mp3")),
+        success: STANDARD.encode(include_bytes!("../../feedback_sounds/success.mp3")),
+        failure: STANDARD.encode(include_bytes!("../../feedback_sounds/fail.mp3")),
     };
     *guard = Some(sounds.clone());
     Ok(sounds)
