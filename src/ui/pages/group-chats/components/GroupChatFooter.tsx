@@ -40,7 +40,7 @@ export function GroupChatFooter({
   onContinue,
   onAbort,
   hasBackgroundImage,
-  footerOverlayClassName,
+  footerOverlayClassName: _footerOverlayClassName,
   pendingAttachments = [],
   onAddAttachment,
   onRemoveAttachment,
@@ -268,7 +268,7 @@ export function GroupChatFooter({
     <footer
       className={cn(
         "z-20 shrink-0 px-4 pb-3 pt-3",
-        hasBackgroundImage ? footerOverlayClassName || "bg-surface/85" : "bg-surface",
+        hasBackgroundImage ? "bg-transparent" : "bg-surface",
       )}
     >
       {error && (
@@ -357,7 +357,9 @@ export function GroupChatFooter({
                 />
               ))}
               {filteredCharacters.length === 0 && (
-                <div className="px-3 py-4 text-center text-sm text-fg/40">{t("groupChats.footer.noCharactersFound")}</div>
+                <div className="px-3 py-4 text-center text-sm text-fg/40">
+                  {t("groupChats.footer.noCharactersFound")}
+                </div>
               )}
             </div>
           </motion.div>
@@ -396,8 +398,12 @@ export function GroupChatFooter({
               "hover:border-fg/25 hover:bg-fg/15",
               "disabled:cursor-not-allowed disabled:opacity-40",
             )}
-            title={onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")}
-            aria-label={onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")}
+            title={
+              onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")
+            }
+            aria-label={
+              onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")
+            }
           >
             <Plus size={20} />
           </button>
@@ -502,7 +508,7 @@ function MentionPickerItem({
   character: Character;
   onClick: () => void;
   query: string;
-  }) {
+}) {
   const { t } = useI18n();
   const avatarUrl = useAvatar("character", character.id, character.avatarPath, "round");
 

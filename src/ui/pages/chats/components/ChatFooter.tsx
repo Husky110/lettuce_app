@@ -31,7 +31,7 @@ export function ChatFooter({
   onSendMessage,
   onAbort,
   hasBackgroundImage,
-  footerOverlayClassName,
+  footerOverlayClassName: _footerOverlayClassName,
   pendingAttachments = [],
   onAddAttachment,
   onRemoveAttachment,
@@ -116,7 +116,7 @@ export function ChatFooter({
     <footer
       className={cn(
         "z-20 shrink-0 px-4 pb-6 pt-3",
-        hasBackgroundImage ? footerOverlayClassName || "bg-surface/45" : "bg-surface",
+        hasBackgroundImage ? "bg-transparent" : "bg-surface",
       )}
     >
       {error && (
