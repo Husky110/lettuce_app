@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -33,6 +33,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
   const { t } = useI18n();
   const basePath = useMemo(() => currentPath.split("?")[0], [currentPath]);
   const hasAdvancedView = useMemo(() => currentPath.includes("view=advanced"), [currentPath]);
+  const wasUnsavedRef = useRef(false);
 
   const title = useMemo(() => {
     if (titleOverride) return titleOverride;
@@ -389,18 +390,12 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
   }, [t]);
 
   useEffect(() => {
-    if (isUnsaved) {
+    if (isUnsaved && !wasUnsavedRef.current) {
       ensureUnsavedToast();
-    } else {
+    } else if (!isUnsaved) {
       toast.dismiss("unsaved-changes");
     }
-  }, [isUnsaved, ensureUnsavedToast]);
-
-  useEffect(() => {
-    if (!isUnsaved) return;
-    const handleInput = () => ensureUnsavedToast();
-    document.addEventListener("input", handleInput, true);
-    return () => document.removeEventListener("input", handleInput, true);
+    wasUnsavedRef.current = isUnsaved;
   }, [isUnsaved, ensureUnsavedToast]);
 
   const handleBack = () => {
