@@ -8,6 +8,8 @@ use std::fs;
 use std::io::Cursor;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::atomic::Ordering;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri::path::BaseDirectory;
@@ -31,6 +33,39 @@ fn macos_archive_name(target_arch: &str) -> Option<&'static str> {
         "x86_64" => Some("x86_64"),
         _ => None,
     }
+}
+
+#[cfg(target_os = "macos")]
+fn current_macos_arch() -> Option<&'static str> {
+    match std::env::consts::ARCH {
+        "aarch64" => Some("arm64"),
+        "x86_64" => Some("x86_64"),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_dylib_has_arch(path: &Path, expected_arch: &str) -> bool {
+    let Ok(output) = Command::new("lipo").arg("-archs").arg(path).output() else {
+        return true;
+    };
+    if !output.status.success() {
+        return true;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.split_whitespace().any(|arch| arch == expected_arch)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_dylib_is_loadable(path: &Path) -> bool {
+    let Ok(output) = Command::new("otool").arg("-hV").arg(path).output() else {
+        return true;
+    };
+    if !output.status.success() {
+        return true;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.contains("MH_DYLIB")
 }
 
 pub(super) async fn ensure_ort_init(app: &AppHandle) -> Result<(), String> {
@@ -134,15 +169,26 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                         }
                     }
                 } else if cfg!(target_os = "macos") {
-                    if let Some(ort_dir) = path.parent() {
-                        log_missing_macos_provider_dylibs(app, ort_dir, path);
-                        return Ok(path.to_path_buf());
+                    if is_valid_macos_ort_dylib(path) {
+                        if let Some(ort_dir) = path.parent() {
+                            log_missing_macos_provider_dylibs(app, ort_dir, path);
+                            return Ok(path.to_path_buf());
+                        } else {
+                            crate::utils::log_warn(
+                                app,
+                                "embedding_debug",
+                                format!(
+                                    "ORT_DYLIB_PATH is set to {} but parent directory is unavailable; attempting runtime download fallback.",
+                                    path.display()
+                                ),
+                            );
+                        }
                     } else {
                         crate::utils::log_warn(
                             app,
                             "embedding_debug",
                             format!(
-                                "ORT_DYLIB_PATH is set to {} but parent directory is unavailable; attempting runtime download fallback.",
+                                "ORT_DYLIB_PATH points to {} but it is not a usable macOS MH_DYLIB for this arch; ignoring it.",
                                 path.display()
                             ),
                         );
@@ -192,8 +238,11 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                 return Ok(dest_path);
             }
         } else if cfg!(target_os = "macos") {
-            log_missing_macos_provider_dylibs(app, &ort_dir, &dest_path);
-            return Ok(dest_path);
+            if is_valid_macos_ort_dylib(&dest_path) {
+                log_missing_macos_provider_dylibs(app, &ort_dir, &dest_path);
+                return Ok(dest_path);
+            }
+            let _ = fs::remove_file(&dest_path);
         } else {
             return Ok(dest_path);
         }
@@ -450,7 +499,10 @@ fn extract_onnxruntime_archive(
                 .to_string_lossy()
                 .into_owned();
             if let Some(prefix) = download_info.lib_dir_in_archive.as_deref() {
-                if path.starts_with(prefix) && path.ends_with(".dylib") {
+                if let Some(relative_path) = path.strip_prefix(prefix) {
+                    if relative_path.contains('/') || !relative_path.ends_with(".dylib") {
+                        continue;
+                    }
                     let filename = Path::new(&path)
                         .file_name()
                         .ok_or_else(|| {
@@ -586,6 +638,24 @@ fn log_missing_macos_provider_dylibs(app: &AppHandle, ort_dir: &Path, dylib_path
     }
 }
 
+#[cfg(target_os = "macos")]
+fn is_valid_macos_ort_dylib(path: &Path) -> bool {
+    if !is_nonempty_file(path) {
+        return false;
+    }
+
+    let arch_ok = current_macos_arch()
+        .map(|expected_arch| macos_dylib_has_arch(path, expected_arch))
+        .unwrap_or(true);
+
+    arch_ok && macos_dylib_is_loadable(path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_valid_macos_ort_dylib(path: &Path) -> bool {
+    is_nonempty_file(path)
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn resolve_bundled_onnxruntime(app: &AppHandle) -> Option<PathBuf> {
     let candidates = if cfg!(target_os = "windows") {
@@ -612,7 +682,11 @@ fn resolve_bundled_onnxruntime(app: &AppHandle) -> Option<PathBuf> {
         let Ok(path) = app.path().resolve(&candidate, BaseDirectory::Resource) else {
             continue;
         };
-        if is_nonempty_file(&path) {
+        if cfg!(target_os = "macos") {
+            if is_valid_macos_ort_dylib(&path) {
+                return Some(path);
+            }
+        } else if is_nonempty_file(&path) {
             return Some(path);
         }
     }

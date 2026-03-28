@@ -489,6 +489,31 @@ fn dylib_supports_arch(path: &Path, expected_arch: &str) -> anyhow::Result<bool>
     Ok(stdout.split_whitespace().any(|arch| arch == expected_arch))
 }
 
+fn dylib_is_loadable_macos_library(path: &Path) -> anyhow::Result<bool> {
+    let output = match Command::new("otool").arg("-hV").arg(path).output() {
+        Ok(out) => out,
+        Err(err) => {
+            println!(
+                "cargo:warning=Unable to execute otool for '{}': {}. Skipping Mach-O filetype validation.",
+                path.display(),
+                err
+            );
+            return Ok(true);
+        }
+    };
+
+    if !output.status.success() {
+        println!(
+            "cargo:warning=otool -hV failed for '{}'; skipping Mach-O filetype validation.",
+            path.display()
+        );
+        return Ok(true);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.contains("MH_DYLIB"))
+}
+
 fn validate_macos_ort_dylibs(
     dylib_dir: &Path,
     expected_arch: &str,
@@ -509,6 +534,9 @@ fn validate_macos_ort_dylibs(
     }
     if fs::metadata(&main)?.len() == 0 {
         anyhow::bail!("Dylib '{}' is empty", main.display());
+    }
+    if !dylib_is_loadable_macos_library(&main)? {
+        anyhow::bail!("Dylib '{}' is not a loadable MH_DYLIB", main.display());
     }
     if require_coreml && !coreml.exists() {
         anyhow::bail!(
@@ -532,6 +560,9 @@ fn validate_macos_ort_dylibs(
             expected_arch
         );
     }
+    if shared.exists() && !dylib_is_loadable_macos_library(&shared)? {
+        anyhow::bail!("Dylib '{}' is not a loadable MH_DYLIB", shared.display());
+    }
     if shared.exists() && fs::metadata(&shared)?.len() == 0 {
         anyhow::bail!("Dylib '{}' is empty", shared.display());
     }
@@ -545,6 +576,9 @@ fn validate_macos_ort_dylibs(
     }
     if coreml.exists() && fs::metadata(&coreml)?.len() == 0 {
         anyhow::bail!("Dylib '{}' is empty", coreml.display());
+    }
+    if coreml.exists() && !dylib_is_loadable_macos_library(&coreml)? {
+        anyhow::bail!("Dylib '{}' is not a loadable MH_DYLIB", coreml.display());
     }
 
     Ok(())
@@ -586,7 +620,10 @@ fn extract_tgz_dylibs_from_dir(
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.to_string_lossy().replace('\\', "/");
-        if !path.starts_with(entry_dir) || !path.ends_with(".dylib") {
+        let Some(relative_path) = path.strip_prefix(entry_dir) else {
+            continue;
+        };
+        if relative_path.contains('/') || !relative_path.ends_with(".dylib") {
             continue;
         }
         let Some(filename) = Path::new(&path).file_name() else {
