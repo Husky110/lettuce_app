@@ -651,7 +651,10 @@ fn is_valid_macos_ort_dylib(path: &Path) -> bool {
     arch_ok && macos_dylib_is_loadable(path)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(
+    not(target_os = "macos"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
 fn is_valid_macos_ort_dylib(path: &Path) -> bool {
     is_nonempty_file(path)
 }
