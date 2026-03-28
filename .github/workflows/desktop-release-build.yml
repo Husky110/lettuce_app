@@ -926,10 +926,20 @@ jobs:
           fail_on_unmatched_files: true
 
   macos_cpu:
-    name: macOS Build (CPU)
+    name: macOS Build (CPU, ${{ matrix.arch_label }})
     needs: prepare_release
     if: ${{ inputs.build_llama_cpu_macos == true }}
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch_label: Apple Silicon
+            target: aarch64-apple-darwin
+            artifact_suffix: arm64
+          - arch_label: Intel
+            target: x86_64-apple-darwin
+            artifact_suffix: x64
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
 
@@ -952,6 +962,9 @@ jobs:
         with:
           toolchain: stable
           cache: true
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -969,35 +982,45 @@ jobs:
           if [ -f tauri-version-override.json ]; then
             BUILD_ARGS+=(--config tauri-version-override.json)
           fi
-          BUILD_ARGS+=(--bundles app,dmg)
+          BUILD_ARGS+=(--target ${{ matrix.target }} --bundles app,dmg)
           bun run tauri "${BUILD_ARGS[@]}"
 
       - name: Package macOS artifacts
         run: |
           mkdir -p dist-artifacts
-          ditto -c -k --sequesterRsrc --keepParent src-tauri/target/release/bundle/macos/*.app dist-artifacts/macos-app.zip
-          CPU_DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n 1)
-          cp "$CPU_DMG" dist-artifacts/macos-cpu.dmg
+          ditto -c -k --sequesterRsrc --keepParent src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app dist-artifacts/macos-${{ matrix.artifact_suffix }}-app.zip
+          CPU_DMG=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg | head -n 1)
+          cp "$CPU_DMG" dist-artifacts/macos-${{ matrix.artifact_suffix }}-cpu.dmg
 
       - name: Upload macOS app zip to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/macos-app.zip
+          files: dist-artifacts/macos-${{ matrix.artifact_suffix }}-app.zip
           fail_on_unmatched_files: true
 
       - name: Upload macOS dmg to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/macos-cpu.dmg
+          files: dist-artifacts/macos-${{ matrix.artifact_suffix }}-cpu.dmg
           fail_on_unmatched_files: true
 
   macos_metal:
-    name: macOS Build (Metal)
+    name: macOS Build (Metal, ${{ matrix.arch_label }})
     needs: prepare_release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_metal_macos == true }}
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch_label: Apple Silicon
+            target: aarch64-apple-darwin
+            artifact_suffix: arm64
+          - arch_label: Intel
+            target: x86_64-apple-darwin
+            artifact_suffix: x64
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
 
@@ -1020,6 +1043,9 @@ jobs:
         with:
           toolchain: stable
           cache: true
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -1039,28 +1065,28 @@ jobs:
           if [ -f tauri-version-override.json ]; then
             BUILD_ARGS+=(--config tauri-version-override.json)
           fi
-          BUILD_ARGS+=(--features llama-gpu-metal --bundles app,dmg)
+          BUILD_ARGS+=(--target ${{ matrix.target }} --features llama-gpu-metal --bundles app,dmg)
           bun run tauri "${BUILD_ARGS[@]}"
 
       - name: Package macOS Metal artifacts
         run: |
           mkdir -p dist-artifacts
-          ditto -c -k --sequesterRsrc --keepParent src-tauri/target-metal/release/bundle/macos/*.app dist-artifacts/macos-metal-app.zip
-          METAL_DMG=$(ls src-tauri/target-metal/release/bundle/dmg/*.dmg | head -n 1)
-          cp "$METAL_DMG" dist-artifacts/macos-metal.dmg
+          ditto -c -k --sequesterRsrc --keepParent src-tauri/target-metal/${{ matrix.target }}/release/bundle/macos/*.app dist-artifacts/macos-${{ matrix.artifact_suffix }}-metal-app.zip
+          METAL_DMG=$(ls src-tauri/target-metal/${{ matrix.target }}/release/bundle/dmg/*.dmg | head -n 1)
+          cp "$METAL_DMG" dist-artifacts/macos-${{ matrix.artifact_suffix }}-metal.dmg
 
       - name: Upload macOS Metal app zip to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/macos-metal-app.zip
+          files: dist-artifacts/macos-${{ matrix.artifact_suffix }}-metal-app.zip
           fail_on_unmatched_files: true
 
       - name: Upload macOS Metal dmg to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/macos-metal.dmg
+          files: dist-artifacts/macos-${{ matrix.artifact_suffix }}-metal.dmg
           fail_on_unmatched_files: true
 
   cleanup_release_on_failure:
