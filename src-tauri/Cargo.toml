@@ -95,8 +95,8 @@ sysinfo = "0.33"
 [target.'cfg(target_os = "macos")'.dependencies]
 machine-uid = "0.3"
 ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "coreml", "half", "ndarray"] }
-llama-cpp-2 = { version = "0.1.139", features = ["mtmd"] }
-llama-cpp-sys-2 = { version = "0.1.139" }
+llama-cpp-2 = { version = "0.1.141", features = ["mtmd"] }
+llama-cpp-sys-2 = { version = "0.1.141" }
 sysinfo = "0.33"
 
 [target.'cfg(target_os = "android")'.dependencies]
