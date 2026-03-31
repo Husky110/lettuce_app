@@ -451,6 +451,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           memory_tool_events TEXT NOT NULL DEFAULT '[]',
           memory_status TEXT,
           memory_error TEXT,
+          memory_progress_step INTEGER,
           archived INTEGER NOT NULL DEFAULT 0,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
@@ -621,6 +622,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           memory_tool_events TEXT NOT NULL DEFAULT '[]',
           memory_status TEXT,
           memory_error TEXT,
+          memory_progress_step INTEGER,
           speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
           FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
@@ -785,6 +787,13 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     if !group_session_cols.contains("memory_error") {
         conn.execute(
             "ALTER TABLE group_sessions ADD COLUMN memory_error TEXT",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !group_session_cols.contains("memory_progress_step") {
+        conn.execute(
+            "ALTER TABLE group_sessions ADD COLUMN memory_progress_step INTEGER",
             [],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1100,6 +1109,37 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     }
     if !has_memory_error {
         let _ = conn.execute("ALTER TABLE sessions ADD COLUMN memory_error TEXT", []);
+    }
+    // memory_progress_step migration for sessions
+    {
+        let has_col = {
+            let mut stmt = conn
+                .prepare("PRAGMA table_info(sessions)")
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            let mut rows = stmt
+                .query([])
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            let mut found = false;
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+            {
+                let name: String = row
+                    .get(1)
+                    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+                if name == "memory_progress_step" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        if !has_col {
+            let _ = conn.execute(
+                "ALTER TABLE sessions ADD COLUMN memory_progress_step INTEGER",
+                [],
+            );
+        }
     }
 
     let mut stmt_audio_providers = conn

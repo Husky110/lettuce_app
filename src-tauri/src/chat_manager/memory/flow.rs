@@ -709,6 +709,7 @@ async fn process_dynamic_memory_cycle_with_model(
     // Set processing state
     session.memory_status = Some("processing".to_string());
     session.memory_error = None;
+    session.memory_progress_step = Some(1);
     if let Err(e) = save_session(app, session) {
         log_warn(
             app,
@@ -728,6 +729,10 @@ async fn process_dynamic_memory_cycle_with_model(
     let _ = app.emit(
         "dynamic-memory:processing",
         json!({ "sessionId": session.id }),
+    );
+    let _ = app.emit(
+        "dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 1, "totalSteps": 4, "label": "Summarizing conversation" }),
     );
 
     ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
@@ -784,6 +789,12 @@ async fn process_dynamic_memory_cycle_with_model(
             summary.len()
         ),
     );
+    session.memory_progress_step = Some(2);
+    let _ = save_session(app, session);
+    let _ = app.emit(
+        "dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 2, "totalSteps": 4, "label": "Analyzing memories" }),
+    );
     ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
 
     let tools_request_id = dynamic_memory_request_id(&session.id, "tools");
@@ -836,7 +847,8 @@ async fn process_dynamic_memory_cycle_with_model(
             }
             session.memory_status = Some("failed".to_string());
             session.memory_error = Some(format!("memory_tools: {}", err));
-            session.updated_at = now_millis()?;
+            session.memory_progress_step = None;
+                    session.updated_at = now_millis()?;
             if let Err(save_err) = save_session(app, session) {
                 record_dynamic_memory_error(app, session, &save_err, "save_session");
                 return Ok(());
@@ -850,6 +862,12 @@ async fn process_dynamic_memory_cycle_with_model(
     };
     run_guard.set_active_request_id(None);
 
+    session.memory_progress_step = Some(3);
+    let _ = save_session(app, session);
+    let _ = app.emit(
+        "dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 3, "totalSteps": 4, "label": "Applying changes" }),
+    );
     ensure_dynamic_memory_not_cancelled(app, session, &cancel_token)?;
 
     session.memory_summary = Some(summary.clone());
@@ -870,8 +888,14 @@ async fn process_dynamic_memory_cycle_with_model(
         session.memory_tool_events.drain(0..excess);
     }
 
+    session.memory_progress_step = Some(4);
+    let _ = app.emit(
+        "dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 4, "totalSteps": 4, "label": "Organizing memories" }),
+    );
     session.memory_status = Some("idle".to_string());
     session.memory_error = None;
+    session.memory_progress_step = None;
     session.updated_at = now_millis()?;
     if let Err(err) = save_session(app, session) {
         record_dynamic_memory_error(app, session, &err, "save_session");
@@ -975,6 +999,7 @@ fn record_dynamic_memory_error(app: &AppHandle, session: &mut Session, error: &s
 
     session.memory_status = Some("failed".to_string());
     session.memory_error = Some(formatted_error.clone());
+    session.memory_progress_step = None;
     session.updated_at = now_millis().unwrap_or(session.updated_at);
 
     if let Err(save_err) = save_session(app, session) {

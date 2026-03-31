@@ -681,6 +681,8 @@ pub struct Session {
     pub memory_status: Option<String>,
     #[serde(default)]
     pub memory_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_progress_step: Option<u32>,
     #[serde(default)]
     pub messages: Vec<StoredMessage>,
     #[serde(default)]

@@ -71,6 +71,14 @@ function MemoryActionRow({
   );
 }
 
+const MEMORY_PROGRESS_TOTAL = 4;
+const MEMORY_STEP_LABELS: Record<number, string> = {
+  1: "Summarizing conversation",
+  2: "Analyzing memories",
+  3: "Applying changes",
+  4: "Organizing memories",
+};
+
 export function GroupChatMemoriesPage() {
   const { backOrReplace } = useNavigationManager();
   const { t } = useI18n();
@@ -246,17 +254,45 @@ export function GroupChatMemoriesPage() {
               <div
                 className={cn(
                   radius.md,
-                  "bg-info/10 border border-info/20 p-3 flex items-center gap-3 animate-pulse",
+                  "bg-info/10 border border-info/20 p-3 space-y-2",
                 )}
               >
-                <RefreshCw className="h-5 w-5 text-info shrink-0 animate-spin" />
-                <div className={cn("flex-1", typography.body.size, "text-info")}>
-                  <p className="font-semibold">
-                    {session.memoryStatus === "processing"
-                      ? "AI is organizing group memories..."
-                      : "Retrying Memory Cycle..."}
-                  </p>
-                </div>
+                {(() => {
+                  const step = ui.memoryProgressStep ?? session.memoryProgressStep ?? null;
+                  const label = step ? MEMORY_STEP_LABELS[step] : null;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="h-4 w-4 text-info shrink-0 animate-spin" />
+                          <span className={cn(typography.body.size, "font-semibold text-info")}>
+                            {label ??
+                              (ui.retryStatus === "retrying"
+                                ? "Retrying Memory Cycle..."
+                                : "Processing memories...")}
+                          </span>
+                        </div>
+                        {step && (
+                          <span className="text-[12px] text-info/60 tabular-nums">
+                            {step}/{MEMORY_PROGRESS_TOTAL}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-info/15">
+                        {step ? (
+                          <div
+                            className="h-full rounded-full bg-info/70 transition-all duration-500 ease-out"
+                            style={{
+                              width: `${(step / MEMORY_PROGRESS_TOTAL) * 100}%`,
+                            }}
+                          />
+                        ) : (
+                          <div className="h-full w-1/3 rounded-full bg-info/70 animate-[indeterminate_1.5s_ease-in-out_infinite]" />
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : ui.retryStatus === "success" ? (
               <div

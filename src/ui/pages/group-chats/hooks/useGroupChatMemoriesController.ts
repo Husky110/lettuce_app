@@ -262,7 +262,12 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
             void reload();
           }
         });
-        unlisteners.push(u1, u2, u3, u4);
+        const u5 = await listen("group-dynamic-memory:progress", (e: any) => {
+          if (e.payload?.sessionId === session.id) {
+            dispatch({ type: "SET_MEMORY_PROGRESS_STEP", value: e.payload.step });
+          }
+        });
+        unlisteners.push(u1, u2, u3, u4, u5);
       } catch (err) {
         console.error("Failed to setup memory event listeners", err);
       }

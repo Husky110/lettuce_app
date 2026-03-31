@@ -899,6 +899,7 @@ pub fn render_prompt_preview(
             updated_at: now,
             memory_status: None,
             memory_error: None,
+            memory_progress_step: None,
             memories: vec![
                 "Memory 1 (Preview): The user prefers direct communication.".to_string(),
                 "Memory 2 (Preview): We met in the tavern last night.".to_string(),

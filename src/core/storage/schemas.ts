@@ -1907,6 +1907,7 @@ export const GroupSessionSchema = z.object({
     .default([]),
   memoryStatus: z.string().nullish().optional().default("idle"),
   memoryError: z.string().nullish().optional(),
+  memoryProgressStep: z.number().int().nullish().optional(),
 });
 export type GroupSession = z.infer<typeof GroupSessionSchema>;
 
@@ -2465,6 +2466,7 @@ export const SessionSchema = z.object({
   messages: z.array(MessageSchema),
   memoryStatus: z.string().nullish().optional().default("idle"),
   memoryError: z.string().nullish().optional(),
+  memoryProgressStep: z.number().int().nullish().optional(),
   archived: z.boolean().default(false),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),

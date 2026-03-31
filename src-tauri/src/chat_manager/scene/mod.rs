@@ -1701,6 +1701,7 @@ pub async fn chat_generate_design_reference_description(
         memory_tool_events: Vec::new(),
         memory_status: None,
         memory_error: None,
+        memory_progress_step: None,
         messages: Vec::new(),
         archived: false,
         created_at: 0,

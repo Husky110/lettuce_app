@@ -2329,6 +2329,7 @@ mod tests {
             memory_embeddings: vec![],
             memory_status: None,
             memory_error: None,
+            memory_progress_step: None,
         }
     }
 

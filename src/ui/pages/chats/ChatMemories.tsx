@@ -70,6 +70,14 @@ const isValidMemoryCategory = (value: string): value is (typeof MEMORY_CATEGORY_
   (MEMORY_CATEGORY_OPTIONS as readonly string[]).includes(value);
 const formatMemoryCategoryLabel = (category: string) => category.replace(/_/g, " ");
 
+const MEMORY_PROGRESS_TOTAL = 4;
+const MEMORY_STEP_LABELS: Record<number, string> = {
+  1: "Summarizing conversation",
+  2: "Analyzing memories",
+  3: "Applying changes",
+  4: "Organizing memories",
+};
+
 type MemoriesTab = "memories" | "tools" | "pinned";
 type RetryStatus = "idle" | "retrying" | "success";
 type MemoryStatus = "idle" | "processing" | "failed";
@@ -105,6 +113,7 @@ type UiState = {
   actionError: string | null;
   memoryStatus: MemoryStatus; // This is now for local UI transitions, but session.memoryStatus is source of truth
   expandedMemories: Set<number>;
+  memoryProgressStep: number | null;
   memoryTempBusy: number | null;
   selectedCategory: string | null;
   selectedMemoryId: string | null;
@@ -129,6 +138,7 @@ type UiAction =
   | { type: "SET_RETRY_STATUS"; value: RetryStatus }
   | { type: "SET_ACTION_ERROR"; value: string | null }
   | { type: "SET_MEMORY_STATUS"; value: MemoryStatus }
+  | { type: "SET_MEMORY_PROGRESS_STEP"; value: number | null }
   | { type: "TOGGLE_EXPANDED"; index: number }
   | { type: "SHIFT_EXPANDED_AFTER_DELETE"; index: number }
   | { type: "SET_MEMORY_TEMP_BUSY"; value: number | null }
@@ -153,6 +163,7 @@ function initUi(errorParam: string | null): UiState {
     retryStatus: "idle",
     actionError: errorParam,
     memoryStatus: "idle",
+    memoryProgressStep: null,
     expandedMemories: new Set<number>(),
     memoryTempBusy: null,
     selectedCategory: null,
@@ -204,7 +215,13 @@ function uiReducer(state: UiState, action: UiAction): UiState {
     case "SET_ACTION_ERROR":
       return { ...state, actionError: action.value };
     case "SET_MEMORY_STATUS":
-      return { ...state, memoryStatus: action.value };
+      return {
+        ...state,
+        memoryStatus: action.value,
+        memoryProgressStep: action.value === "idle" || action.value === "failed" ? null : state.memoryProgressStep,
+      };
+    case "SET_MEMORY_PROGRESS_STEP":
+      return { ...state, memoryProgressStep: action.value };
     case "TOGGLE_EXPANDED": {
       const next = new Set(state.expandedMemories);
       if (next.has(action.index)) next.delete(action.index);
@@ -830,7 +847,12 @@ export function ChatMemoriesPage() {
             void reload();
           }
         });
-        unlisteners.push(u1, u2, u3, u4);
+        const u5 = await listen("dynamic-memory:progress", (e: any) => {
+          if (e.payload?.sessionId === session.id) {
+            dispatch({ type: "SET_MEMORY_PROGRESS_STEP", value: e.payload.step });
+          }
+        });
+        unlisteners.push(u1, u2, u3, u4, u5);
       } catch (err) {
         console.error("Failed to setup memory event listeners", err);
       }
@@ -1331,17 +1353,45 @@ export function ChatMemoriesPage() {
               <div
                 className={cn(
                   radius.md,
-                  "bg-blue-500/10 border border-blue-500/20 p-3 flex items-center gap-3 animate-pulse",
+                  "bg-blue-500/10 border border-blue-500/20 p-3 space-y-2",
                 )}
               >
-                <RefreshCw className="h-5 w-5 text-blue-400 shrink-0 animate-spin" />
-                <div className={cn("flex-1", typography.body.size, "text-blue-200")}>
-                  <p className="font-semibold">
-                    {session.memoryStatus === "processing"
-                      ? "AI is organizing memories..."
-                      : "Retrying Memory Cycle..."}
-                  </p>
-                </div>
+                {(() => {
+                  const step = ui.memoryProgressStep ?? session.memoryProgressStep ?? null;
+                  const label = step ? MEMORY_STEP_LABELS[step] : null;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="h-4 w-4 text-blue-400 shrink-0 animate-spin" />
+                          <span className={cn(typography.body.size, "font-semibold text-blue-200")}>
+                            {label ??
+                              (ui.retryStatus === "retrying"
+                                ? "Retrying Memory Cycle..."
+                                : "Processing memories...")}
+                          </span>
+                        </div>
+                        {step && (
+                          <span className="text-[12px] text-blue-300/60 tabular-nums">
+                            {step}/{MEMORY_PROGRESS_TOTAL}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-500/15">
+                        {step ? (
+                          <div
+                            className="h-full rounded-full bg-blue-400/70 transition-all duration-500 ease-out"
+                            style={{
+                              width: `${(step / MEMORY_PROGRESS_TOTAL) * 100}%`,
+                            }}
+                          />
+                        ) : (
+                          <div className="h-full w-1/3 rounded-full bg-blue-400/70 animate-[indeterminate_1.5s_ease-in-out_infinite]" />
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : isDynamic && ui.retryStatus === "success" ? (
               <div

@@ -869,6 +869,7 @@ fn cancel_group_dynamic_memory_cycle(
         &session.memory_tool_events,
         Some(&session.memory_status),
         session.memory_error.as_deref(),
+        session.memory_progress_step,
     )?;
     let _ = app.emit(
         "group-dynamic-memory:cancelled",
@@ -1844,6 +1845,7 @@ async fn process_group_dynamic_memory_cycle(
 
     session.memory_status = "processing".to_string();
     session.memory_error = None;
+    session.memory_progress_step = Some(1);
     if let Err(err) = save_group_session_memories(app, session, pool) {
         let _ = app.emit(
             "group-dynamic-memory:error",
@@ -1854,6 +1856,10 @@ async fn process_group_dynamic_memory_cycle(
     let _ = app.emit(
         "group-dynamic-memory:processing",
         json!({ "sessionId": session.id }),
+    );
+    let _ = app.emit(
+        "group-dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 1, "totalSteps": 4, "label": "Summarizing conversation" }),
     );
 
     ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
@@ -1920,6 +1926,12 @@ async fn process_group_dynamic_memory_cycle(
         "group_dynamic_memory",
         "invoking run_group_memory_tool_update",
     );
+    session.memory_progress_step = Some(2);
+    let _ = save_group_session_memories(app, session, pool);
+    let _ = app.emit(
+        "group-dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 2, "totalSteps": 4, "label": "Analyzing memories" }),
+    );
 
     ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
 
@@ -1975,6 +1987,12 @@ async fn process_group_dynamic_memory_cycle(
             summary.len(),
             crate::embedding::tokenizer::count_tokens(app, &summary).unwrap_or(0)
         ),
+    );
+    session.memory_progress_step = Some(3);
+    let _ = save_group_session_memories(app, session, pool);
+    let _ = app.emit(
+        "group-dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 3, "totalSteps": 4, "label": "Applying changes" }),
     );
     ensure_group_dynamic_memory_not_cancelled(app, session, &*pool, &cancel_token)?;
     session.memory_summary = summary;
@@ -2048,8 +2066,14 @@ async fn process_group_dynamic_memory_cycle(
         "createdAt": crate::utils::now_millis().unwrap_or(0),
     });
     push_group_memory_event(session, memory_event);
+    session.memory_progress_step = Some(4);
+    let _ = app.emit(
+        "group-dynamic-memory:progress",
+        json!({ "sessionId": session.id, "step": 4, "totalSteps": 4, "label": "Organizing memories" }),
+    );
     session.memory_status = "idle".to_string();
     session.memory_error = None;
+    session.memory_progress_step = None;
 
     // Save session memories
     if let Err(err) = save_group_session_memories(app, session, pool) {
@@ -3248,6 +3272,7 @@ fn save_group_session_memories(
         &session.memory_tool_events,
         Some(&session.memory_status),
         session.memory_error.as_deref(),
+        session.memory_progress_step,
     )?;
     log_info(
         app,
