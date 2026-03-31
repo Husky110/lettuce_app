@@ -14,6 +14,7 @@ mod infra;
 mod llama_cpp;
 pub mod migrations;
 pub mod models;
+mod ollama;
 mod platform;
 mod pricing_cache;
 mod providers;

@@ -191,8 +191,8 @@ pub fn require_api_key(
     credential: &ProviderCredential,
     log_scope: &str,
 ) -> Result<String, String> {
-    if credential.provider_id == "llamacpp" {
-        return Ok(String::new());
+    if credential.provider_id == "llamacpp" || credential.provider_id == "ollama" {
+        return Ok(credential.api_key.clone().unwrap_or_default());
     }
     // Prefer inline api_key on the credential
     if let Some(ref key) = credential.api_key {

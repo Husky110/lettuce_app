@@ -66,6 +66,15 @@ pub fn extract_reasoning(data: &Value, provider_id: Option<&str>) -> Option<Stri
                     }
                 }
             }
+            if let Some(reasoning) = map
+                .get("message")
+                .and_then(|message| message.get("thinking"))
+                .and_then(|thinking| thinking.as_str())
+            {
+                if !reasoning.is_empty() {
+                    return Some(reasoning.to_string());
+                }
+            }
             None
         }
         _ => None,

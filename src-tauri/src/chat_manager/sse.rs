@@ -395,6 +395,13 @@ fn extract_reasoning_from_value(v: &Value) -> Option<String> {
     {
         return Some(s.to_string());
     }
+    if let Some(s) = v
+        .get("message")
+        .and_then(|m| m.get("thinking"))
+        .and_then(|t| t.as_str())
+    {
+        return Some(s.to_string());
+    }
     // Gemini-style: candidates[].content.parts[] with thought=true
     if let Some(candidates) = v.get("candidates").and_then(|c| c.as_array()) {
         let mut combined = String::new();

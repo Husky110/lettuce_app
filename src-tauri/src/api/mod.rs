@@ -52,6 +52,9 @@ pub async fn api_request(app: tauri::AppHandle, req: ApiRequest) -> Result<ApiRe
     if llama_cpp::is_llama_cpp(req.provider_id.as_deref()) {
         return llama_cpp::handle_local_request(app, req).await;
     }
+    if crate::ollama::is_ollama_provider(req.provider_id.as_deref()) {
+        return crate::ollama::execute_chat_request(&app, &req).await;
+    }
 
     let method_str = req.method.clone().unwrap_or_else(|| "POST".to_string());
     let url_for_log = req.url.clone();
