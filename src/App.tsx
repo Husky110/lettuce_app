@@ -358,6 +358,7 @@ function App() {
           <div id="app-root" className="min-h-screen bg-surface text-fg antialiased">
             <Toaster
               position={"top-center"}
+              expand={true}
               offset={{ top: 16 }}
               mobileOffset={{
                 top: "calc(env(safe-area-inset-top) + 80px)",
