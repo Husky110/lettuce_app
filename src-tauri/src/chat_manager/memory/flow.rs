@@ -848,7 +848,7 @@ async fn process_dynamic_memory_cycle_with_model(
             session.memory_status = Some("failed".to_string());
             session.memory_error = Some(format!("memory_tools: {}", err));
             session.memory_progress_step = None;
-                    session.updated_at = now_millis()?;
+            session.updated_at = now_millis()?;
             if let Err(save_err) = save_session(app, session) {
                 record_dynamic_memory_error(app, session, &save_err, "save_session");
                 return Ok(());

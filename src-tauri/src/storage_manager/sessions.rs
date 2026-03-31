@@ -664,9 +664,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
         .get("memoryError")
         .and_then(|v| v.as_str())
         .map(|value| value.to_string());
-    let memory_progress_step = s
-        .get("memoryProgressStep")
-        .and_then(|v| v.as_i64());
+    let memory_progress_step = s.get("memoryProgressStep").and_then(|v| v.as_i64());
 
     let adv = s.get("advancedModelSettings");
     let temperature = adv
@@ -1968,9 +1966,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
         .get("memoryError")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let memory_progress_step = s
-        .get("memoryProgressStep")
-        .and_then(|v| v.as_i64());
+    let memory_progress_step = s.get("memoryProgressStep").and_then(|v| v.as_i64());
 
     let adv = s.get("advancedModelSettings");
     let temperature = adv

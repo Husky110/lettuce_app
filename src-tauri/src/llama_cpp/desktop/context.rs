@@ -266,8 +266,7 @@ pub(super) fn compute_cpu_fallback_limits(
     }
 
     let base_budget = ram_budget_for_context(model, available_memory_bytes);
-    let base_context = (base_budget / kv_bytes_per_token)
-        .min(u64::from(max_context_length)) as u32;
+    let base_context = (base_budget / kv_bytes_per_token).min(u64::from(max_context_length)) as u32;
     let requested_batch_size = requested_batch_size.max(1);
     let requested_or_base_context = requested_context
         .unwrap_or(base_context)

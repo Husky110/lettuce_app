@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { toast as sonnerToast } from "sonner";
-import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cpu, Info, LoaderCircle, XCircle } from "lucide-react";
 import { cn } from "../design-tokens";
 
 type ToastVariant = "info" | "warning" | "success" | "error";
@@ -36,6 +36,15 @@ type ToastActionOptions = {
   onSecondary?: () => void;
   secondaryTone?: "neutral" | "danger";
   id?: string | number;
+  duration?: number | typeof Infinity;
+};
+
+type ModelLoadToastOptions = {
+  id?: string | number;
+  title: string;
+  subtitle: string;
+  modelName: string;
+  progress: number;
   duration?: number | typeof Infinity;
 };
 
@@ -103,6 +112,46 @@ function showToast(
   );
 }
 
+function showModelLoadToast(options: ModelLoadToastOptions) {
+  const progress = Math.min(1, Math.max(0, options.progress));
+  const percent = Math.round(progress * 100);
+
+  return sonnerToast(
+    <div
+      className="flex items-start gap-3 overflow-hidden"
+      style={{ maxWidth: "calc(var(--width) - 32px)" }}
+    >
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-fg/12 bg-fg/5">
+        <Cpu className="h-4 w-4 text-fg/80" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className={titleClassName}>{options.title}</div>
+        <div className={cn(descriptionClassName, "mt-0.5 truncate")}>{options.subtitle}</div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-fg/55">
+          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          <span className="min-w-0 truncate">{options.modelName}</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-fg/60">
+          <span>Startup progress</span>
+          <span className="shrink-0 font-medium tabular-nums text-fg/72">{percent}%</span>
+        </div>
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fg/10">
+          <div
+            className="h-full rounded-full bg-accent transition-[width] duration-150 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      </div>
+    </div>,
+    {
+      className: cn(baseClassName, "border-fg/15 bg-surface/96 overflow-hidden"),
+      unstyled: true,
+      duration: options.duration ?? Infinity,
+      id: options.id,
+    },
+  );
+}
+
 export const toast = {
   info: (title: string, description?: string, options?: ToastActionOptions) =>
     showToast("info", title, description, options),
@@ -115,6 +164,7 @@ export const toast = {
 
   error: (title: string, description?: string, options?: ToastActionOptions) =>
     showToast("error", title, description, options),
+  modelLoad: (options: ModelLoadToastOptions) => showModelLoadToast(options),
 
   // Legacy support for warningAction
   warningAction: (

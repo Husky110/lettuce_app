@@ -107,6 +107,45 @@ import { recordChatDebugEvent } from "./core/debug/chatDebugStore";
 
 const chatLog = logManager({ component: "Chat" });
 
+type LlamaModelLoadProgressEvent = {
+  requestId?: string | null;
+  modelPath?: string | null;
+  modelName?: string | null;
+  stage?: number | null;
+  status?: number | null;
+  progress?: number | null;
+};
+
+const LLAMA_MODEL_LOAD_STATUS_LOADING = 0;
+const LLAMA_MODEL_LOAD_STATUS_RETRYING = 1;
+const LLAMA_MODEL_LOAD_STATUS_LOADED = 2;
+const LLAMA_MODEL_LOAD_STATUS_FAILED = 3;
+
+function resolveLlamaModelLoadCopy(stage?: number | null) {
+  switch (stage) {
+    case 0:
+      return {
+        title: "Local model startup",
+        subtitle: "Preparing GPU offload",
+      };
+    case 1:
+      return {
+        title: "Local model startup",
+        subtitle: "Preparing CPU runtime",
+      };
+    case 2:
+      return {
+        title: "Local model startup",
+        subtitle: "Switching to CPU fallback",
+      };
+    default:
+      return {
+        title: "Local model startup",
+        subtitle: "Preparing model runtime",
+      };
+  }
+}
+
 function App() {
   const platform = useMemo(() => getPlatform(), []);
 
@@ -233,6 +272,78 @@ function App() {
         });
       } catch (err) {
         console.error("Failed to attach toast listener:", err);
+      }
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    (async () => {
+      try {
+        unlisten = await listen<LlamaModelLoadProgressEvent>(
+          "llama-model-load-progress",
+          (event) => {
+            const payload = event.payload;
+            if (!payload || typeof payload !== "object") {
+              return;
+            }
+
+            const requestId =
+              typeof payload.requestId === "string" && payload.requestId.trim()
+                ? payload.requestId
+                : null;
+            const modelPath =
+              typeof payload.modelPath === "string" && payload.modelPath.trim()
+                ? payload.modelPath
+                : null;
+            const toastId = requestId ?? (modelPath ? `llama-model-load:${modelPath}` : null);
+            if (!toastId) {
+              return;
+            }
+
+            const status =
+              typeof payload.status === "number" && Number.isFinite(payload.status)
+                ? payload.status
+                : LLAMA_MODEL_LOAD_STATUS_LOADING;
+            if (
+              status === LLAMA_MODEL_LOAD_STATUS_LOADED ||
+              status === LLAMA_MODEL_LOAD_STATUS_FAILED
+            ) {
+              toast.dismiss(toastId);
+              return;
+            }
+
+            const modelName =
+              typeof payload.modelName === "string" && payload.modelName.trim()
+                ? payload.modelName
+                : "Local model";
+            const progress =
+              typeof payload.progress === "number" && Number.isFinite(payload.progress)
+                ? payload.progress
+                : 0;
+            const stage =
+              typeof payload.stage === "number" && Number.isFinite(payload.stage)
+                ? payload.stage
+                : undefined;
+            const copy = resolveLlamaModelLoadCopy(stage);
+
+            toast.modelLoad({
+              id: toastId,
+              title: copy.title,
+              subtitle:
+                status === LLAMA_MODEL_LOAD_STATUS_RETRYING
+                  ? "Switching to CPU fallback"
+                  : copy.subtitle,
+              modelName,
+              progress,
+            });
+          },
+        );
+      } catch (err) {
+        console.error("Failed to attach llama model load progress listener:", err);
       }
     })();
     return () => {

@@ -1,9 +1,13 @@
 use super::*;
 use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::mtmd::{MtmdContext, MtmdContextParams};
+use serde_json::json;
+use std::ffi::{c_void, CString};
 use std::path::Path;
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use tauri::Emitter;
 
 #[derive(Clone)]
 pub(super) struct LoadedEngine {
@@ -31,6 +35,158 @@ pub(super) struct LlamaState {
     pub(super) mmproj_path: Option<String>,
 }
 
+const LLAMA_MODEL_LOAD_PROGRESS_EVENT: &str = "llama-model-load-progress";
+const MODEL_LOAD_STAGE_GPU_OFFLOAD: u8 = 0;
+const MODEL_LOAD_STAGE_CPU: u8 = 1;
+const MODEL_LOAD_STAGE_CPU_FALLBACK: u8 = 2;
+const MODEL_LOAD_STATUS_LOADING: u8 = 0;
+const MODEL_LOAD_STATUS_RETRYING: u8 = 1;
+const MODEL_LOAD_STATUS_LOADED: u8 = 2;
+const MODEL_LOAD_STATUS_FAILED: u8 = 3;
+
+struct ModelLoadProgressContext {
+    app: AppHandle,
+    request_id: Option<String>,
+    model_path: String,
+    backend_path: String,
+    stage: u8,
+    last_percent: AtomicU8,
+}
+
+fn model_display_name(model_path: &str) -> String {
+    Path::new(model_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| model_path.to_string())
+}
+
+fn emit_model_load_progress(
+    app: &AppHandle,
+    request_id: Option<&str>,
+    model_path: &str,
+    backend_path: &str,
+    stage: u8,
+    status: u8,
+    progress: f32,
+) {
+    let clamped = progress.clamp(0.0, 1.0);
+    let percent = (clamped * 100.0).round().clamp(0.0, 100.0) as u8;
+    let _ = app.emit(
+        LLAMA_MODEL_LOAD_PROGRESS_EVENT,
+        json!({
+            "requestId": request_id,
+            "modelPath": model_path,
+            "modelName": model_display_name(model_path),
+            "backendPath": backend_path,
+            "stage": stage,
+            "status": status,
+            "progress": clamped,
+            "percent": percent,
+        }),
+    );
+}
+
+unsafe extern "C" fn model_load_progress_callback(progress: f32, user_data: *mut c_void) -> bool {
+    if user_data.is_null() {
+        return true;
+    }
+
+    let ctx = unsafe { &*(user_data as *const ModelLoadProgressContext) };
+    let clamped = progress.clamp(0.0, 1.0);
+    let percent = (clamped * 100.0).round().clamp(0.0, 100.0) as u8;
+    let last = ctx.last_percent.load(Ordering::Relaxed);
+    if percent <= last && percent < 100 {
+        return true;
+    }
+
+    ctx.last_percent.store(percent, Ordering::Relaxed);
+    emit_model_load_progress(
+        &ctx.app,
+        ctx.request_id.as_deref(),
+        &ctx.model_path,
+        &ctx.backend_path,
+        ctx.stage,
+        MODEL_LOAD_STATUS_LOADING,
+        clamped,
+    );
+    true
+}
+
+fn load_model_with_progress(
+    app: Option<&AppHandle>,
+    request_id: Option<&str>,
+    model_path: &str,
+    n_gpu_layers: Option<u32>,
+    backend_path: &str,
+    stage: u8,
+) -> Result<LlamaModel, String> {
+    let cstr = CString::new(model_path).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Invalid llama model path: {e}"),
+        )
+    })?;
+
+    let mut params = unsafe { llama_cpp_sys_2::llama_model_default_params() };
+    if let Some(n_gpu_layers) = n_gpu_layers {
+        params.n_gpu_layers = i32::try_from(n_gpu_layers).unwrap_or(i32::MAX);
+    }
+
+    let progress_ctx = app.map(|app| {
+        Box::new(ModelLoadProgressContext {
+            app: app.clone(),
+            request_id: request_id.map(ToOwned::to_owned),
+            model_path: model_path.to_string(),
+            backend_path: backend_path.to_string(),
+            stage,
+            last_percent: AtomicU8::new(0),
+        })
+    });
+
+    if let Some(ctx) = progress_ctx.as_ref() {
+        emit_model_load_progress(
+            &ctx.app,
+            ctx.request_id.as_deref(),
+            &ctx.model_path,
+            &ctx.backend_path,
+            ctx.stage,
+            MODEL_LOAD_STATUS_LOADING,
+            0.0,
+        );
+        params.progress_callback = Some(model_load_progress_callback);
+        params.progress_callback_user_data = ctx.as_ref() as *const _ as *mut c_void;
+    }
+
+    let raw_model = unsafe { llama_cpp_sys_2::llama_load_model_from_file(cstr.as_ptr(), params) };
+    let model_ptr = NonNull::new(raw_model).ok_or_else(|| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Failed to load llama model: null reference from llama.cpp",
+        )
+    })?;
+
+    if let Some(ctx) = progress_ctx.as_ref() {
+        emit_model_load_progress(
+            &ctx.app,
+            ctx.request_id.as_deref(),
+            &ctx.model_path,
+            &ctx.backend_path,
+            ctx.stage,
+            MODEL_LOAD_STATUS_LOADED,
+            1.0,
+        );
+    }
+
+    // SAFETY: `LlamaModel` is a transparent wrapper around `NonNull<llama_model>`.
+    let model = unsafe {
+        std::mem::transmute::<NonNull<llama_cpp_sys_2::llama_model>, LlamaModel>(model_ptr)
+    };
+    Ok(model)
+}
+
 fn compiled_gpu_backends() -> Vec<&'static str> {
     let mut out = Vec::new();
     if cfg!(feature = "llama-gpu-cuda") || cfg!(feature = "llama-gpu-cuda-no-vmm") {
@@ -56,6 +212,7 @@ static ENGINE: OnceLock<Mutex<LlamaState>> = OnceLock::new();
 
 pub(super) fn load_engine(
     app: Option<&AppHandle>,
+    request_id: Option<&str>,
     model_path: &str,
     requested_gpu_layers: Option<u32>,
     mmproj_path: Option<&str>,
@@ -113,10 +270,6 @@ pub(super) fn load_engine(
             ),
         );
     }
-    let backend = guard
-        .backend
-        .clone()
-        .ok_or_else(|| "llama.cpp backend unavailable".to_string())?;
     if let (Some(app), Some(requested)) = (app, requested_gpu_layers) {
         if requested > 0 && !supports_gpu {
             log_warn(
@@ -137,20 +290,19 @@ pub(super) fn load_engine(
         || guard.model_path.as_deref() != Some(model_path)
         || guard.model_params_key.as_deref() != Some(&model_params_key);
     if should_reload {
-        let cpu_params = LlamaModelParams::default().with_n_gpu_layers(0);
         let mut backend_path_used = "cpu".to_string();
         let mut gpu_load_fallback_activated = false;
         let mut gpu_load_fallback_reason = None;
 
         let model = if supports_gpu && requested_gpu_layers != Some(0) {
-            let gpu_params = if let Some(explicit_layers) = requested_gpu_layers {
-                LlamaModelParams::default().with_n_gpu_layers(explicit_layers)
-            } else {
-                // Let llama.cpp choose the default GPU offload policy/layers.
-                LlamaModelParams::default()
-            };
-
-            match LlamaModel::load_from_file(backend.as_ref(), model_path, &gpu_params) {
+            match load_model_with_progress(
+                app,
+                request_id,
+                model_path,
+                requested_gpu_layers,
+                "gpu_offload",
+                MODEL_LOAD_STAGE_GPU_OFFLOAD,
+            ) {
                 Ok(model) => {
                     backend_path_used = "gpu_offload".to_string();
                     if let Some(app) = app {
@@ -169,6 +321,15 @@ pub(super) fn load_engine(
                     gpu_load_fallback_activated = true;
                     gpu_load_fallback_reason = Some(err.to_string());
                     if let Some(app) = app {
+                        emit_model_load_progress(
+                            app,
+                            request_id,
+                            model_path,
+                            "cpu",
+                            MODEL_LOAD_STAGE_CPU_FALLBACK,
+                            MODEL_LOAD_STATUS_RETRYING,
+                            0.0,
+                        );
                         log_warn(
                             app,
                             "llama_cpp",
@@ -184,28 +345,55 @@ pub(super) fn load_engine(
                         );
                     }
                     Arc::new(
-                        LlamaModel::load_from_file(backend.as_ref(), model_path, &cpu_params)
-                            .map_err(|e| {
-                                crate::utils::err_msg(
-                                    module_path!(),
-                                    line!(),
-                                    format!("Failed to load llama model: {e}"),
-                                )
-                            })?,
+                        load_model_with_progress(
+                            app,
+                            request_id,
+                            model_path,
+                            Some(0),
+                            "cpu",
+                            MODEL_LOAD_STAGE_CPU_FALLBACK,
+                        )
+                        .map_err(|err| {
+                            if let Some(app) = app {
+                                emit_model_load_progress(
+                                    app,
+                                    request_id,
+                                    model_path,
+                                    "cpu",
+                                    MODEL_LOAD_STAGE_CPU_FALLBACK,
+                                    MODEL_LOAD_STATUS_FAILED,
+                                    0.0,
+                                );
+                            }
+                            err
+                        })?,
                     )
                 }
             }
         } else {
             Arc::new(
-                LlamaModel::load_from_file(backend.as_ref(), model_path, &cpu_params).map_err(
-                    |e| {
-                        crate::utils::err_msg(
-                            module_path!(),
-                            line!(),
-                            format!("Failed to load llama model: {e}"),
-                        )
-                    },
-                )?,
+                load_model_with_progress(
+                    app,
+                    request_id,
+                    model_path,
+                    Some(0),
+                    "cpu",
+                    MODEL_LOAD_STAGE_CPU,
+                )
+                .map_err(|err| {
+                    if let Some(app) = app {
+                        emit_model_load_progress(
+                            app,
+                            request_id,
+                            model_path,
+                            "cpu",
+                            MODEL_LOAD_STAGE_CPU,
+                            MODEL_LOAD_STATUS_FAILED,
+                            0.0,
+                        );
+                    }
+                    err
+                })?,
             )
         };
 
