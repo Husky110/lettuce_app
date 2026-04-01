@@ -2362,6 +2362,9 @@ export const LorebookSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   avatarPath: z.string().nullish().optional(),
+  keywordDetectionMode: z
+    .enum(["recentMessageWindow", "latestUserMessage"])
+    .default("recentMessageWindow"),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
 });

@@ -1234,6 +1234,12 @@ export const enMessages = {
       enterNamePlaceholder: "Enter lorebook name...",
       lorebookExplanation:
         "Lorebooks contain lore entries that are injected into prompts when keywords match.",
+      keywordDetectionMode: "KEYWORD DETECTION",
+      keywordDetectionRecentWindow: "Recent 10 messages",
+      keywordDetectionRecentWindowDesc:
+        "Matches against the recent 10-message conversation window.",
+      keywordDetectionLatestUser: "Latest user message only",
+      keywordDetectionLatestUserDesc: "Matches only against the most recent user-sent message.",
       viewEntries: "View Entries",
       editEntriesDesc: "Edit lorebook entries",
       disableForCharacter: "Disable for Character",

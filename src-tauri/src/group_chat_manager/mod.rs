@@ -63,7 +63,7 @@ use crate::storage_manager::group_sessions::{
     MemoryEmbedding, UsageSummary,
 };
 use crate::storage_manager::lorebook::{
-    get_enabled_lorebook_entries_for_ids, get_lorebook, LorebookEntry,
+    get_enabled_lorebook_entry_contexts_for_ids, get_lorebook, LorebookEntry,
 };
 use crate::utils::{log_error, log_info, log_warn, now_millis};
 
@@ -3915,13 +3915,21 @@ fn get_group_active_lorebook_entries(
         .rev()
         .map(|msg| msg.content.clone())
         .collect();
+    let latest_user_message = recent_messages
+        .iter()
+        .rev()
+        .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+        .map(|msg| msg.content.as_str());
 
     let mut merged = Vec::new();
     let mut seen = HashSet::new();
 
     if !session.lorebook_ids.is_empty() {
-        let group_entries = get_enabled_lorebook_entries_for_ids(conn, &session.lorebook_ids)?;
-        for entry in activate_lorebook_entries(group_entries, &recent_message_texts) {
+        let group_entries =
+            get_enabled_lorebook_entry_contexts_for_ids(conn, &session.lorebook_ids)?;
+        for entry in
+            activate_lorebook_entries(group_entries, &recent_message_texts, latest_user_message)
+        {
             if seen.insert(entry.id.clone()) {
                 merged.push(entry);
             }
@@ -3929,7 +3937,12 @@ fn get_group_active_lorebook_entries(
     }
 
     if !session.disable_character_lorebooks {
-        for entry in get_active_lorebook_entries(conn, character_id, &recent_message_texts)? {
+        for entry in get_active_lorebook_entries(
+            conn,
+            character_id,
+            &recent_message_texts,
+            latest_user_message,
+        )? {
             if seen.insert(entry.id.clone()) {
                 merged.push(entry);
             }

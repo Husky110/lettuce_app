@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 47;
+pub const CURRENT_MIGRATION_VERSION: u32 = 48;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -507,6 +507,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v46_to_v47(app)?;
         version = 47;
+    }
+
+    if version < 48 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v47 -> v48: Add lorebook keyword detection mode",
+        );
+        migrate_v47_to_v48(app)?;
+        version = 48;
     }
 
     // Update the stored version
@@ -2727,5 +2737,14 @@ fn migrate_v46_to_v47(app: &AppHandle) -> Result<(), String> {
         [],
     );
 
+    Ok(())
+}
+
+fn migrate_v47_to_v48(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    let _ = conn.execute(
+        "ALTER TABLE lorebooks ADD COLUMN keyword_detection_mode TEXT NOT NULL DEFAULT 'recent_message_window'",
+        [],
+    );
     Ok(())
 }

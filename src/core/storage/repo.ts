@@ -752,6 +752,7 @@ export async function saveLorebook(
     id: lorebook.id ?? uuidv4(),
     name: lorebook.name,
     avatarPath: lorebook.avatarPath,
+    keywordDetectionMode: lorebook.keywordDetectionMode ?? "recentMessageWindow",
     createdAt: lorebook.createdAt ?? timestamp,
     updatedAt: timestamp,
   };

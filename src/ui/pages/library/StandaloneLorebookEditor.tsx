@@ -486,6 +486,8 @@ export function StandaloneLorebookEditor() {
   const [showRenameMenu, setShowRenameMenu] = useState(false);
   const [newName, setNewName] = useState("");
   const [avatarDraftPath, setAvatarDraftPath] = useState<string | null>(null);
+  const [keywordDetectionModeDraft, setKeywordDetectionModeDraft] =
+    useState<Lorebook["keywordDetectionMode"]>("recentMessageWindow");
   const [isCreatingEntry, setIsCreatingEntry] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -505,6 +507,7 @@ export function StandaloneLorebookEditor() {
       ]);
       const lb = allLorebooks.find((l) => l.id === lorebookId) ?? null;
       setLorebook(lb);
+      setKeywordDetectionModeDraft(lb?.keywordDetectionMode ?? "recentMessageWindow");
       setEntries(ent);
     } catch (error) {
       console.error("Failed to load lorebook:", error);
@@ -614,7 +617,12 @@ export function StandaloneLorebookEditor() {
         nextAvatarPath = avatarDraftPath;
       }
 
-      const updated = { ...lorebook, name: newName.trim(), avatarPath: nextAvatarPath };
+      const updated = {
+        ...lorebook,
+        name: newName.trim(),
+        avatarPath: nextAvatarPath,
+        keywordDetectionMode: keywordDetectionModeDraft,
+      };
       const saved = await saveLorebook(updated);
       if (lorebook.avatarPath && lorebook.avatarPath !== saved.avatarPath) {
         await deleteImageRef(lorebook.avatarPath);
@@ -623,6 +631,7 @@ export function StandaloneLorebookEditor() {
       setShowRenameMenu(false);
       setNewName("");
       setAvatarDraftPath(saved.avatarPath ?? null);
+      setKeywordDetectionModeDraft(saved.keywordDetectionMode);
     } catch (error) {
       if (replacementAvatarPath) {
         await deleteImageRef(replacementAvatarPath);
@@ -740,6 +749,7 @@ export function StandaloneLorebookEditor() {
               onClick={() => {
                 setNewName(lorebook.name);
                 setAvatarDraftPath(lorebook.avatarPath ?? null);
+                setKeywordDetectionModeDraft(lorebook.keywordDetectionMode);
                 setShowRenameMenu(true);
               }}
               className="flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full text-fg/70 hover:text-fg hover:bg-fg/10 transition"
@@ -918,6 +928,7 @@ export function StandaloneLorebookEditor() {
             setShowRenameMenu(false);
             setNewName("");
             setAvatarDraftPath(lorebook.avatarPath ?? null);
+            setKeywordDetectionModeDraft(lorebook.keywordDetectionMode);
           }}
           title={t("library.actions.renameLorebook")}
         >
@@ -972,12 +983,54 @@ export function StandaloneLorebookEditor() {
               />
             </div>
 
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium text-fg/70">
+                {t("characters.lorebook.keywordDetectionMode")}
+              </label>
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => setKeywordDetectionModeDraft("recentMessageWindow")}
+                  className={`rounded-xl border px-3 py-3 text-left transition ${
+                    keywordDetectionModeDraft === "recentMessageWindow"
+                      ? "border-accent/45 bg-accent/15 text-fg"
+                      : "border-fg/10 bg-fg/5 text-fg/75 hover:border-fg/20 hover:bg-fg/10"
+                  }`}
+                >
+                  <div className="text-sm font-medium">
+                    {t("characters.lorebook.keywordDetectionRecentWindow")}
+                  </div>
+                  <div className="mt-1 text-xs text-fg/55">
+                    {t("characters.lorebook.keywordDetectionRecentWindowDesc")}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setKeywordDetectionModeDraft("latestUserMessage")}
+                  className={`rounded-xl border px-3 py-3 text-left transition ${
+                    keywordDetectionModeDraft === "latestUserMessage"
+                      ? "border-accent/45 bg-accent/15 text-fg"
+                      : "border-fg/10 bg-fg/5 text-fg/75 hover:border-fg/20 hover:bg-fg/10"
+                  }`}
+                >
+                  <div className="text-sm font-medium">
+                    {t("characters.lorebook.keywordDetectionLatestUser")}
+                  </div>
+                  <div className="mt-1 text-xs text-fg/55">
+                    {t("characters.lorebook.keywordDetectionLatestUserDesc")}
+                  </div>
+                </button>
+              </div>
+            </div>
+
             <button
               onClick={handleRename}
               disabled={
                 !newName.trim() ||
                 (newName.trim() === lorebook.name &&
-                  (avatarDraftPath ?? "") === (lorebook.avatarPath ?? ""))
+                  (avatarDraftPath ?? "") === (lorebook.avatarPath ?? "") &&
+                  keywordDetectionModeDraft === lorebook.keywordDetectionMode)
               }
               className="w-full rounded-xl border border-accent/40 bg-accent/20 px-4 py-3.5 text-sm font-semibold text-accent/70 transition hover:bg-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >

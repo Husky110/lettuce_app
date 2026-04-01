@@ -1119,7 +1119,7 @@ fn get_lorebook_content(
 ) -> Result<String, String> {
     let conn = open_db(app)?;
 
-    // Get last 10 messages for keyword matching context
+    // Default lorebook keyword matching scans the recent 10-message window.
     let recent_messages: Vec<String> = session
         .messages
         .iter()
@@ -1128,6 +1128,12 @@ fn get_lorebook_content(
         .rev()
         .map(|msg| msg.content.clone())
         .collect();
+    let latest_user_message = session
+        .messages
+        .iter()
+        .rev()
+        .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+        .map(|msg| msg.content.as_str());
 
     utils::log_info(
         app,
@@ -1139,7 +1145,8 @@ fn get_lorebook_content(
         ),
     );
 
-    let active_entries = get_active_lorebook_entries(&conn, character_id, &recent_messages)?;
+    let active_entries =
+        get_active_lorebook_entries(&conn, character_id, &recent_messages, latest_user_message)?;
 
     if active_entries.is_empty() {
         utils::log_info(
@@ -1193,8 +1200,19 @@ pub fn resolve_used_lorebook_entries(
         .rev()
         .map(|msg| msg.content.clone())
         .collect();
+    let latest_user_message = session
+        .messages
+        .iter()
+        .rev()
+        .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+        .map(|msg| msg.content.as_str());
 
-    let active_entries = match get_active_lorebook_entries(&conn, character_id, &recent_messages) {
+    let active_entries = match get_active_lorebook_entries(
+        &conn,
+        character_id,
+        &recent_messages,
+        latest_user_message,
+    ) {
         Ok(entries) => entries,
         Err(_) => return Vec::new(),
     };

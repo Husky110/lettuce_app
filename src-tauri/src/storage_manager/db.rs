@@ -340,6 +340,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           avatar_path TEXT,
+          keyword_detection_mode TEXT NOT NULL DEFAULT 'recent_message_window',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
