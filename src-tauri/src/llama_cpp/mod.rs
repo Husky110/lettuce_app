@@ -2089,6 +2089,74 @@ pub async fn llamacpp_context_info(
 }
 
 #[tauri::command]
+pub async fn llamacpp_embedded_chat_template(
+    _app: AppHandle,
+    model_path: String,
+) -> Result<String, String> {
+    #[cfg(not(mobile))]
+    {
+        use desktop::engine::shared_backend;
+        use llama_cpp_2::model::params::LlamaModelParams;
+        use llama_cpp_2::model::LlamaModel;
+        use std::path::Path;
+
+        if model_path.trim().is_empty() {
+            return Err(crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                "llama.cpp model path is empty",
+            ));
+        }
+        if !Path::new(&model_path).exists() {
+            return Err(crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("llama.cpp model path not found: {}", model_path),
+            ));
+        }
+
+        let backend = shared_backend()?;
+        let model = LlamaModel::load_from_file(
+            backend.as_ref(),
+            &model_path,
+            &LlamaModelParams::default().with_n_gpu_layers(0),
+        )
+        .map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to load llama model for embedded template read: {e}"),
+            )
+        })?;
+
+        let template = model.chat_template(None).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("No embedded GGUF chat template found: {e}"),
+            )
+        })?;
+
+        return template.to_string().map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to decode embedded GGUF chat template: {e}"),
+            )
+        });
+    }
+    #[cfg(mobile)]
+    {
+        let _ = model_path;
+        Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "llama.cpp is only supported on desktop builds",
+        ))
+    }
+}
+
+#[tauri::command]
 pub async fn llamacpp_unload(app: AppHandle) -> Result<(), String> {
     #[cfg(not(mobile))]
     {

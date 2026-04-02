@@ -46,12 +46,15 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   HelpCircle,
   AlertTriangle,
   FolderOpen,
   Loader,
   HardDrive,
   ArrowRight,
+  CopyCheck,
+  Copy,
 } from "lucide-react";
 import { ProviderParameterSupportInfo } from "../../components/ProviderParameterSupportInfo";
 import { toast } from "../../components/toast";
@@ -59,7 +62,10 @@ import { useModelEditorController } from "./hooks/useModelEditorController";
 import { Routes, useNavigationManager } from "../../navigation";
 import { addOrUpdateModel } from "../../../core/storage/repo";
 import type { LlamaLastRuntimeReport, ReasoningSupport } from "../../../core/storage/schemas";
-import { getProviderReasoningSupport, getProviderCachingSupport } from "../../../core/storage/schemas";
+import {
+  getProviderReasoningSupport,
+  getProviderCachingSupport,
+} from "../../../core/storage/schemas";
 import { getProviderIcon } from "../../../core/utils/providerIcons";
 import { cn } from "../../design-tokens";
 import { openDocs } from "../../../core/utils/docs";
@@ -374,6 +380,10 @@ export function EditModelPage() {
   const [movingModel, setMovingModel] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [showLlamaRuntimeReport, setShowLlamaRuntimeReport] = useState(false);
+  const [showEmbeddedTemplateViewer, setShowEmbeddedTemplateViewer] = useState(false);
+  const [embeddedTemplateLoading, setEmbeddedTemplateLoading] = useState(false);
+  const [embeddedTemplateText, setEmbeddedTemplateText] = useState("");
+  const [embeddedTemplateError, setEmbeddedTemplateError] = useState<string | null>(null);
   const [runabilityScore, setRunabilityScore] = useState<{
     score: number;
     label: "excellent" | "good" | "marginal" | "poor" | "unrunnable";
@@ -621,6 +631,160 @@ export function EditModelPage() {
     } catch (error) {
       console.error("Failed to browse for local model", error);
     }
+  };
+
+  const highlightedTemplate = useMemo(() => {
+    if (!embeddedTemplateText) return null;
+
+    // Tokenize Jinja template into colored spans
+    const jinjaKeywords = new Set([
+      "if",
+      "else",
+      "elif",
+      "endif",
+      "for",
+      "endfor",
+      "block",
+      "endblock",
+      "macro",
+      "endmacro",
+      "set",
+      "extends",
+      "include",
+      "import",
+      "from",
+      "not",
+      "and",
+      "or",
+      "in",
+      "is",
+      "true",
+      "false",
+      "none",
+      "True",
+      "False",
+      "None",
+      "namespace",
+    ]);
+
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // Highlight the inside of a Jinja tag (block or expression)
+    const highlightTagInner = (inner: string): string => {
+      // Match strings, keywords, numbers, pipes/operators, and plain text
+      return inner.replace(
+        /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d+(?:\.\d+)?\b)|(\b[a-zA-Z_]\w*\b)|([|~%^!=<>]+)|([^"'a-zA-Z_0-9|~%^!=<>]+)/g,
+        (match, str, num, word, op, rest) => {
+          if (str)
+            return `<span style="color:#a8db8a">${escapeHtml(str)}</span>`;
+          if (num)
+            return `<span style="color:#d4976c">${escapeHtml(num)}</span>`;
+          if (word) {
+            if (jinjaKeywords.has(word))
+              return `<span style="color:#c792ea;font-weight:500">${escapeHtml(word)}</span>`;
+            return `<span style="color:#82aaff">${escapeHtml(word)}</span>`;
+          }
+          if (op) return `<span style="color:#89ddff">${escapeHtml(op)}</span>`;
+          return escapeHtml(rest ?? match);
+        },
+      );
+    };
+
+    // Main pass: split by Jinja tags, then by plain-text tokens
+    const parts: string[] = [];
+    let cursor = 0;
+    // Match {# ... #}, {% ... %}, {{ ... }}
+    const tagRegex = /\{#[\s\S]*?#\}|\{%[-+]?[\s\S]*?[-+]?%\}|\{\{[\s\S]*?\}\}/g;
+    let m: RegExpExecArray | null;
+
+    while ((m = tagRegex.exec(embeddedTemplateText)) !== null) {
+      // Plain text before this tag
+      if (m.index > cursor) {
+        parts.push(
+          `<span style="color:rgba(255,255,255,0.55)">${escapeHtml(embeddedTemplateText.slice(cursor, m.index))}</span>`,
+        );
+      }
+
+      const tag = m[0];
+      if (tag.startsWith("{#")) {
+        // Comment
+        parts.push(
+          `<span style="color:rgba(255,255,255,0.25);font-style:italic">${escapeHtml(tag)}</span>`,
+        );
+      } else if (tag.startsWith("{%")) {
+        // Block tag
+        const delimiters = tag.match(/^(\{%[-+]?)([\s\S]*)([-+]?%\})$/);
+        if (delimiters) {
+          parts.push(`<span style="color:#c792ea">${escapeHtml(delimiters[1])}</span>`);
+          parts.push(highlightTagInner(delimiters[2]));
+          parts.push(`<span style="color:#c792ea">${escapeHtml(delimiters[3])}</span>`);
+        } else {
+          parts.push(`<span style="color:#c792ea">${escapeHtml(tag)}</span>`);
+        }
+      } else {
+        // Expression {{ ... }}
+        const delimiters = tag.match(/^(\{\{)([\s\S]*)(\}\})$/);
+        if (delimiters) {
+          parts.push(`<span style="color:#89ddff">${escapeHtml(delimiters[1])}</span>`);
+          parts.push(highlightTagInner(delimiters[2]));
+          parts.push(`<span style="color:#89ddff">${escapeHtml(delimiters[3])}</span>`);
+        } else {
+          parts.push(`<span style="color:#89ddff">${escapeHtml(tag)}</span>`);
+        }
+      }
+      cursor = m.index + tag.length;
+    }
+
+    // Remaining plain text
+    if (cursor < embeddedTemplateText.length) {
+      parts.push(
+        `<span style="color:rgba(255,255,255,0.55)">${escapeHtml(embeddedTemplateText.slice(cursor))}</span>`,
+      );
+    }
+
+    return parts.join("");
+  }, [embeddedTemplateText]);
+
+  const toggleEmbeddedTemplate = async () => {
+    if (showEmbeddedTemplateViewer) {
+      setShowEmbeddedTemplateViewer(false);
+      return;
+    }
+
+    if (!editorModel?.name?.trim()) {
+      toast.warning(
+        "Model path required",
+        "Select a GGUF model path before reading the embedded template.",
+      );
+      return;
+    }
+
+    setShowEmbeddedTemplateViewer(true);
+    setEmbeddedTemplateLoading(true);
+    setEmbeddedTemplateError(null);
+    setEmbeddedTemplateText("");
+
+    try {
+      const template = await invoke<string>("llamacpp_embedded_chat_template", {
+        modelPath: editorModel.name.trim(),
+      });
+      setEmbeddedTemplateText(template);
+    } catch (error) {
+      setEmbeddedTemplateError(typeof error === "string" ? error : String(error));
+    } finally {
+      setEmbeddedTemplateLoading(false);
+    }
+  };
+
+  const handleUseEmbeddedTemplate = () => {
+    if (!embeddedTemplateText.trim()) return;
+    handleLlamaChatTemplateOverrideChange(embeddedTemplateText);
+    setShowEmbeddedTemplateViewer(false);
+    toast.success(
+      "Template applied",
+      "The embedded GGUF template was copied into Template Override.",
+    );
   };
 
   // Check if a path is outside the GGUF models dir
@@ -945,8 +1109,8 @@ export function EditModelPage() {
   const isAutoReasoning = reasoningSupport === "auto";
   const showEffortOptions = reasoningSupport === "effort" || reasoningSupport === "dynamic";
   // Get caching support for the current provider
-  const cachingSupport = editorModel?.providerId 
-    ? getProviderCachingSupport(editorModel.providerId) 
+  const cachingSupport = editorModel?.providerId
+    ? getProviderCachingSupport(editorModel.providerId)
     : "none";
   const showCachingSection = cachingSupport !== "none";
   const numberInputClassName =
@@ -2683,8 +2847,8 @@ export function EditModelPage() {
                                       <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger/80">
                                         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                                         <span>
-                                          This model likely won&apos;t fit in memory on your
-                                          device. Try a smaller model or a much shorter context.
+                                          This model likely won&apos;t fit in memory on your device.
+                                          Try a smaller model or a much shorter context.
                                         </span>
                                       </div>
                                     )}
@@ -3432,15 +3596,90 @@ export function EditModelPage() {
                                   </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                  <div className="space-y-0.5">
-                                    <span className="block text-[13px] font-medium text-fg/70">
-                                      Template Override
-                                    </span>
-                                    <span className="block text-[13px] text-fg/40">
-                                      Jinja template or internal name
-                                    </span>
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-medium text-fg/70">
+                                        Template Override
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        Jinja template or internal name
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={toggleEmbeddedTemplate}
+                                      className={cn(
+                                        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition",
+                                        showEmbeddedTemplateViewer
+                                          ? "border-accent/30 bg-accent/10 text-accent"
+                                          : "border-fg/10 bg-fg/5 text-fg/68 hover:border-fg/20 hover:bg-fg/10 hover:text-fg",
+                                      )}
+                                    >
+                                      {showEmbeddedTemplateViewer ? (
+                                        <ChevronUp className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <CopyCheck className="h-3.5 w-3.5 text-accent/70" />
+                                      )}
+                                      {showEmbeddedTemplateViewer
+                                        ? "Hide Embedded"
+                                        : "Show Embedded"}
+                                    </button>
                                   </div>
+
+                                  {showEmbeddedTemplateViewer && (
+                                    <div className="overflow-hidden rounded-lg border border-fg/8 bg-[#0b0c10]">
+                                      {embeddedTemplateLoading ? (
+                                        <div className="flex h-40 items-center justify-center text-[12px] text-fg/50">
+                                          <Loader className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                          Reading embedded template...
+                                        </div>
+                                      ) : embeddedTemplateError ? (
+                                        <div className="space-y-1 p-3">
+                                          <div className="text-[12px] font-medium text-danger">
+                                            Could not read embedded template
+                                          </div>
+                                          <div className="whitespace-pre-wrap break-words text-[12px] text-fg/50">
+                                            {embeddedTemplateError}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <pre
+                                            className="max-h-64 overflow-auto px-3 py-2.5 font-mono text-[11px] leading-[18px]"
+                                            dangerouslySetInnerHTML={{
+                                              __html: highlightedTemplate ?? "",
+                                            }}
+                                          />
+                                          <div className="flex items-center justify-end gap-2 border-t border-fg/6 px-3 py-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                navigator.clipboard.writeText(
+                                                  embeddedTemplateText,
+                                                );
+                                                toast.success("Copied to clipboard");
+                                              }}
+                                              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-fg/50 transition hover:bg-fg/8 hover:text-fg/70"
+                                            >
+                                              <Copy className="h-3 w-3" />
+                                              Copy
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={handleUseEmbeddedTemplate}
+                                              disabled={!embeddedTemplateText.trim()}
+                                              className="inline-flex items-center gap-1.5 rounded-md bg-accent/12 px-2.5 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                              <CopyCheck className="h-3 w-3" />
+                                              Use as Override
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+
                                   <textarea
                                     value={modelAdvancedDraft.llamaChatTemplateOverride ?? ""}
                                     onChange={(e) =>
@@ -4195,7 +4434,9 @@ export function EditModelPage() {
                                   <input
                                     type="checkbox"
                                     checked={modelAdvancedDraft.promptCachingEnabled || false}
-                                    onChange={(e) => handlePromptCachingEnabledChange(e.target.checked)}
+                                    onChange={(e) =>
+                                      handlePromptCachingEnabledChange(e.target.checked)
+                                    }
                                     className="sr-only"
                                   />
                                   <span
@@ -4285,7 +4526,7 @@ export function EditModelPage() {
                             </div>
                           </div>
                         )}
-                        
+
                         {activeDetailPanel === "capabilities" && (
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -4549,6 +4790,7 @@ export function EditModelPage() {
           <ProviderParameterSupportInfo providerId={editorModel?.providerId || "openai"} />
         </div>
       </BottomMenu>
+
     </div>
   );
 }

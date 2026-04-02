@@ -211,7 +211,7 @@ pub(super) fn using_rocm_backend() -> bool {
 static ENGINE: OnceLock<Mutex<LlamaState>> = OnceLock::new();
 static SHARED_BACKEND: OnceLock<Arc<LlamaBackend>> = OnceLock::new();
 
-pub(super) fn shared_backend() -> Result<Arc<LlamaBackend>, String> {
+pub(crate) fn shared_backend() -> Result<Arc<LlamaBackend>, String> {
     if let Some(backend) = SHARED_BACKEND.get() {
         return Ok(backend.clone());
     }

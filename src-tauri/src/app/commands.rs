@@ -199,6 +199,7 @@ macro_rules! invoke_handler {
             crate::embedding::compare_custom_texts,
             crate::embedding::delete_embedding_model,
             crate::embedding::delete_embedding_model_version,
+            crate::llama_cpp::llamacpp_embedded_chat_template,
             crate::image_generator::commands::generate_image,
             crate::logger::log_to_file,
             crate::logger::list_log_files,
