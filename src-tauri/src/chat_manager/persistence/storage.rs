@@ -20,6 +20,7 @@ use crate::chat_manager::types::{
 #[derive(Debug, Clone, Copy)]
 pub enum PromptType {
     SystemPrompt,
+    LocalRoleplayPrompt,
     DynamicMemoryPrompt,
     DynamicSummaryPrompt,
     HelpMeReplyPrompt,
@@ -35,6 +36,7 @@ pub enum PromptType {
 pub fn get_base_prompt(prompt_type: PromptType) -> String {
     match prompt_type {
         PromptType::SystemPrompt => prompt_engine::default_system_prompt_template(),
+        PromptType::LocalRoleplayPrompt => prompt_engine::default_local_roleplay_prompt(),
         PromptType::DynamicMemoryPrompt => prompt_engine::default_dynamic_memory_prompt(),
         PromptType::DynamicSummaryPrompt => prompt_engine::default_dynamic_summary_prompt(),
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_prompt(),
@@ -55,6 +57,7 @@ pub fn get_base_prompt(prompt_type: PromptType) -> String {
 pub fn get_base_prompt_entries(prompt_type: PromptType) -> Vec<SystemPromptEntry> {
     match prompt_type {
         PromptType::SystemPrompt => prompt_engine::default_modular_prompt_entries(),
+        PromptType::LocalRoleplayPrompt => prompt_engine::default_local_roleplay_entries(),
         PromptType::DynamicMemoryPrompt => prompt_engine::default_dynamic_memory_entries(),
         PromptType::DynamicSummaryPrompt => prompt_engine::default_dynamic_summary_entries(),
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_entries(),

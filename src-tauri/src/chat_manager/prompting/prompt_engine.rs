@@ -19,6 +19,10 @@ pub fn default_system_prompt_template() -> String {
     join_entries(&default_modular_prompt_entries())
 }
 
+pub fn default_local_roleplay_prompt() -> String {
+    join_entries(&default_local_roleplay_entries())
+}
+
 pub fn default_dynamic_summary_prompt() -> String {
     join_entries(&default_dynamic_summary_entries())
 }
@@ -1253,6 +1257,123 @@ pub fn resolve_used_lorebook_entries(
     }
 
     used
+}
+
+pub fn default_local_roleplay_entries() -> Vec<SystemPromptEntry> {
+    vec![
+        SystemPromptEntry {
+            id: "local_rp_identity".to_string(),
+            name: "Identity".to_string(),
+            role: PromptEntryRole::System,
+            content: "You are {{char.name}}.\n\nYou are engaged in an iterative storytelling experience using a roleplay chat format.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_character".to_string(),
+            name: "Character".to_string(),
+            role: PromptEntryRole::System,
+            content: "Character:\n{{char.desc}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_persona".to_string(),
+            name: "Other Participant".to_string(),
+            role: PromptEntryRole::System,
+            content: "Other participant:\nName: {{persona.name}}\n{{persona.desc}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_scene".to_string(),
+            name: "Scene".to_string(),
+            role: PromptEntryRole::System,
+            content: "Scene:\n{{scene}}\n\nScene direction:\n{{scene_direction}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_summary".to_string(),
+            name: "Context Summary".to_string(),
+            role: PromptEntryRole::System,
+            content: "Context summary:\n{{context_summary}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_memories".to_string(),
+            name: "Relevant Memories".to_string(),
+            role: PromptEntryRole::System,
+            content: "Relevant memories:\n{{key_memories}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_lore".to_string(),
+            name: "Relevant Lore".to_string(),
+            role: PromptEntryRole::System,
+            content: "Relevant lore:\n{{lorebook}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "local_rp_rules".to_string(),
+            name: "Roleplay Rules".to_string(),
+            role: PromptEntryRole::System,
+            content: "ROLEPLAY RULES\n- Chat exclusively as {{char.name}}. Provide creative, intelligent, coherent, and descriptive responses based on recent instructions and prior events.\n- Never write dialogue, actions, thoughts, feelings, or decisions for {{persona.name}}.\n- Describe {{char.name}}'s sensory perceptions in vivid detail and include subtle physical details about {{char.name}} when relevant.\n- Use subtle physical cues to hint at {{char.name}}'s mental state and occasionally include brief snippets of {{char.name}}'s internal thoughts.\n- When writing {{char.name}}'s internal thoughts, enclose them in asterisks like this, and write them in first person.\n- Adopt a crisp and minimalist prose style. Keep your writing clear, specific, and concise.\n- Focus on the current moment and {{char.name}}'s immediate responses.\n- Move the roleplay forward by one natural step at a time.\n- Pay careful attention to past events in the chat to maintain continuity and coherence.\n\nSTYLE RULES\n- Stay in character as {{char.name}} at all times.\n- Do not speak as {{persona.name}}.\n- Do not use assistant-like phrasing, explanations, or meta commentary.\n- Output only {{char.name}}'s next reply.\n\n{{content_rules}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+    ]
 }
 
 pub fn default_modular_prompt_entries() -> Vec<SystemPromptEntry> {

@@ -1,4 +1,5 @@
 export const APP_DEFAULT_TEMPLATE_ID = "prompt_app_default";
+export const APP_LOCAL_ROLEPLAY_TEMPLATE_ID = "prompt_app_local_roleplay";
 export const APP_DYNAMIC_SUMMARY_TEMPLATE_ID = "prompt_app_dynamic_summary";
 export const APP_DYNAMIC_MEMORY_TEMPLATE_ID = "prompt_app_dynamic_memory";
 export const APP_HELP_ME_REPLY_TEMPLATE_ID = "prompt_app_help_me_reply";
@@ -13,6 +14,7 @@ export const APP_DESIGN_REFERENCE_TEMPLATE_ID = "prompt_app_design_reference";
 
 const PROTECTED_TEMPLATE_IDS = new Set([
   APP_DEFAULT_TEMPLATE_ID,
+  APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
   APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
   APP_DYNAMIC_MEMORY_TEMPLATE_ID,
   APP_HELP_ME_REPLY_TEMPLATE_ID,
@@ -48,6 +50,8 @@ export function isSystemPromptTemplate(id: string): boolean {
 
 export function getPromptTypeLabel(id: string): string {
   switch (id) {
+    case APP_LOCAL_ROLEPLAY_TEMPLATE_ID:
+      return "Local RP";
     case APP_DYNAMIC_SUMMARY_TEMPLATE_ID:
       return "Dynamic Summary";
     case APP_DYNAMIC_MEMORY_TEMPLATE_ID:

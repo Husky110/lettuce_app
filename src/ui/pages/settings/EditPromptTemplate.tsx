@@ -37,6 +37,7 @@ import {
   getPromptTemplate,
   getAppDefaultTemplateId,
   resetAppDefaultTemplate,
+  resetLocalRoleplayTemplate,
   resetDynamicSummaryTemplate,
   resetDynamicMemoryTemplate,
   resetHelpMeReplyTemplate,
@@ -55,6 +56,7 @@ import type {
   SystemPromptEntry,
 } from "../../../core/storage/schemas";
 import {
+  APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
   APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
   APP_DYNAMIC_MEMORY_TEMPLATE_ID,
   APP_HELP_ME_REPLY_TEMPLATE_ID,
@@ -70,6 +72,7 @@ import {
 
 type PromptType =
   | "system"
+  | "local_roleplay"
   | "summary"
   | "memory"
   | "reply"
@@ -101,6 +104,17 @@ const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
     { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
     { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
     { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
+  ],
+  local_roleplay: [
+    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
+    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
+    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
+    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
+    { var: "{{scene}}", label: "Scene", desc: "Starting scene or scenario" },
+    { var: "{{scene_direction}}", label: "Scene Direction", desc: "Optional scene direction" },
+    { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
+    { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
+    { var: "{{lorebook}}", label: "Lorebook", desc: "Matched lorebook content" },
   ],
   summary: [
     { var: "{{prev_summary}}", label: "Previous Summary", desc: "The cumulative summary" },
@@ -2349,6 +2363,8 @@ function getPromptTypeName(type: PromptType): string {
   switch (type) {
     case "system":
       return "System Prompt";
+    case "local_roleplay":
+      return "Local RP Default";
     case "summary":
       return "Dynamic Summary";
     case "memory":
@@ -2638,6 +2654,8 @@ export function EditPromptTemplate() {
           let detectedType: PromptType = null;
           if (template.id === appDefaultId) {
             detectedType = "system";
+          } else if (template.id === APP_LOCAL_ROLEPLAY_TEMPLATE_ID) {
+            detectedType = "local_roleplay";
           } else if (template.id === APP_DYNAMIC_SUMMARY_TEMPLATE_ID) {
             detectedType = "summary";
           } else if (template.id === APP_DYNAMIC_MEMORY_TEMPLATE_ID) {
@@ -2868,6 +2886,7 @@ export function EditPromptTemplate() {
     if (
       ![
         "system",
+        "local_roleplay",
         "summary",
         "memory",
         "reply",
@@ -2894,6 +2913,8 @@ export function EditPromptTemplate() {
       let updated;
       if (promptType === "system") {
         updated = await resetAppDefaultTemplate();
+      } else if (promptType === "local_roleplay") {
+        updated = await resetLocalRoleplayTemplate();
       } else if (promptType === "summary") {
         updated = await resetDynamicSummaryTemplate();
       } else if (promptType === "memory") {

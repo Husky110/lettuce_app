@@ -12,6 +12,7 @@ export {
   getAppDefaultTemplateId,
   isAppDefaultTemplate,
   resetAppDefaultTemplate,
+  resetLocalRoleplayTemplate,
   resetDynamicSummaryTemplate,
   resetDynamicMemoryTemplate,
   resetHelpMeReplyTemplate,

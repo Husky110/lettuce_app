@@ -789,6 +789,11 @@ pub fn reset_app_default_template(app: AppHandle) -> Result<SystemPromptTemplate
 }
 
 #[tauri::command]
+pub fn reset_local_roleplay_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_local_roleplay_template(&app)
+}
+
+#[tauri::command]
 pub fn reset_dynamic_summary_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
     prompts::reset_dynamic_summary_template(&app)
 }

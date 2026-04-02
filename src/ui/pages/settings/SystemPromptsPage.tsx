@@ -31,6 +31,7 @@ import type { SystemPromptEntry } from "../../../core/storage/schemas";
 import { listCharacters, readSettings, setPromptTemplate } from "../../../core/storage/repo";
 import {
   APP_DEFAULT_TEMPLATE_ID,
+  APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
   APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
   APP_DYNAMIC_MEMORY_TEMPLATE_ID,
   APP_HELP_ME_REPLY_TEMPLATE_ID,
@@ -297,6 +298,7 @@ function collectPromptOrderBlocks(input: unknown): PromptOrderEntry[][] {
 function getTemplateIcon(templateId: string) {
   switch (templateId) {
     case APP_DEFAULT_TEMPLATE_ID:
+    case APP_LOCAL_ROLEPLAY_TEMPLATE_ID:
       return Sparkles;
     case APP_DYNAMIC_SUMMARY_TEMPLATE_ID:
     case APP_DYNAMIC_MEMORY_TEMPLATE_ID:

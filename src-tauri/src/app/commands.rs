@@ -163,6 +163,7 @@ macro_rules! invoke_handler {
             crate::chat_manager::get_app_default_template_id,
             crate::chat_manager::is_app_default_template,
             crate::chat_manager::reset_app_default_template,
+            crate::chat_manager::reset_local_roleplay_template,
             crate::chat_manager::reset_dynamic_summary_template,
             crate::chat_manager::reset_dynamic_memory_template,
             crate::chat_manager::reset_help_me_reply_template,

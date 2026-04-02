@@ -163,6 +163,14 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
         );
     }
 
+    if let Err(err) = chat_manager::prompts::ensure_local_roleplay_template(app) {
+        utils::log_error(
+            app,
+            "bootstrap",
+            format!("Failed to ensure local roleplay template: {}", err),
+        );
+    }
+
     if let Err(err) = chat_manager::prompts::ensure_help_me_reply_template(app) {
         utils::log_error(
             app,

@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 pub const APP_DEFAULT_TEMPLATE_ID: &str = "prompt_app_default";
+pub const APP_LOCAL_ROLEPLAY_TEMPLATE_ID: &str = "prompt_app_local_roleplay";
 pub const APP_DYNAMIC_SUMMARY_TEMPLATE_ID: &str = "prompt_app_dynamic_summary";
 pub const APP_DYNAMIC_MEMORY_TEMPLATE_ID: &str = "prompt_app_dynamic_memory";
 pub const APP_HELP_ME_REPLY_TEMPLATE_ID: &str = "prompt_app_help_me_reply";
@@ -24,6 +25,7 @@ pub const APP_AVATAR_EDIT_TEMPLATE_ID: &str = "prompt_app_avatar_edit";
 pub const APP_SCENE_GENERATION_TEMPLATE_ID: &str = "prompt_app_scene_generation";
 pub const APP_DESIGN_REFERENCE_TEMPLATE_ID: &str = "prompt_app_design_reference";
 const APP_DEFAULT_TEMPLATE_NAME: &str = "App Default";
+const APP_LOCAL_ROLEPLAY_TEMPLATE_NAME: &str = "Local RP Default";
 const APP_DYNAMIC_SUMMARY_TEMPLATE_NAME: &str = "Dynamic Memory: Summarizer";
 const APP_DYNAMIC_MEMORY_TEMPLATE_NAME: &str = "Dynamic Memory: Memory Manager";
 const APP_HELP_ME_REPLY_TEMPLATE_NAME: &str = "Reply Helper";
@@ -422,6 +424,16 @@ pub fn get_required_variables(template_id: &str) -> Vec<String> {
             "{{context_summary}}".to_string(),
             "{{key_memories}}".to_string(),
         ],
+        APP_LOCAL_ROLEPLAY_TEMPLATE_ID => vec![
+            "{{scene}}".to_string(),
+            "{{scene_direction}}".to_string(),
+            "{{char.name}}".to_string(),
+            "{{char.desc}}".to_string(),
+            "{{persona.name}}".to_string(),
+            "{{persona.desc}}".to_string(),
+            "{{context_summary}}".to_string(),
+            "{{key_memories}}".to_string(),
+        ],
         APP_DYNAMIC_SUMMARY_TEMPLATE_ID => vec!["{{prev_summary}}".to_string()],
         APP_DYNAMIC_MEMORY_TEMPLATE_ID => vec!["{{max_entries}}".to_string()],
         APP_HELP_ME_REPLY_TEMPLATE_ID => vec![
@@ -569,6 +581,7 @@ pub fn load_templates(app: &AppHandle) -> Result<Vec<SystemPromptTemplate>, Stri
     if out.is_empty() {
         // Guarantee existence of App Default template even if setup call was skipped
         let _ = ensure_app_default_template(app)?;
+        let _ = ensure_local_roleplay_template(app)?;
         // Reload
         let mut stmt2 = conn
             .prepare(
@@ -775,6 +788,37 @@ pub fn ensure_app_default_template(app: &AppHandle) -> Result<String, String> {
     Ok(APP_DEFAULT_TEMPLATE_ID.to_string())
 }
 
+pub fn ensure_local_roleplay_template(app: &AppHandle) -> Result<String, String> {
+    if let Some(existing) = get_template(app, APP_LOCAL_ROLEPLAY_TEMPLATE_ID)? {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
+            PromptType::LocalRoleplayPrompt,
+            prompt_engine::default_local_roleplay_entries(),
+        );
+        return Ok(existing.id);
+    }
+
+    let conn = open_db(app)?;
+    let now = now();
+    let content = get_base_prompt(PromptType::LocalRoleplayPrompt);
+    let entries_json = serde_json::to_string(&prompt_engine::default_local_roleplay_entries())
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    conn.execute(
+        "INSERT OR IGNORE INTO prompt_templates (id, name, scope, target_ids, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, '[]', ?4, ?5, ?6, ?6)",
+        params![
+            APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
+            APP_LOCAL_ROLEPLAY_TEMPLATE_NAME,
+            scope_to_str(&PromptScope::AppWide),
+            content,
+            entries_json,
+            now
+        ],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(APP_LOCAL_ROLEPLAY_TEMPLATE_ID.to_string())
+}
+
 pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
     let conn = open_db(app)?;
     let now = now();
@@ -838,6 +882,7 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
 
 pub fn is_app_default_template(id: &str) -> bool {
     id == APP_DEFAULT_TEMPLATE_ID
+        || id == APP_LOCAL_ROLEPLAY_TEMPLATE_ID
         || id == APP_DYNAMIC_SUMMARY_TEMPLATE_ID
         || id == APP_DYNAMIC_MEMORY_TEMPLATE_ID
         || id == APP_HELP_ME_REPLY_TEMPLATE_ID
@@ -858,6 +903,20 @@ pub fn reset_app_default_template(app: &AppHandle) -> Result<SystemPromptTemplat
         None,
         Some(content.clone()),
         Some(prompt_engine::default_modular_prompt_entries()),
+        None,
+    )
+}
+
+pub fn reset_local_roleplay_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::LocalRoleplayPrompt);
+    update_template(
+        app,
+        APP_LOCAL_ROLEPLAY_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        None,
+        Some(content.clone()),
+        Some(prompt_engine::default_local_roleplay_entries()),
         None,
     )
 }
