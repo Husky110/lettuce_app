@@ -6,6 +6,8 @@ use llama_cpp_sys_2::{
     GGML_BACKEND_DEVICE_TYPE_ACCEL, GGML_BACKEND_DEVICE_TYPE_GPU, GGML_BACKEND_DEVICE_TYPE_IGPU,
 };
 #[cfg(target_os = "windows")]
+use windows::core::Interface;
+#[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter1, IDXGIAdapter3, IDXGIFactory6, DXGI_ADAPTER_FLAG_SOFTWARE,
     DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
@@ -193,7 +195,7 @@ fn windows_local_vram_cap_bytes() -> Option<u64> {
                 Ok(desc) => desc,
                 Err(_) => continue,
             };
-            if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 != 0 {
+            if desc.Flags & (DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0 {
                 continue;
             }
 
@@ -205,7 +207,7 @@ fn windows_local_vram_cap_bytes() -> Option<u64> {
             let local_available_bytes = adapter
                 .cast::<IDXGIAdapter3>()
                 .ok()
-                .and_then(|adapter3| {
+                .and_then(|adapter3: IDXGIAdapter3| {
                     adapter3
                         .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL)
                         .ok()
