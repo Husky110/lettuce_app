@@ -688,6 +688,11 @@ mod desktop {
             .or_else(|| body.get("llama_allow_raw_completion_fallback"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let llama_strict_mode = body
+            .get("llamaStrictMode")
+            .or_else(|| body.get("llama_strict_mode"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let llama_kv_type = llama_kv_type_raw.as_deref().and_then(|s| match s {
             "f32" => Some(KvCacheType::F32),
             "f16" => Some(KvCacheType::F16),
@@ -760,6 +765,7 @@ mod desktop {
                 request_id.as_deref(),
                 model_path,
                 llama_gpu_layers,
+                llama_strict_mode,
                 llama_mmproj_path.as_deref(),
             )?;
             let model = engine.model.as_ref();
@@ -854,6 +860,11 @@ mod desktop {
                 "recommendedContext",
                 json!(recommended_ctx),
             );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "strictModeEnabled",
+                json!(llama_strict_mode),
+            );
             emit_model_load_finalizing(
                 &app,
                 request_id.as_deref(),
@@ -861,7 +872,7 @@ mod desktop {
                 Some(backend_path_used),
                 gpu_load_fallback_activated,
             );
-            if gpu_load_fallback_activated && backend_path_used == "cpu" {
+            if !llama_strict_mode && gpu_load_fallback_activated && backend_path_used == "cpu" {
                 if let Some((safe_ctx, safe_batch)) = compute_cpu_fallback_limits(
                     model,
                     available_memory_bytes,
@@ -1082,12 +1093,16 @@ mod desktop {
             let mut resolved_ctx_size = ctx_size;
             let mut resolved_n_batch = initial_batch;
             let mut context_failures = Vec::new();
-            let context_attempts = context_attempt_candidates(
-                ctx_size,
-                prompt_eval_span,
-                requested_context,
-                llama_batch_size,
-            );
+            let context_attempts = if llama_strict_mode {
+                vec![(ctx_size, initial_batch)]
+            } else {
+                context_attempt_candidates(
+                    ctx_size,
+                    prompt_eval_span,
+                    requested_context,
+                    llama_batch_size,
+                )
+            };
             let mut ctx: Option<_> = None;
             failure_stage = "create_context";
 
@@ -1234,6 +1249,7 @@ mod desktop {
                     "actualBackendPathUsed": backend_path_used.clone(),
                     "compiledGpuBackends": compiled_gpu_backends,
                     "supportsGpuOffload": supports_gpu_offload,
+                    "strictModeEnabled": llama_strict_mode,
                     "gpuLoadFallbackActivated": gpu_load_fallback_activated,
                     "contextFallbackActivated": context_fallback_activated,
                     "mmprojPath": llama_mmproj_path,

@@ -429,6 +429,7 @@ export function EditModelPage() {
     handleLlamaMmprojPathChange,
     handleLlamaChatTemplatePresetChange,
     handleLlamaRawCompletionFallbackChange,
+    handleLlamaStrictModeChange,
     handleOllamaNumCtxChange,
     handleOllamaNumPredictChange,
     handleOllamaNumKeepChange,
@@ -3763,6 +3764,77 @@ export function EditModelPage() {
                                           Disabled
                                         </option>
                                       </select>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl border border-danger/20 bg-danger/6 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0 space-y-1.5">
+                                        <div className="flex items-start gap-3">
+                                          <div className="mt-0.5 shrink-0 text-danger/80">
+                                            <AlertTriangle className="h-4 w-4" />
+                                          </div>
+                                          <div className="min-w-0 space-y-1">
+                                            <span className="block text-[13px] font-medium text-fg/82">
+                                              Strict Mode
+                                            </span>
+                                            <span className="block text-[13px] leading-relaxed text-fg/48">
+                                              Don&apos;t use this if you don&apos;t know what you
+                                              are doing. This bypasses llama.cpp safety fallbacks
+                                              that lower GPU layers, clamp context or batch, or
+                                              switch a failed GPU load to CPU.
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <span className="block text-[12px] text-danger/75">
+                                          Use only when you want manual layer offload, context, and
+                                          batch settings enforced as-is.
+                                        </span>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-3">
+                                        <span
+                                          className={cn(
+                                            "text-[12px] font-medium transition",
+                                            modelAdvancedDraft.llamaStrictMode === true
+                                              ? "text-danger/85"
+                                              : "text-fg/42",
+                                          )}
+                                        >
+                                          {modelAdvancedDraft.llamaStrictMode === true
+                                            ? "On"
+                                            : "Off"}
+                                        </span>
+                                        <input
+                                          id="llama-strict-mode"
+                                          type="checkbox"
+                                          checked={modelAdvancedDraft.llamaStrictMode === true}
+                                          onChange={(e) =>
+                                            handleLlamaStrictModeChange(
+                                              e.target.checked ? true : null,
+                                            )
+                                          }
+                                          className="peer sr-only"
+                                        />
+                                        <label
+                                          htmlFor="llama-strict-mode"
+                                          className={cn(
+                                            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-all",
+                                            modelAdvancedDraft.llamaStrictMode === true
+                                              ? "bg-danger/80"
+                                              : "bg-fg/18",
+                                          )}
+                                          aria-label="Toggle llama strict mode"
+                                        >
+                                          <span
+                                            className={cn(
+                                              "mt-0.5 inline-block h-5 w-5 rounded-full bg-white transition",
+                                              modelAdvancedDraft.llamaStrictMode === true
+                                                ? "translate-x-5"
+                                                : "translate-x-0.5",
+                                            )}
+                                          />
+                                        </label>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>

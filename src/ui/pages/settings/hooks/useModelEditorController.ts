@@ -64,6 +64,7 @@ type ControllerReturn = {
   handleLlamaMmprojPathChange: (value: string | null) => void;
   handleLlamaChatTemplatePresetChange: (value: string | null) => void;
   handleLlamaRawCompletionFallbackChange: (value: boolean | null) => void;
+  handleLlamaStrictModeChange: (value: boolean | null) => void;
   handleOllamaNumCtxChange: (value: number | null) => void;
   handleOllamaNumPredictChange: (value: number | null) => void;
   handleOllamaNumKeepChange: (value: number | null) => void;
@@ -777,6 +778,19 @@ export function useModelEditorController(): ControllerReturn {
     [dispatch, state.modelAdvancedDraft],
   );
 
+  const handleLlamaStrictModeChange = useCallback(
+    (value: boolean | null) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaStrictMode: value,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
   const handleOllamaNumCtxChange = useCallback(
     (value: number | null) => {
       dispatch({
@@ -1392,6 +1406,7 @@ export function useModelEditorController(): ControllerReturn {
     handleLlamaMmprojPathChange,
     handleLlamaChatTemplatePresetChange,
     handleLlamaRawCompletionFallbackChange,
+    handleLlamaStrictModeChange,
     handleOllamaNumCtxChange,
     handleOllamaNumPredictChange,
     handleOllamaNumKeepChange,

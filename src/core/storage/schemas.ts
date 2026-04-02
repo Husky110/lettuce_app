@@ -246,6 +246,7 @@ export const AdvancedModelSettingsSchema = z.object({
   llamaMmprojPath: z.string().trim().min(1).nullable().optional(),
   llamaChatTemplatePreset: z.string().trim().min(1).nullable().optional(),
   llamaRawCompletionFallback: z.boolean().nullable().optional(),
+  llamaStrictMode: z.boolean().nullable().optional(),
   llamaSamplerProfile: z
     .enum(["balanced", "creative", "stable", "reasoning"])
     .nullable()
@@ -1511,6 +1512,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaMmprojPath: true,
       llamaChatTemplatePreset: true,
       llamaRawCompletionFallback: true,
+      llamaStrictMode: true,
       llamaSamplerProfile: true,
       llamaMinP: true,
       llamaTypicalP: true,
@@ -2538,6 +2540,7 @@ export function createDefaultAdvancedModelSettings(): AdvancedModelSettings {
   return {
     maxOutputTokens: 2048,
     llamaLastRuntimeReport: null,
+    llamaStrictMode: null,
     sdSteps: null,
     sdCfgScale: null,
     sdSampler: null,

@@ -115,6 +115,7 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     llamaMmprojPath: input.llamaMmprojPath?.trim() || null,
     llamaChatTemplatePreset: input.llamaChatTemplatePreset?.trim() || null,
     llamaRawCompletionFallback: input.llamaRawCompletionFallback ?? null,
+    llamaStrictMode: input.llamaStrictMode ?? null,
     llamaSamplerProfile: input.llamaSamplerProfile ?? null,
     llamaMinP: sanitize(input.llamaMinP, ADVANCED_OLLAMA_MIN_P_RANGE, false),
     llamaTypicalP: sanitize(input.llamaTypicalP, ADVANCED_OLLAMA_TYPICAL_P_RANGE, false),
@@ -488,9 +489,7 @@ export function AdvancedModelSettingsForm({
       <div className="space-y-4 rounded-2xl border border-blue-400/20 bg-blue-400/5 p-4 mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-white">
-            <h3 className="text-sm font-semibold">
-              Prompt Caching
-            </h3>
+            <h3 className="text-sm font-semibold">Prompt Caching</h3>
           </div>
           <button
             type="button"
@@ -512,7 +511,8 @@ export function AdvancedModelSettingsForm({
           </button>
         </div>
         <p className="text-[11px] text-white/50 leading-relaxed">
-          Speeds up generation and reduces costs for long, repetitive contexts (like large system prompts or deep chat histories).
+          Speeds up generation and reduces costs for long, repetitive contexts (like large system
+          prompts or deep chat histories).
         </p>
       </div>
 

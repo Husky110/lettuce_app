@@ -300,6 +300,7 @@ pub(super) fn load_engine(
     request_id: Option<&str>,
     model_path: &str,
     requested_gpu_layers: Option<u32>,
+    strict_mode: bool,
     mmproj_path: Option<&str>,
 ) -> Result<LoadedEngine, String> {
     let engine = ENGINE.get_or_init(|| {
@@ -351,6 +352,16 @@ pub(super) fn load_engine(
     }
     if let (Some(app), Some(requested)) = (app, requested_gpu_layers) {
         if requested > 0 && !supports_gpu {
+            if strict_mode {
+                return Err(crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!(
+                        "Strict mode is enabled and llamaGpuLayers={} requires GPU offload, but this build has no active GPU backend.",
+                        requested
+                    ),
+                ));
+            }
             log_warn(
                 app,
                 "llama_cpp",
@@ -364,7 +375,10 @@ pub(super) fn load_engine(
     let requested_gpu_layers_key = requested_gpu_layers
         .map(|v| v.to_string())
         .unwrap_or_else(|| "auto".to_string());
-    let model_params_key = format!("requested_gpu_layers={requested_gpu_layers_key}");
+    let model_params_key = format!(
+        "requested_gpu_layers={requested_gpu_layers_key};strict_mode={}",
+        strict_mode
+    );
     let should_reload = guard.model.is_none()
         || guard.model_path.as_deref() != Some(model_path)
         || guard.model_params_key.as_deref() != Some(&model_params_key);
@@ -397,6 +411,35 @@ pub(super) fn load_engine(
                     Arc::new(model)
                 }
                 Err(err) => {
+                    if strict_mode {
+                        if let Some(app) = app {
+                            emit_model_load_progress(
+                                app,
+                                request_id,
+                                model_path,
+                                "gpu_offload",
+                                MODEL_LOAD_STAGE_GPU_OFFLOAD,
+                                MODEL_LOAD_STATUS_FAILED,
+                                0.0,
+                            );
+                            log_warn(
+                                app,
+                                "llama_cpp",
+                                format!(
+                                    "GPU model load failed with strict mode enabled; refusing CPU fallback: {}",
+                                    err
+                                ),
+                            );
+                        }
+                        return Err(crate::utils::err_msg(
+                            module_path!(),
+                            line!(),
+                            format!(
+                                "Strict mode is enabled, so llama.cpp will not fall back to CPU after GPU load failure: {}",
+                                err
+                            ),
+                        ));
+                    }
                     gpu_load_fallback_activated = true;
                     gpu_load_fallback_reason = Some(err.to_string());
                     if let Some(app) = app {

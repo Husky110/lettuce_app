@@ -546,6 +546,24 @@ pub(super) fn resolve_llama_raw_completion_fallback(
             .llama_raw_completion_fallback)
 }
 
+pub(super) fn resolve_llama_strict_mode(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<bool> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_strict_mode)
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_strict_mode)
+        })
+        .or(settings.advanced_model_settings.llama_strict_mode)
+}
+
 pub(super) fn resolve_llama_profile_min_p(
     session: &Session,
     model: &Model,

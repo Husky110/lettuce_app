@@ -433,6 +433,8 @@ pub struct AdvancedModelSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_raw_completion_fallback: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llama_strict_mode: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_sampler_profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_min_p: Option<f64>,
@@ -499,6 +501,7 @@ impl Default for AdvancedModelSettings {
             llama_mmproj_path: None,
             llama_chat_template_preset: None,
             llama_raw_completion_fallback: None,
+            llama_strict_mode: None,
             llama_sampler_profile: None,
             llama_min_p: None,
             llama_typical_p: None,

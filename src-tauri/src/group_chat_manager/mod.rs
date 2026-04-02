@@ -493,6 +493,14 @@ fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMa
     {
         extra.insert("llamaRawCompletionFallback".to_string(), json!(v));
     }
+    if let Some(v) = model
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|a| a.llama_strict_mode)
+        .or(settings.advanced_model_settings.llama_strict_mode)
+    {
+        extra.insert("llamaStrictMode".to_string(), json!(v));
+    }
     extra.insert(
         "llamaSamplerProfile".to_string(),
         json!(sampler_defaults.name),

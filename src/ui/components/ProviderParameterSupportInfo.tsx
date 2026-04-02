@@ -39,6 +39,7 @@ const PARAMETER_LABELS: Record<keyof AdvancedModelSettings, string> = {
   llamaMmprojPath: "llama.cpp MMProj Path",
   llamaChatTemplatePreset: "llama.cpp Template Preset",
   llamaRawCompletionFallback: "llama.cpp Raw Fallback",
+  llamaStrictMode: "llama.cpp Strict Mode",
   llamaSamplerProfile: "llama.cpp Sampler Profile",
   llamaMinP: "llama.cpp Min P",
   llamaTypicalP: "llama.cpp Typical P",
@@ -94,6 +95,8 @@ const PARAMETER_DESCRIPTIONS: Record<keyof AdvancedModelSettings, string> = {
   llamaMmprojPath: "Filesystem path to the multimodal projector GGUF used for vision",
   llamaChatTemplatePreset: "Known preset name used when GGUF has no embedded template",
   llamaRawCompletionFallback: "Allow plain raw completion fallback if template resolution fails",
+  llamaStrictMode:
+    "Disable llama.cpp safety fallbacks that lower offload, context, or batch settings",
   llamaSamplerProfile:
     "Preset local sampler defaults for chat, creativity, stability, or reasoning",
   llamaMinP: "Min-p sampling threshold for llama.cpp (0-1)",
