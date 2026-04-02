@@ -106,6 +106,7 @@ type LlamaCppContextInfo = {
   availableMemoryBytes?: number | null;
   availableVramBytes?: number | null;
   modelSizeBytes?: number | null;
+  layerCount?: number | null;
 };
 
 function formatRuntimeNumber(value?: number | null): string | null {
@@ -294,7 +295,6 @@ function FieldBlock({
     </div>
   );
 }
-
 
 function CollapsedEditorSectionButton({
   title,
@@ -662,10 +662,8 @@ export function EditModelPage() {
       return inner.replace(
         /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d+(?:\.\d+)?\b)|(\b[a-zA-Z_]\w*\b)|([|~%^!=<>]+)|([^"'a-zA-Z_0-9|~%^!=<>]+)/g,
         (match, str, num, word, op, rest) => {
-          if (str)
-            return `<span style="color:#a8db8a">${escapeHtml(str)}</span>`;
-          if (num)
-            return `<span style="color:#d4976c">${escapeHtml(num)}</span>`;
+          if (str) return `<span style="color:#a8db8a">${escapeHtml(str)}</span>`;
+          if (num) return `<span style="color:#d4976c">${escapeHtml(num)}</span>`;
           if (word) {
             if (jinjaKeywords.has(word))
               return `<span style="color:#c792ea;font-weight:500">${escapeHtml(word)}</span>`;
@@ -1122,6 +1120,27 @@ export function EditModelPage() {
     "w-full rounded-lg border border-fg/10 bg-surface-el/20 px-4 py-3.5 text-[13px] text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none";
   const contextLimit = llamaContextInfo?.maxContextLength ?? ADVANCED_CONTEXT_LENGTH_RANGE.max;
   const recommendedContextLength = llamaContextInfo?.recommendedContextLength ?? null;
+  const llamaLayerPlacementSummary = useMemo(() => {
+    const totalLayers = llamaContextInfo?.layerCount;
+    if (!totalLayers || totalLayers <= 0) {
+      return null;
+    }
+
+    const requestedGpuLayers = modelAdvancedDraft.llamaGpuLayers;
+    if (requestedGpuLayers === null || requestedGpuLayers === undefined) {
+      return {
+        totalLayers,
+        detail: `Auto placement across ${totalLayers.toLocaleString()} total layers.`,
+      };
+    }
+
+    const gpuLayers = Math.max(0, Math.min(totalLayers, Math.trunc(requestedGpuLayers)));
+    const cpuLayers = Math.max(totalLayers - gpuLayers, 0);
+    return {
+      totalLayers,
+      detail: `${gpuLayers.toLocaleString()} layers to GPU, ${cpuLayers.toLocaleString()} layers stay on CPU.`,
+    };
+  }, [llamaContextInfo?.layerCount, modelAdvancedDraft.llamaGpuLayers]);
   const selectedContextLength = modelAdvancedDraft.contextLength ?? null;
   const showContextWarning =
     isLocalModel &&
@@ -1486,9 +1505,7 @@ export function EditModelPage() {
           )}
 
           <div className="relative">
-            <div
-              className="w-full space-y-6"
-            >
+            <div className="w-full space-y-6">
               <EditorPanel
                 title="Model setup"
                 description="Choose the platform, give this entry a readable name, and connect it to the model identifier or file you want to use."
@@ -3227,116 +3244,96 @@ export function EditModelPage() {
                                     </div>
                                   </div>
 
-                                <div className="space-y-3 rounded-xl border border-fg/10 bg-surface-el/10 p-3">
-                                  <span className="block text-[13px] font-medium text-fg/70">
-                                    Quick Presets
-                                  </span>
-                                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                                    <button
-                                      type="button"
-                                      onClick={() => applyLlamaPreset("balanced")}
-                                      className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
-                                    >
-                                      Balanced
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => applyLlamaPreset("throughput")}
-                                      className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
-                                    >
-                                      Throughput
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => applyLlamaPreset("vram")}
-                                      className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
-                                    >
-                                      VRAM Saver
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => applyLlamaPreset("cpu_ram")}
-                                      className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
-                                    >
-                                      CPU + RAM
-                                    </button>
-                                  </div>
-                                  {selectedLlamaQuickPreset && (
-                                    <div className="flex flex-wrap gap-2 border-t border-fg/8 pt-3">
-                                      {LLAMA_QUICK_PRESET_DETAILS[selectedLlamaQuickPreset].map(
-                                        (detail) => (
-                                          <span
-                                            key={detail}
-                                            className="rounded-md border border-fg/10 bg-fg/4 px-2.5 py-1 text-[13px] text-fg/62"
-                                          >
-                                            {detail}
-                                          </span>
-                                        ),
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="space-y-4">
-                                  <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        GPU Layers
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Offload layers to GPU (0 = CPU only)
-                                      </span>
-                                    </div>
-                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                      {modelAdvancedDraft.llamaGpuLayers !== null &&
-                                      modelAdvancedDraft.llamaGpuLayers !== undefined
-                                        ? modelAdvancedDraft.llamaGpuLayers
-                                        : "Auto"}
+                                  <div className="space-y-3 rounded-xl border border-fg/10 bg-surface-el/10 p-3">
+                                    <span className="block text-[13px] font-medium text-fg/70">
+                                      Quick Presets
                                     </span>
+                                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                                      <button
+                                        type="button"
+                                        onClick={() => applyLlamaPreset("balanced")}
+                                        className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
+                                      >
+                                        Balanced
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => applyLlamaPreset("throughput")}
+                                        className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
+                                      >
+                                        Throughput
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => applyLlamaPreset("vram")}
+                                        className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
+                                      >
+                                        VRAM Saver
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => applyLlamaPreset("cpu_ram")}
+                                        className="rounded-lg border border-fg/10 bg-surface-el/20 px-2.5 py-2 text-[13px] text-fg/80 transition hover:border-fg/20 hover:bg-surface-el/30"
+                                      >
+                                        CPU + RAM
+                                      </button>
+                                    </div>
+                                    {selectedLlamaQuickPreset && (
+                                      <div className="flex flex-wrap gap-2 border-t border-fg/8 pt-3">
+                                        {LLAMA_QUICK_PRESET_DETAILS[selectedLlamaQuickPreset].map(
+                                          (detail) => (
+                                            <span
+                                              key={detail}
+                                              className="rounded-md border border-fg/10 bg-fg/4 px-2.5 py-1 text-[13px] text-fg/62"
+                                            >
+                                              {detail}
+                                            </span>
+                                          ),
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                  <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    min={ADVANCED_LLAMA_GPU_LAYERS_RANGE.min}
-                                    max={ADVANCED_LLAMA_GPU_LAYERS_RANGE.max}
-                                    step={1}
-                                    value={modelAdvancedDraft.llamaGpuLayers ?? ""}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      const next = raw === "" ? null : Number(raw);
-                                      handleLlamaGpuLayersChange(
-                                        next === null || !Number.isFinite(next) || next < 0
-                                          ? null
-                                          : Math.trunc(next),
-                                      );
-                                    }}
-                                    placeholder="Auto"
-                                    className={numberInputClassName}
-                                  />
-                                </div>
 
-                                <div className="grid grid-cols-2 gap-6">
                                   <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Threads
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Inference
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          GPU Layers
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Offload layers to GPU (0 = CPU only)
+                                        </span>
+                                        {llamaLayerPlacementSummary ? (
+                                          <span className="block text-[12px] text-fg/34">
+                                            {llamaLayerPlacementSummary.detail}
+                                          </span>
+                                        ) : null}
+                                        {llamaLayerPlacementSummary ? (
+                                          <span className="block text-[12px] text-fg/34">
+                                            Model layers:{" "}
+                                            {llamaLayerPlacementSummary.totalLayers.toLocaleString()}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.llamaGpuLayers !== null &&
+                                        modelAdvancedDraft.llamaGpuLayers !== undefined
+                                          ? modelAdvancedDraft.llamaGpuLayers
+                                          : "Auto"}
                                       </span>
                                     </div>
                                     <input
                                       type="number"
                                       inputMode="numeric"
-                                      min={ADVANCED_LLAMA_THREADS_RANGE.min}
-                                      max={ADVANCED_LLAMA_THREADS_RANGE.max}
+                                      min={ADVANCED_LLAMA_GPU_LAYERS_RANGE.min}
+                                      max={ADVANCED_LLAMA_GPU_LAYERS_RANGE.max}
                                       step={1}
-                                      value={modelAdvancedDraft.llamaThreads ?? ""}
+                                      value={modelAdvancedDraft.llamaGpuLayers ?? ""}
                                       onChange={(e) => {
                                         const raw = e.target.value;
                                         const next = raw === "" ? null : Number(raw);
-                                        handleLlamaThreadsChange(
-                                          next === null || !Number.isFinite(next) || next <= 0
+                                        handleLlamaGpuLayersChange(
+                                          next === null || !Number.isFinite(next) || next < 0
                                             ? null
                                             : Math.trunc(next),
                                         );
@@ -3346,99 +3343,130 @@ export function EditModelPage() {
                                     />
                                   </div>
 
-                                  <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Batch Threads
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Processing
-                                      </span>
+                                  <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Threads
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Inference
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={ADVANCED_LLAMA_THREADS_RANGE.min}
+                                        max={ADVANCED_LLAMA_THREADS_RANGE.max}
+                                        step={1}
+                                        value={modelAdvancedDraft.llamaThreads ?? ""}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          const next = raw === "" ? null : Number(raw);
+                                          handleLlamaThreadsChange(
+                                            next === null || !Number.isFinite(next) || next <= 0
+                                              ? null
+                                              : Math.trunc(next),
+                                          );
+                                        }}
+                                        placeholder="Auto"
+                                        className={numberInputClassName}
+                                      />
                                     </div>
-                                    <input
-                                      type="number"
-                                      inputMode="numeric"
-                                      min={ADVANCED_LLAMA_THREADS_BATCH_RANGE.min}
-                                      max={ADVANCED_LLAMA_THREADS_BATCH_RANGE.max}
-                                      step={1}
-                                      value={modelAdvancedDraft.llamaThreadsBatch ?? ""}
-                                      onChange={(e) => {
-                                        const raw = e.target.value;
-                                        const next = raw === "" ? null : Number(raw);
-                                        handleLlamaThreadsBatchChange(
-                                          next === null || !Number.isFinite(next) || next <= 0
-                                            ? null
-                                            : Math.trunc(next),
-                                        );
-                                      }}
-                                      placeholder="Auto"
-                                      className={numberInputClassName}
-                                    />
-                                  </div>
-                                </div>
 
-                                <div className="grid grid-cols-2 gap-6">
-                                  <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Batch Size
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Prompt chunk
-                                      </span>
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Batch Threads
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Processing
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={ADVANCED_LLAMA_THREADS_BATCH_RANGE.min}
+                                        max={ADVANCED_LLAMA_THREADS_BATCH_RANGE.max}
+                                        step={1}
+                                        value={modelAdvancedDraft.llamaThreadsBatch ?? ""}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          const next = raw === "" ? null : Number(raw);
+                                          handleLlamaThreadsBatchChange(
+                                            next === null || !Number.isFinite(next) || next <= 0
+                                              ? null
+                                              : Math.trunc(next),
+                                          );
+                                        }}
+                                        placeholder="Auto"
+                                        className={numberInputClassName}
+                                      />
                                     </div>
-                                    <input
-                                      type="number"
-                                      inputMode="numeric"
-                                      min={ADVANCED_LLAMA_BATCH_SIZE_RANGE.min}
-                                      max={ADVANCED_LLAMA_BATCH_SIZE_RANGE.max}
-                                      step={1}
-                                      value={modelAdvancedDraft.llamaBatchSize ?? ""}
-                                      onChange={(e) => {
-                                        const raw = e.target.value;
-                                        const next = raw === "" ? null : Number(raw);
-                                        handleLlamaBatchSizeChange(
-                                          next === null || !Number.isFinite(next) || next <= 0
-                                            ? null
-                                            : Math.trunc(next),
-                                        );
-                                      }}
-                                      placeholder="512"
-                                      className={numberInputClassName}
-                                    />
                                   </div>
 
-                                  <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Flash Attention
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Optimization
-                                      </span>
+                                  <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Batch Size
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Prompt chunk
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={ADVANCED_LLAMA_BATCH_SIZE_RANGE.min}
+                                        max={ADVANCED_LLAMA_BATCH_SIZE_RANGE.max}
+                                        step={1}
+                                        value={modelAdvancedDraft.llamaBatchSize ?? ""}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          const next = raw === "" ? null : Number(raw);
+                                          handleLlamaBatchSizeChange(
+                                            next === null || !Number.isFinite(next) || next <= 0
+                                              ? null
+                                              : Math.trunc(next),
+                                          );
+                                        }}
+                                        placeholder="512"
+                                        className={numberInputClassName}
+                                      />
                                     </div>
-                                    <select
-                                      value={modelAdvancedDraft.llamaFlashAttention ?? "auto"}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        handleLlamaFlashAttentionChange(
-                                          val === "auto" ? null : (val as "enabled" | "disabled"),
-                                        );
-                                      }}
-                                      className={selectInputClassName}
-                                    >
-                                      <option value="auto" className="bg-[#16171d]">
-                                        Auto
-                                      </option>
-                                      <option value="enabled" className="bg-[#16171d]">
-                                        Enabled
-                                      </option>
-                                      <option value="disabled" className="bg-[#16171d]">
-                                        Disabled
-                                      </option>
-                                    </select>
+
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Flash Attention
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Optimization
+                                        </span>
+                                      </div>
+                                      <select
+                                        value={modelAdvancedDraft.llamaFlashAttention ?? "auto"}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          handleLlamaFlashAttentionChange(
+                                            val === "auto" ? null : (val as "enabled" | "disabled"),
+                                          );
+                                        }}
+                                        className={selectInputClassName}
+                                      >
+                                        <option value="auto" className="bg-[#16171d]">
+                                          Auto
+                                        </option>
+                                        <option value="enabled" className="bg-[#16171d]">
+                                          Enabled
+                                        </option>
+                                        <option value="disabled" className="bg-[#16171d]">
+                                          Disabled
+                                        </option>
+                                      </select>
+                                    </div>
                                   </div>
-                                </div>
                                 </div>
                               </div>
 
@@ -3596,146 +3624,147 @@ export function EditModelPage() {
                                     </div>
                                   </div>
 
-                                <div className="space-y-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Template Override
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Jinja template or internal name
-                                      </span>
+                                  <div className="space-y-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Template Override
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Jinja template or internal name
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={openTemplateOverlay}
+                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
+                                      >
+                                        <Maximize2 className="h-3.5 w-3.5 text-accent/70" />
+                                        Edit
+                                      </button>
                                     </div>
                                     <button
                                       type="button"
                                       onClick={openTemplateOverlay}
-                                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
+                                      className={cn(
+                                        selectInputClassName,
+                                        "block w-full cursor-pointer truncate text-left",
+                                        modelAdvancedDraft.llamaChatTemplateOverride
+                                          ? "text-fg/78"
+                                          : "text-fg/35",
+                                      )}
                                     >
-                                      <Maximize2 className="h-3.5 w-3.5 text-accent/70" />
-                                      Edit
+                                      {modelAdvancedDraft.llamaChatTemplateOverride
+                                        ? modelAdvancedDraft.llamaChatTemplateOverride.length > 80
+                                          ? `${modelAdvancedDraft.llamaChatTemplateOverride.slice(0, 80)}...`
+                                          : modelAdvancedDraft.llamaChatTemplateOverride
+                                        : "Prefer embedded GGUF template"}
                                     </button>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={openTemplateOverlay}
-                                    className={cn(
-                                      selectInputClassName,
-                                      "block w-full cursor-pointer truncate text-left",
-                                      modelAdvancedDraft.llamaChatTemplateOverride
-                                        ? "text-fg/78"
-                                        : "text-fg/35",
-                                    )}
-                                  >
-                                    {modelAdvancedDraft.llamaChatTemplateOverride
-                                      ? modelAdvancedDraft.llamaChatTemplateOverride.length > 80
-                                        ? `${modelAdvancedDraft.llamaChatTemplateOverride.slice(0, 80)}...`
-                                        : modelAdvancedDraft.llamaChatTemplateOverride
-                                      : "Prefer embedded GGUF template"}
-                                  </button>
-                                </div>
-
-                                <div className="space-y-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        MMProj Path
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Multimodal projector GGUF required for vision models
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={openLocalMmprojPicker}
-                                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
-                                    >
-                                      <FolderOpen className="h-3.5 w-3.5 text-accent/70" />
-                                      {t("hfBrowser.selectFromLibrary")}
-                                    </button>
-                                  </div>
-                                  <input
-                                    type="text"
-                                    value={modelAdvancedDraft.llamaMmprojPath ?? ""}
-                                    onChange={(e) => {
-                                      const nextValue =
-                                        e.target.value === "" ? null : e.target.value;
-                                      handleLlamaMmprojPathChange(nextValue);
-                                      syncImageInputScope(nextValue);
-                                    }}
-                                    placeholder="/path/to/mmproj.gguf"
-                                    className={selectInputClassName}
-                                    spellCheck={false}
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                  <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Template Preset
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Fallback if GGUF has no template
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={modelAdvancedDraft.llamaChatTemplatePreset ?? "auto"}
-                                      onChange={(e) =>
-                                        handleLlamaChatTemplatePresetChange(
-                                          e.target.value === "auto" ? null : e.target.value,
-                                        )
-                                      }
-                                      className={selectInputClassName}
-                                    >
-                                      {LLAMA_CHAT_TEMPLATE_PRESET_OPTIONS.map((option) => (
-                                        <option
-                                          key={option.value}
-                                          value={option.value}
-                                          className="bg-[#16171d]"
-                                        >
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
                                   </div>
 
                                   <div className="space-y-4">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Raw Completion Fallback
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Only for raw-tuned models
-                                      </span>
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          MMProj Path
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Multimodal projector GGUF required for vision models
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={openLocalMmprojPicker}
+                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
+                                      >
+                                        <FolderOpen className="h-3.5 w-3.5 text-accent/70" />
+                                        {t("hfBrowser.selectFromLibrary")}
+                                      </button>
                                     </div>
-                                    <select
-                                      value={
-                                        modelAdvancedDraft.llamaRawCompletionFallback === true
-                                          ? "enabled"
-                                          : modelAdvancedDraft.llamaRawCompletionFallback === false
-                                            ? "disabled"
-                                            : "default"
-                                      }
+                                    <input
+                                      type="text"
+                                      value={modelAdvancedDraft.llamaMmprojPath ?? ""}
                                       onChange={(e) => {
-                                        const val = e.target.value;
-                                        handleLlamaRawCompletionFallbackChange(
-                                          val === "default" ? null : val === "enabled",
-                                        );
+                                        const nextValue =
+                                          e.target.value === "" ? null : e.target.value;
+                                        handleLlamaMmprojPathChange(nextValue);
+                                        syncImageInputScope(nextValue);
                                       }}
+                                      placeholder="/path/to/mmproj.gguf"
                                       className={selectInputClassName}
-                                    >
-                                      <option value="default" className="bg-[#16171d]">
-                                        Default (disabled)
-                                      </option>
-                                      <option value="enabled" className="bg-[#16171d]">
-                                        Enabled
-                                      </option>
-                                      <option value="disabled" className="bg-[#16171d]">
-                                        Disabled
-                                      </option>
-                                    </select>
+                                      spellCheck={false}
+                                    />
                                   </div>
-                                </div>
+
+                                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Template Preset
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Fallback if GGUF has no template
+                                        </span>
+                                      </div>
+                                      <select
+                                        value={modelAdvancedDraft.llamaChatTemplatePreset ?? "auto"}
+                                        onChange={(e) =>
+                                          handleLlamaChatTemplatePresetChange(
+                                            e.target.value === "auto" ? null : e.target.value,
+                                          )
+                                        }
+                                        className={selectInputClassName}
+                                      >
+                                        {LLAMA_CHAT_TEMPLATE_PRESET_OPTIONS.map((option) => (
+                                          <option
+                                            key={option.value}
+                                            value={option.value}
+                                            className="bg-[#16171d]"
+                                          >
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Raw Completion Fallback
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Only for raw-tuned models
+                                        </span>
+                                      </div>
+                                      <select
+                                        value={
+                                          modelAdvancedDraft.llamaRawCompletionFallback === true
+                                            ? "enabled"
+                                            : modelAdvancedDraft.llamaRawCompletionFallback ===
+                                                false
+                                              ? "disabled"
+                                              : "default"
+                                        }
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          handleLlamaRawCompletionFallbackChange(
+                                            val === "default" ? null : val === "enabled",
+                                          );
+                                        }}
+                                        className={selectInputClassName}
+                                      >
+                                        <option value="default" className="bg-[#16171d]">
+                                          Default (disabled)
+                                        </option>
+                                        <option value="enabled" className="bg-[#16171d]">
+                                          Enabled
+                                        </option>
+                                        <option value="disabled" className="bg-[#16171d]">
+                                          Disabled
+                                        </option>
+                                      </select>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -4700,7 +4729,6 @@ export function EditModelPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

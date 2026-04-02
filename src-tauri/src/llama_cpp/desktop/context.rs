@@ -21,6 +21,7 @@ pub(crate) struct LlamaCppContextInfo {
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     model_size_bytes: Option<u64>,
+    layer_count: Option<u32>,
 }
 
 fn push_unique_u32(out: &mut Vec<u32>, value: u32) {
@@ -480,5 +481,6 @@ pub(crate) async fn llamacpp_context_info(
         available_memory_bytes,
         available_vram_bytes,
         model_size_bytes: Some(model.size()),
+        layer_count: Some(model.n_layer()),
     })
 }
