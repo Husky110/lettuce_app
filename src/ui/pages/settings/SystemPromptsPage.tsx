@@ -26,8 +26,11 @@ import {
   createPromptTemplate,
   exportPromptTemplateAsUsc,
 } from "../../../core/prompts/service";
-import type { SystemPromptTemplate } from "../../../core/storage/schemas";
-import type { SystemPromptEntry } from "../../../core/storage/schemas";
+import type {
+  PromptScope,
+  SystemPromptEntry,
+  SystemPromptTemplate,
+} from "../../../core/storage/schemas";
 import { listCharacters, readSettings, setPromptTemplate } from "../../../core/storage/repo";
 import {
   APP_DEFAULT_TEMPLATE_ID,
@@ -103,6 +106,121 @@ type ExternalPromptExport = {
     order: Array<{ identifier: string; enabled?: boolean }>;
   }>;
 };
+
+type ImportedPromptTemplatePayload = {
+  name: string;
+  scope: PromptScope;
+  targetIds: string[];
+  content: string;
+  entries: SystemPromptEntry[];
+  condensePromptEntries: boolean;
+};
+
+function normalizeImportedSystemEntry(
+  input: unknown,
+  fallbackIndex: number,
+): SystemPromptEntry | null {
+  if (!input || typeof input !== "object") return null;
+  const entry = input as Record<string, unknown>;
+  const content = typeof entry.content === "string" ? entry.content : "";
+  if (!content.trim()) return null;
+
+  const id =
+    typeof entry.id === "string" && entry.id.trim()
+      ? entry.id
+      : `imported_entry_${fallbackIndex}_${Math.random().toString(36).slice(2, 8)}`;
+  const role = entry.role === "user" || entry.role === "assistant" ? entry.role : "system";
+  const injectionPosition =
+    entry.injectionPosition === "conditional" ||
+    entry.injectionPosition === "interval" ||
+    entry.injectionPosition === "inChat"
+      ? entry.injectionPosition
+      : "relative";
+  const injectionDepth =
+    typeof entry.injectionDepth === "number" && Number.isFinite(entry.injectionDepth)
+      ? Math.max(0, Math.floor(entry.injectionDepth))
+      : 0;
+  const conditionalMinMessages =
+    typeof entry.conditionalMinMessages === "number" &&
+    Number.isFinite(entry.conditionalMinMessages)
+      ? Math.max(1, Math.floor(entry.conditionalMinMessages))
+      : null;
+  const intervalTurns =
+    typeof entry.intervalTurns === "number" && Number.isFinite(entry.intervalTurns)
+      ? Math.max(1, Math.floor(entry.intervalTurns))
+      : null;
+  const payload =
+    entry.promptEntryPayload && typeof entry.promptEntryPayload === "object"
+      ? (entry.promptEntryPayload as Record<string, unknown>)
+      : null;
+  const payloadSlot = payload?.slot;
+  const resolvedPayloadSlot: "character" | "persona" | "avatar" | "references" | null =
+    payloadSlot === "character" ||
+    payloadSlot === "persona" ||
+    payloadSlot === "avatar" ||
+    payloadSlot === "references"
+      ? payloadSlot
+      : null;
+  const promptEntryPayload =
+    payload?.type === "imageSlot" && resolvedPayloadSlot
+      ? { type: "imageSlot" as const, slot: resolvedPayloadSlot }
+      : null;
+
+  return {
+    id,
+    name: typeof entry.name === "string" && entry.name.trim() ? entry.name : "Imported Prompt",
+    role,
+    content,
+    enabled: typeof entry.enabled === "boolean" ? entry.enabled : true,
+    injectionPosition,
+    injectionDepth,
+    conditionalMinMessages,
+    intervalTurns,
+    systemPrompt: typeof entry.systemPrompt === "boolean" ? entry.systemPrompt : false,
+    conditions:
+      entry.conditions && typeof entry.conditions === "object" ? (entry.conditions as any) : null,
+    promptEntryPayload,
+  };
+}
+
+function normalizeImportedPromptTemplatePayload(input: {
+  name?: unknown;
+  scope?: unknown;
+  targetIds?: unknown;
+  content?: unknown;
+  entries?: unknown;
+  condensePromptEntries?: unknown;
+}): ImportedPromptTemplatePayload {
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name) {
+    throw new Error("System prompt template name is required.");
+  }
+
+  const scope: PromptScope =
+    input.scope === "modelSpecific" ||
+    input.scope === "characterSpecific" ||
+    input.scope === "appWide"
+      ? input.scope
+      : "appWide";
+  const targetIds = Array.isArray(input.targetIds)
+    ? input.targetIds.filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      )
+    : [];
+  const content = typeof input.content === "string" ? input.content : "";
+  const entries = (Array.isArray(input.entries) ? input.entries : [])
+    .map((entry, index) => normalizeImportedSystemEntry(entry, index))
+    .filter((entry): entry is SystemPromptEntry => entry !== null);
+
+  return {
+    name,
+    scope,
+    targetIds,
+    content,
+    entries,
+    condensePromptEntries: Boolean(input.condensePromptEntries),
+  };
+}
 
 function generatePromptTemplateExportFilename(
   templateName: string,
@@ -639,6 +757,28 @@ export function SystemPromptsPage() {
     try {
       const raw = await readFileAsText(file);
       const parsed = JSON.parse(raw) as ExternalPromptExport;
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        (parsed as any).schema?.name === "USC" &&
+        (parsed as any).kind === "system_prompt_template" &&
+        (parsed as any).payload
+      ) {
+        const imported = normalizeImportedPromptTemplatePayload((parsed as any).payload);
+        await createPromptTemplate(
+          imported.name,
+          imported.scope,
+          imported.targetIds,
+          imported.content,
+          imported.entries,
+          imported.condensePromptEntries,
+        );
+        await loadData();
+        toast.success("Imported successfully", `Prompt set "${imported.name}" was imported.`);
+        return;
+      }
+
       const promptEntries = Array.isArray(parsed.prompts) ? parsed.prompts : [];
       const promptIdentifiers = new Set(
         promptEntries
