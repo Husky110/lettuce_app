@@ -21,6 +21,7 @@ interface ChatFooterProps {
   onOpenPlusMenu?: () => void;
   triggerFileInput?: boolean;
   onFileInputTriggered?: () => void;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export function ChatFooter({
@@ -38,12 +39,23 @@ export function ChatFooter({
   onOpenPlusMenu,
   triggerFileInput,
   onFileInputTriggered,
+  textareaRef: externalTextareaRef,
 }: ChatFooterProps) {
   const { t } = useI18n();
   const hasDraft = draft.trim().length > 0;
   const hasAttachments = pendingAttachments.length > 0;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!externalTextareaRef) return;
+    externalTextareaRef.current = textareaRef.current;
+    return () => {
+      if (externalTextareaRef.current === textareaRef.current) {
+        externalTextareaRef.current = null;
+      }
+    };
+  }, [externalTextareaRef]);
 
   const isDesktop = useMemo(() => getPlatform().type === "desktop", []);
 

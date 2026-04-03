@@ -175,6 +175,9 @@ export function ChatConversationPage() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const isMobile = useMemo(() => getPlatform().type === "mobile", []);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  const footerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldRestoreFooterFocusRef = useRef(false);
+  const previousSettingsDrawerOpenRef = useRef(false);
   const helpMeReplyRequestIdRef = useRef<string | null>(null);
   const helpMeReplyUnlistenRef = useRef<UnlistenFn | null>(null);
   const helpMeReplyLoadingTimeoutRef = useRef<number | null>(null);
@@ -257,6 +260,21 @@ export function ChatConversationPage() {
   useEffect(() => {
     setSessionForHeader(chatController.session);
   }, [chatController.session]);
+
+  useEffect(() => {
+    const wasOpen = previousSettingsDrawerOpenRef.current;
+    previousSettingsDrawerOpenRef.current = settingsDrawerOpen;
+    if (!wasOpen || settingsDrawerOpen || !shouldRestoreFooterFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreFooterFocusRef.current = false;
+    const restoreId = window.requestAnimationFrame(() => {
+      footerTextareaRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(restoreId);
+  }, [settingsDrawerOpen]);
 
   const {
     character,
@@ -1485,6 +1503,10 @@ export function ChatConversationPage() {
     swapPlaces,
   ]);
 
+  const captureFooterFocusForDrawer = useCallback(() => {
+    shouldRestoreFooterFocusRef.current = document.activeElement === footerTextareaRef.current;
+  }, []);
+
   const handleRegenerateMessage = useCallback(
     async (message: StoredMessage) => {
       await handleRegenerate(message, { swapPlaces });
@@ -1702,6 +1724,7 @@ export function ChatConversationPage() {
           hasBackgroundImage={!!backgroundImageData}
           headerOverlayClassName={theme.headerOverlay}
           onSessionUpdate={handleSessionUpdate}
+          onBeforeSettingsOpen={!isMobile ? captureFooterFocusForDrawer : undefined}
           onSettingsOpen={!isMobile ? () => setSettingsDrawerOpen(true) : undefined}
         />
       </div>
@@ -1902,6 +1925,7 @@ export function ChatConversationPage() {
           onOpenPlusMenu={handleOpenPlusMenu}
           triggerFileInput={shouldTriggerFileInput}
           onFileInputTriggered={() => setShouldTriggerFileInput(false)}
+          textareaRef={footerTextareaRef}
         />
       </div>
 

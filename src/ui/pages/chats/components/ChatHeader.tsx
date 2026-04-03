@@ -7,7 +7,11 @@ import { useAvatar } from "../../../hooks/useAvatar";
 import { listen } from "@tauri-apps/api/event";
 import { Routes } from "../../../navigation";
 import { cn } from "../../../design-tokens";
-import { WindowControlButtons, useDragRegionProps, hasCustomWindowControls } from "../../../components/App/TopNav";
+import {
+  WindowControlButtons,
+  useDragRegionProps,
+  hasCustomWindowControls,
+} from "../../../components/App/TopNav";
 import { useI18n } from "../../../../core/i18n/context";
 import { isRenderableImageUrl } from "../../../../core/utils/image";
 
@@ -20,6 +24,7 @@ interface ChatHeaderProps {
   hasBackgroundImage?: boolean;
   headerOverlayClassName?: string;
   onSessionUpdate?: () => void;
+  onBeforeSettingsOpen?: () => void;
   onSettingsOpen?: () => void;
 }
 
@@ -36,6 +41,7 @@ export function ChatHeader({
   hasBackgroundImage,
   headerOverlayClassName,
   onSessionUpdate,
+  onBeforeSettingsOpen,
   onSettingsOpen,
 }: ChatHeaderProps) {
   const navigate = useNavigate();
@@ -178,6 +184,7 @@ export function ChatHeader({
             </button>
 
             <button
+              onPointerDown={() => onBeforeSettingsOpen?.()}
               onClick={() => {
                 if (onSettingsOpen) {
                   onSettingsOpen();
@@ -264,6 +271,7 @@ export function ChatHeader({
 
             {/* Avatar (Settings) Button */}
             <button
+              onPointerDown={() => onBeforeSettingsOpen?.()}
               onClick={() => {
                 if (onSettingsOpen) {
                   onSettingsOpen();
