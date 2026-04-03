@@ -205,9 +205,7 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub(crate) fn get_window_chrome_flags(
-    app: tauri::AppHandle,
-) -> Result<(bool, bool), String> {
+pub(crate) fn get_window_chrome_flags(app: tauri::AppHandle) -> Result<(bool, bool), String> {
     let flags = app.state::<WindowChromeFlags>();
     Ok((flags.os_decorations, flags.no_buttons))
 }
@@ -222,12 +220,9 @@ pub(crate) struct WindowChromeFlags {
 
 impl WindowChromeFlags {
     pub fn from_env() -> Self {
-        let args: Vec<String> = std::env::args().collect();
         Self {
-            os_decorations: args.iter().any(|a| a == "--osdecorations")
-                || std::env::var("LETTUCE_OS_DECORATIONS").is_ok(),
-            no_buttons: args.iter().any(|a| a == "--nobuttons")
-                || std::env::var("LETTUCE_NO_BUTTONS").is_ok(),
+            os_decorations: true,
+            no_buttons: true,
         }
     }
 }
@@ -240,10 +235,8 @@ pub(crate) fn setup_app(
     app.manage(chrome_flags);
 
     #[cfg(not(mobile))]
-    if chrome_flags.os_decorations {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_decorations(true);
-        }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_decorations(true);
     }
 
     let app_usage_service = manage_core_state(app);

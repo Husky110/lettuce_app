@@ -33,24 +33,28 @@ interface TopNavProps {
   onBackOverride?: () => void;
   titleOverride?: string;
   rightAction?: React.ReactNode;
+  suppressWindowControls?: boolean;
 }
 
 const appPlatform = getPlatform();
 const isDesktop = appPlatform.type === "desktop";
 const isMacOS = appPlatform.os === "macos";
-/** True when custom window control buttons will render (Linux/Windows desktop). */
-export const hasCustomWindowControls = isDesktop && !isMacOS;
+/** Custom in-app window controls are disabled; use OS-decorated windows instead. */
+export const hasCustomWindowControls = false;
 
 // Cache window chrome flags from CLI args (--osdecorations, --nobuttons).
-let _chromeFlags: { osDecorations: boolean; noButtons: boolean } | null = null;
+let _chromeFlags: { osDecorations: boolean; noButtons: boolean } | null = {
+  osDecorations: true,
+  noButtons: true,
+};
 const chromeFlagsPromise = isDesktop
   ? invoke<[boolean, boolean]>("get_window_chrome_flags")
       .then(([osDecorations, noButtons]) => {
         _chromeFlags = { osDecorations, noButtons };
         return _chromeFlags;
       })
-      .catch(() => ({ osDecorations: false, noButtons: false }))
-  : Promise.resolve({ osDecorations: false, noButtons: false });
+      .catch(() => ({ osDecorations: true, noButtons: true }))
+  : Promise.resolve({ osDecorations: true, noButtons: true });
 
 function useChromeFlags() {
   const [flags, setFlags] = useState(_chromeFlags);
@@ -64,12 +68,22 @@ function useChromeFlags() {
   return flags;
 }
 
-export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction }: TopNavProps) {
+export function TopNav({
+  currentPath,
+  onBackOverride,
+  titleOverride,
+  rightAction,
+  suppressWindowControls = false,
+}: TopNavProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
   const chromeFlags = useChromeFlags();
   const showWindowControls =
-    isDesktop && !isMacOS && !chromeFlags?.osDecorations && !chromeFlags?.noButtons;
+    isDesktop &&
+    !isMacOS &&
+    !chromeFlags?.osDecorations &&
+    !chromeFlags?.noButtons &&
+    !suppressWindowControls;
   const showDragRegion = isDesktop && !chromeFlags?.osDecorations;
   const basePath = useMemo(() => currentPath.split("?")[0], [currentPath]);
   const hasAdvancedView = useMemo(() => currentPath.includes("view=advanced"), [currentPath]);
@@ -559,7 +573,10 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
         {...(showDragRegion ? { "data-tauri-drag-region": "" } : {})}
       >
         {/* Left side: */}
-        <div className="flex items-center gap-1 overflow-hidden h-full" {...(showDragRegion ? { "data-tauri-drag-region": "" } : {})}>
+        <div
+          className="flex items-center gap-1 overflow-hidden h-full"
+          {...(showDragRegion ? { "data-tauri-drag-region": "" } : {})}
+        >
           <div
             className={cn(
               "flex items-center justify-center shrink-0",
@@ -605,7 +622,10 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
           </motion.h1>
         </div>
 
-        <div className="flex items-center justify-end gap-1 shrink-0 min-w-10 h-full" {...(showDragRegion ? { "data-tauri-drag-region": "" } : {})}>
+        <div
+          className="flex items-center justify-end gap-1 shrink-0 min-w-10 h-full"
+          {...(showDragRegion ? { "data-tauri-drag-region": "" } : {})}
+        >
           {showLayoutToggle && (
             <button
               onClick={() =>
@@ -844,8 +864,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
  */
 export function WindowControlButtons() {
   const chromeFlags = useChromeFlags();
-  const show =
-    isDesktop && !isMacOS && !chromeFlags?.osDecorations && !chromeFlags?.noButtons;
+  const show = isDesktop && !isMacOS && !chromeFlags?.osDecorations && !chromeFlags?.noButtons;
   if (!show) return null;
 
   return (
@@ -911,7 +930,7 @@ export function WindowControls() {
 
   return (
     <div
-      className="pointer-events-none fixed top-0 right-0 z-50 flex h-10 items-center justify-end pr-1"
+      className="pointer-events-none fixed top-0 right-0 z-60 flex h-10 items-center justify-end pr-1"
       {...(showDrag ? { "data-tauri-drag-region": "" } : {})}
     >
       {showButtons && (
