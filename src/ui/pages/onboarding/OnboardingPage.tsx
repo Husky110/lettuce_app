@@ -7,18 +7,30 @@ import { MemoryStep } from "./steps/MemoryStep";
 import { ModelRecommendations } from "./ModelRecommendations";
 import { cn, typography } from "../../design-tokens";
 import { getPlatform } from "../../../core/utils/platform";
-import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { checkEmbeddingModel } from "../../../core/storage/repo";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  checkEmbeddingModel,
+  addOrUpdateProviderCredential,
+} from "../../../core/storage/repo";
+import { setProviderSetupCompleted } from "../../../core/storage/appState";
 import { useI18n } from "../../../core/i18n/context";
 
 export function OnboardingPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const platform = getPlatform();
   const isDesktop = platform.type === "desktop";
   const controller = useOnboardingController();
   const { state } = controller;
+
+  // If navigated directly to /onboarding/memory, jump to memory step
+  useEffect(() => {
+    if (location.pathname === "/onboarding/memory" && state.step !== OnboardingStep.Memory) {
+      controller.setStep(OnboardingStep.Memory);
+    }
+  }, [location.pathname]);
 
   // Modal state for memory download prompt
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -33,6 +45,29 @@ export function OnboardingPage() {
 
   const stepNumber =
     state.step === OnboardingStep.Provider ? 1 : state.step === OnboardingStep.Model ? 2 : 3;
+
+  // Ensure a llamacpp provider credential exists, then navigate
+  const ensureLlamaCppProvider = useCallback(async () => {
+    const credential = {
+      id: "llamacpp-onboarding",
+      providerId: "llamacpp",
+      label: "Local (llama.cpp)",
+      apiKey: undefined,
+      baseUrl: undefined,
+    };
+    await addOrUpdateProviderCredential(credential);
+    await setProviderSetupCompleted(true);
+  }, []);
+
+  const handleBrowseModelLibrary = useCallback(async () => {
+    await ensureLlamaCppProvider();
+    navigate("/settings/models/browse?returnTo=/onboarding/memory");
+  }, [ensureLlamaCppProvider, navigate]);
+
+  const handleUseOwnGguf = useCallback(async () => {
+    await ensureLlamaCppProvider();
+    navigate("/settings/models/new?provider=llamacpp&returnTo=/onboarding/memory");
+  }, [ensureLlamaCppProvider, navigate]);
 
   // Handle finish - checks for embedding model if dynamic is selected
   const handleFinish = useCallback(async () => {
@@ -163,6 +198,8 @@ export function OnboardingPage() {
                   onConfigChange={controller.handleConfigChange}
                   onTestConnection={controller.handleTestConnection}
                   onSave={controller.handleSaveProvider}
+                  onBrowseModelLibrary={() => void handleBrowseModelLibrary()}
+                  onUseOwnGguf={() => void handleUseOwnGguf()}
                 />
               </motion.div>
             )}

@@ -192,8 +192,11 @@ export function useModelEditorController(): ControllerReturn {
 
           const isFromHfBrowser = !!hfModelPath;
 
+          const providerParam = searchParams.get("provider");
           let selectedProvider: ProviderCredential | undefined;
-          if (isFromHfBrowser) {
+          if (providerParam) {
+            selectedProvider = providers.find((p) => p.providerId === providerParam);
+          } else if (isFromHfBrowser) {
             selectedProvider = providers.find((p) => p.providerId === "llamacpp");
           }
           if (!selectedProvider) {

@@ -60,7 +60,8 @@ import { ProviderParameterSupportInfo } from "../../components/ProviderParameter
 import { toast } from "../../components/toast";
 import { useModelEditorController } from "./hooks/useModelEditorController";
 import { Routes, useNavigationManager } from "../../navigation";
-import { addOrUpdateModel } from "../../../core/storage/repo";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { addOrUpdateModel, readSettingsCached } from "../../../core/storage/repo";
 import type { LlamaLastRuntimeReport, ReasoningSupport } from "../../../core/storage/schemas";
 import {
   getProviderReasoningSupport,
@@ -463,6 +464,9 @@ export function EditModelPage() {
     fetchModels,
   } = useModelEditorController();
   const { backOrReplace } = useNavigationManager();
+  const editNavigate = useNavigate();
+  const [editSearchParams] = useSearchParams();
+  const returnTo = editSearchParams.get("returnTo");
   const isLocalModel = editorModel?.providerId === "llamacpp";
   const isOllamaModel = editorModel?.providerId === "ollama";
   const llamaRuntimeReport = modelAdvancedDraft.llamaLastRuntimeReport ?? null;
@@ -4838,6 +4842,29 @@ export function EditModelPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Continue Setup button when coming from onboarding */}
+      {returnTo && (() => {
+        const cached = readSettingsCached();
+        const hasModel = cached ? cached.models.some((m) => m.providerId === "llamacpp") : false;
+        return (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <button
+              onClick={() => editNavigate(returnTo)}
+              disabled={!hasModel}
+              className={cn(
+                "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold transition active:scale-[0.98]",
+                hasModel
+                  ? "border border-emerald-500/40 bg-emerald-500 text-black shadow-[0_4px_20px_rgba(16,185,129,0.35)] hover:bg-emerald-400"
+                  : "border border-white/10 bg-white/10 text-white/40 cursor-not-allowed",
+              )}
+            >
+              {hasModel ? "Continue Setup" : "Save a model to continue"}
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Search,
@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Monitor,
   Info,
+  ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -32,7 +33,7 @@ import {
 } from "../../../core/downloads/DownloadQueueContext";
 import { BottomMenu, MenuLabel, MenuDivider } from "../../components/BottomMenu";
 import { toast } from "../../components/toast";
-import { addOrUpdateModel } from "../../../core/storage/repo";
+import { addOrUpdateModel, readSettingsCached } from "../../../core/storage/repo";
 import { createDefaultAdvancedModelSettings } from "../../../core/storage/schemas";
 
 interface HfSearchResult {
@@ -816,20 +817,41 @@ function DetailReportContent({
 
 export function HuggingFaceBrowserPage() {
   const { t } = useI18n();
+  const hfNavigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
   const { queue, dismissItem, hasItems: hasDownloads } = useDownloadQueue();
+
+  // Track whether at least one local model exists (for "Continue Setup" gating)
+  const [hadLocalModelOnMount] = useState(() => {
+    const cached = readSettingsCached();
+    return cached ? cached.models.some((m) => m.providerId === "llamacpp") : false;
+  });
+  const hasCompletedDownload = queue.some(
+    (item) => item.status === "complete" && item.createModelWhenFinished,
+  );
+  const hasLocalModel = hadLocalModelOnMount || hasCompletedDownload;
 
   const [avatars, setAvatars] = useState<Record<string, string>>({});
 
   const [defaultedToSearch, setDefaultedToSearch] = useState(false);
 
+  // Helper to preserve returnTo across param changes
+  const preserveParams = useCallback(
+    (next: Record<string, string>) => {
+      if (returnTo) next.returnTo = returnTo;
+      return next;
+    },
+    [returnTo],
+  );
+
   useEffect(() => {
     if (defaultedToSearch) return;
     if (searchParams.get("model")) {
-      setSearchParams({}, { replace: true });
+      setSearchParams(preserveParams({}), { replace: true });
     }
     setDefaultedToSearch(true);
-  }, [defaultedToSearch, searchParams, setSearchParams]);
+  }, [defaultedToSearch, searchParams, setSearchParams, preserveParams]);
 
   const view: ViewState = useMemo(() => {
     if (!defaultedToSearch) return { kind: "search" };
@@ -841,12 +863,12 @@ export function HuggingFaceBrowserPage() {
   const setView = useCallback(
     (v: ViewState) => {
       if (v.kind === "search") {
-        setSearchParams({}, { replace: true });
+        setSearchParams(preserveParams({}), { replace: true });
       } else if (v.kind === "model") {
-        setSearchParams({ model: v.modelId }, { replace: false });
+        setSearchParams(preserveParams({ model: v.modelId }), { replace: false });
       }
     },
-    [setSearchParams],
+    [setSearchParams, preserveParams],
   );
 
   const [query, setQuery] = useState("");
@@ -2688,6 +2710,25 @@ export function HuggingFaceBrowserPage() {
             );
           })()}
       </BottomMenu>
+
+      {/* Continue Setup button when coming from onboarding */}
+      {returnTo && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <button
+            onClick={() => hfNavigate(returnTo)}
+            disabled={!hasLocalModel}
+            className={cn(
+              "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold transition active:scale-[0.98]",
+              hasLocalModel
+                ? "border border-emerald-500/40 bg-emerald-500 text-black shadow-[0_4px_20px_rgba(16,185,129,0.35)] hover:bg-emerald-400 hover:shadow-[0_4px_24px_rgba(16,185,129,0.5)]"
+                : "border border-white/10 bg-white/10 text-white/40 cursor-not-allowed",
+            )}
+          >
+            {hasLocalModel ? "Continue Setup" : "Download a model to continue"}
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
