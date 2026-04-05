@@ -57,6 +57,7 @@ import {
   Maximize2,
 } from "lucide-react";
 import { ProviderParameterSupportInfo } from "../../components/ProviderParameterSupportInfo";
+import { LlamaSamplerOrderEditor } from "../../components/LlamaSamplerOrderEditor";
 import { toast } from "../../components/toast";
 import { useModelEditorController } from "./hooks/useModelEditorController";
 import { Routes, useNavigationManager } from "../../navigation";
@@ -430,6 +431,7 @@ export function EditModelPage() {
     handleLlamaKvTypeChange,
     handleLlamaFlashAttentionChange,
     handleLlamaSamplerProfileChange,
+    handleLlamaSamplerOrderChange,
     handleLlamaMinPChange,
     handleLlamaTypicalPChange,
     handleLlamaChatTemplateOverrideChange,
@@ -3549,6 +3551,11 @@ export function EditModelPage() {
                                     )}
                                   </div>
                                 </div>
+
+                                <LlamaSamplerOrderEditor
+                                  value={modelAdvancedDraft.llamaSamplerOrder}
+                                  onChange={handleLlamaSamplerOrderChange}
+                                />
 
                                 <div className="grid grid-cols-2 gap-6">
                                   <div className="space-y-4">

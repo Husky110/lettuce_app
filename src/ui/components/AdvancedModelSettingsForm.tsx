@@ -1,6 +1,10 @@
 import type { ChangeEvent } from "react";
 import { Brain, Info } from "lucide-react";
-import type { AdvancedModelSettings, ReasoningSupport } from "../../core/storage/schemas";
+import {
+  normalizeLlamaSamplerOrder,
+  type AdvancedModelSettings,
+  type ReasoningSupport,
+} from "../../core/storage/schemas";
 import { cn } from "../design-tokens";
 import { useI18n } from "../../core/i18n/context";
 
@@ -117,6 +121,7 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     llamaRawCompletionFallback: input.llamaRawCompletionFallback ?? null,
     llamaStrictMode: input.llamaStrictMode ?? null,
     llamaSamplerProfile: input.llamaSamplerProfile ?? null,
+    llamaSamplerOrder: normalizeLlamaSamplerOrder(input.llamaSamplerOrder),
     llamaMinP: sanitize(input.llamaMinP, ADVANCED_OLLAMA_MIN_P_RANGE, false),
     llamaTypicalP: sanitize(input.llamaTypicalP, ADVANCED_OLLAMA_TYPICAL_P_RANGE, false),
     llamaLastRuntimeReport: input.llamaLastRuntimeReport ?? null,

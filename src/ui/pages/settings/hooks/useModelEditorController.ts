@@ -58,6 +58,7 @@ type ControllerReturn = {
   handleLlamaKvTypeChange: (value: AdvancedModelSettings["llamaKvType"]) => void;
   handleLlamaFlashAttentionChange: (value: AdvancedModelSettings["llamaFlashAttention"]) => void;
   handleLlamaSamplerProfileChange: (value: AdvancedModelSettings["llamaSamplerProfile"]) => void;
+  handleLlamaSamplerOrderChange: (value: AdvancedModelSettings["llamaSamplerOrder"]) => void;
   handleLlamaMinPChange: (value: number | null) => void;
   handleLlamaTypicalPChange: (value: number | null) => void;
   handleLlamaChatTemplateOverrideChange: (value: string | null) => void;
@@ -697,6 +698,19 @@ export function useModelEditorController(): ControllerReturn {
         payload: {
           ...state.modelAdvancedDraft,
           llamaSamplerProfile: value ?? null,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
+  const handleLlamaSamplerOrderChange = useCallback(
+    (value: AdvancedModelSettings["llamaSamplerOrder"]) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaSamplerOrder: value ?? null,
         },
       });
     },
@@ -1403,6 +1417,7 @@ export function useModelEditorController(): ControllerReturn {
     handleLlamaKvTypeChange,
     handleLlamaFlashAttentionChange,
     handleLlamaSamplerProfileChange,
+    handleLlamaSamplerOrderChange,
     handleLlamaMinPChange,
     handleLlamaTypicalPChange,
     handleLlamaChatTemplateOverrideChange,

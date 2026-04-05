@@ -302,6 +302,14 @@ fn resolve_llama_sampler_profile(model: &Model, settings: &Settings) -> String {
         .unwrap_or_else(|| DEFAULT_LLAMA_SAMPLER_PROFILE.to_string())
 }
 
+fn resolve_llama_sampler_order(model: &Model, settings: &Settings) -> Option<Vec<String>> {
+    model
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|a| a.llama_sampler_order.clone())
+        .or_else(|| settings.advanced_model_settings.llama_sampler_order.clone())
+}
+
 fn llama_sampler_profile_defaults(profile: &str) -> LlamaSamplerProfileDefaults {
     match profile {
         "creative" => LlamaSamplerProfileDefaults {
@@ -513,6 +521,9 @@ fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMa
         "llamaSamplerProfile".to_string(),
         json!(sampler_defaults.name),
     );
+    if let Some(v) = resolve_llama_sampler_order(model, settings) {
+        extra.insert("llamaSamplerOrder".to_string(), json!(v));
+    }
     if let Some(v) = explicit_min_p.or(sampler_defaults.min_p) {
         extra.insert("llamaMinP".to_string(), json!(v));
     }

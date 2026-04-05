@@ -11,6 +11,74 @@ const OptionalPositiveNumber = z.preprocess(
   z.number().nonnegative().optional(),
 );
 
+export const LLAMA_SAMPLER_PROFILE_VALUES = [
+  "balanced",
+  "creative",
+  "stable",
+  "reasoning",
+] as const;
+export const LLAMA_SAMPLER_ORDER_STAGE_VALUES = [
+  "penalties",
+  "grammar",
+  "top_k",
+  "top_p",
+  "min_p",
+  "typical",
+  "temp",
+] as const;
+
+export const LlamaSamplerProfileSchema = z.enum(LLAMA_SAMPLER_PROFILE_VALUES);
+export const LlamaSamplerOrderStageSchema = z.enum(LLAMA_SAMPLER_ORDER_STAGE_VALUES);
+
+export type LlamaSamplerProfile = z.infer<typeof LlamaSamplerProfileSchema>;
+export type LlamaSamplerOrderStage = z.infer<typeof LlamaSamplerOrderStageSchema>;
+
+export const DEFAULT_LLAMA_SAMPLER_ORDER: readonly LlamaSamplerOrderStage[] = [
+  "penalties",
+  "grammar",
+  "top_k",
+  "top_p",
+  "min_p",
+  "typical",
+  "temp",
+];
+
+export const LLAMA_SAMPLER_ORDER_PRESETS = {
+  default: DEFAULT_LLAMA_SAMPLER_ORDER,
+  unsloth: ["top_k", "top_p", "min_p", "temp", "typical", "penalties", "grammar"],
+  focused: ["penalties", "grammar", "min_p", "top_k", "top_p", "typical", "temp"],
+  creative: ["penalties", "grammar", "top_k", "typical", "top_p", "temp", "min_p"],
+} as const satisfies Record<string, readonly LlamaSamplerOrderStage[]>;
+
+export type LlamaSamplerOrderPreset = keyof typeof LLAMA_SAMPLER_ORDER_PRESETS;
+
+export function normalizeLlamaSamplerOrder(value: unknown): LlamaSamplerOrderStage[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const known = new Set<string>(LLAMA_SAMPLER_ORDER_STAGE_VALUES);
+  const seen = new Set<string>();
+  const normalized: LlamaSamplerOrderStage[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim().toLowerCase();
+    if (!known.has(trimmed) || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed as LlamaSamplerOrderStage);
+  }
+
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  for (const stage of DEFAULT_LLAMA_SAMPLER_ORDER) {
+    if (seen.has(stage)) continue;
+    normalized.push(stage);
+  }
+
+  return normalized;
+}
+
 export const PromptScopeSchema = z.enum(["appWide", "modelSpecific", "characterSpecific"]);
 export type PromptScope = z.infer<typeof PromptScopeSchema>;
 
@@ -260,10 +328,8 @@ export const AdvancedModelSettingsSchema = z.object({
   llamaChatTemplatePreset: z.string().trim().min(1).nullable().optional(),
   llamaRawCompletionFallback: z.boolean().nullable().optional(),
   llamaStrictMode: z.boolean().nullable().optional(),
-  llamaSamplerProfile: z
-    .enum(["balanced", "creative", "stable", "reasoning"])
-    .nullable()
-    .optional(),
+  llamaSamplerProfile: LlamaSamplerProfileSchema.nullable().optional(),
+  llamaSamplerOrder: z.array(LlamaSamplerOrderStageSchema).min(1).nullable().optional(),
   llamaMinP: z.number().min(0).max(1).nullable().optional(),
   llamaTypicalP: z.number().min(0).max(1).nullable().optional(),
   llamaLastRuntimeReport: LlamaLastRuntimeReportSchema.nullish().optional(),
@@ -600,6 +666,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -649,6 +716,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -700,6 +768,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: true,
@@ -751,6 +820,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -802,6 +872,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -851,6 +922,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -900,6 +972,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -949,6 +1022,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -998,6 +1072,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1047,6 +1122,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1096,6 +1172,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1145,6 +1222,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1194,6 +1272,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1243,6 +1322,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1292,6 +1372,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1341,6 +1422,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1390,6 +1472,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1439,6 +1522,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1488,6 +1572,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1535,6 +1620,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaRawCompletionFallback: true,
       llamaStrictMode: true,
       llamaSamplerProfile: true,
+      llamaSamplerOrder: true,
       llamaMinP: true,
       llamaTypicalP: true,
       reasoningEnabled: true,
@@ -1587,6 +1673,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1636,6 +1723,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1685,6 +1773,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -1736,6 +1825,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaChatTemplatePreset: false,
       llamaRawCompletionFallback: false,
       llamaSamplerProfile: false,
+      llamaSamplerOrder: false,
       llamaMinP: false,
       llamaTypicalP: false,
       ollamaNumCtx: false,
@@ -2636,6 +2726,7 @@ export function createDefaultAdvancedModelSettings(): AdvancedModelSettings {
     maxOutputTokens: 2048,
     llamaLastRuntimeReport: null,
     llamaStrictMode: null,
+    llamaSamplerOrder: null,
     sdSteps: null,
     sdCfgScale: null,
     sdSampler: null,

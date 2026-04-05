@@ -41,6 +41,7 @@ const PARAMETER_LABELS: Record<keyof AdvancedModelSettings, string> = {
   llamaRawCompletionFallback: "llama.cpp Raw Fallback",
   llamaStrictMode: "llama.cpp Strict Mode",
   llamaSamplerProfile: "llama.cpp Sampler Profile",
+  llamaSamplerOrder: "llama.cpp Sampler Order",
   llamaMinP: "llama.cpp Min P",
   llamaTypicalP: "llama.cpp Typical P",
   llamaLastRuntimeReport: "llama.cpp Runtime Report",
@@ -99,6 +100,7 @@ const PARAMETER_DESCRIPTIONS: Record<keyof AdvancedModelSettings, string> = {
     "Disable llama.cpp safety fallbacks that lower offload, context, or batch settings",
   llamaSamplerProfile:
     "Preset local sampler defaults for chat, creativity, stability, or reasoning",
+  llamaSamplerOrder: "Array of sampler stages executed in the saved order for local llama.cpp",
   llamaMinP: "Min-p sampling threshold for llama.cpp (0-1)",
   llamaTypicalP: "Typical sampling threshold for llama.cpp (0-1)",
   llamaLastRuntimeReport: "Persisted diagnostics from the last local llama.cpp run",

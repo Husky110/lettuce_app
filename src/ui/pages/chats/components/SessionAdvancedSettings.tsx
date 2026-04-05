@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { WindowControlButtons, useDragRegionProps } from "../../../components/App/TopNav";
 import { cn } from "../../../design-tokens";
 import type { AdvancedModelSettings } from "../../../../core/storage/schemas";
+import { LlamaSamplerOrderEditor } from "../../../components/LlamaSamplerOrderEditor";
 import {
   ADVANCED_TEMPERATURE_RANGE,
   ADVANCED_TOP_P_RANGE,
@@ -618,6 +619,13 @@ export function SessionAdvancedSettings({
                                   <option value="stable">Stable</option>
                                   <option value="reasoning">Reasoning</option>
                                 </select>
+                              </div>
+
+                              <div className="md:col-span-2">
+                                <LlamaSamplerOrderEditor
+                                  value={draft.llamaSamplerOrder}
+                                  onChange={(llamaSamplerOrder) => update({ llamaSamplerOrder })}
+                                />
                               </div>
                             </div>
                           </div>

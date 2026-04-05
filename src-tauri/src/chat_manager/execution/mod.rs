@@ -99,6 +99,24 @@ pub(super) fn resolve_llama_sampler_profile(
         .and_then(|value| normalize_llama_sampler_profile(&value))
 }
 
+pub(super) fn resolve_llama_sampler_order(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<Vec<String>> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_sampler_order.clone())
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_sampler_order.clone())
+        })
+        .or_else(|| settings.advanced_model_settings.llama_sampler_order.clone())
+}
+
 pub(super) fn resolve_temperature(
     session: &Session,
     model: &Model,

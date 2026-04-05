@@ -583,6 +583,17 @@ mod desktop {
             .or_else(|| body.get("llama_sampler_profile"))
             .and_then(|v| v.as_str())
             .and_then(normalize_sampler_profile);
+        let sampler_order = body
+            .get("llamaSamplerOrder")
+            .or_else(|| body.get("llama_sampler_order"))
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(|stage| stage.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|items| !items.is_empty());
         let sampler_defaults = sampler_profile_defaults(sampler_profile);
         let temperature = body
             .get("temperature")
@@ -1672,6 +1683,7 @@ mod desktop {
 
             let sampler_config = ResolvedSamplerConfig {
                 profile: sampler_defaults.name,
+                order: sampler_order.clone(),
                 temperature,
                 top_p,
                 top_k,
@@ -1715,6 +1727,7 @@ mod desktop {
                     "requestId": request_id,
                     "modelPath": model_path,
                     "profile": sampler_config.profile,
+                    "requestedOrder": sampler_order,
                     "order": built_sampler.order,
                     "activeParams": built_sampler.active_params,
                 }),
