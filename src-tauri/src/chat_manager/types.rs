@@ -274,6 +274,8 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub summarisation_model_id: Option<String>,
     #[serde(default)]
+    pub dynamic_memory_llama_sampler_overwrite_enabled: Option<bool>,
+    #[serde(default)]
     pub avatar_generation_enabled: Option<bool>,
     #[serde(default)]
     pub avatar_generation_model_id: Option<String>,

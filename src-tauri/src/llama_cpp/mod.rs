@@ -73,6 +73,7 @@ mod desktop {
     use sampler::{
         build_sampler, flash_attention_policy_label, kv_type_label, normalize_sampler_profile,
         offload_kqv_mode_label, sampler_profile_defaults, ResolvedSamplerConfig,
+        SamplerProfileDefaults,
     };
 
     const LLAMA_RUNTIME_REPORT_UPDATED_EVENT: &str = "llama-runtime-report-updated";
@@ -583,6 +584,11 @@ mod desktop {
             .or_else(|| body.get("llama_sampler_profile"))
             .and_then(|v| v.as_str())
             .and_then(normalize_sampler_profile);
+        let disable_sampler_profile_defaults = body
+            .get("llamaDisableSamplerProfileDefaults")
+            .or_else(|| body.get("llama_disable_sampler_profile_defaults"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let sampler_order = body
             .get("llamaSamplerOrder")
             .or_else(|| body.get("llama_sampler_order"))
@@ -594,7 +600,20 @@ mod desktop {
                     .collect::<Vec<_>>()
             })
             .filter(|items| !items.is_empty());
-        let sampler_defaults = sampler_profile_defaults(sampler_profile);
+        let sampler_defaults = if disable_sampler_profile_defaults {
+            SamplerProfileDefaults {
+                name: "custom",
+                temperature: 0.8,
+                top_p: 0.95,
+                top_k: None,
+                min_p: None,
+                typical_p: None,
+                frequency_penalty: None,
+                presence_penalty: None,
+            }
+        } else {
+            sampler_profile_defaults(sampler_profile)
+        };
         let temperature = body
             .get("temperature")
             .and_then(|v| v.as_f64())

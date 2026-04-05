@@ -31,6 +31,16 @@ import { ModelSelectionBottomMenu } from "../../components/ModelSelectionBottomM
 import { getProviderIcon } from "../../../core/utils/providerIcons";
 import { useI18n } from "../../../core/i18n/context";
 
+const DYNAMIC_MEMORY_LLAMA_OVERWRITE_ORDER = [
+  "penalties",
+  "grammar",
+  "top_k",
+  "top_p",
+  "temp",
+  "min_p",
+  "typical",
+] as const;
+
 const DEFAULT_DYNAMIC_MEMORY_SETTINGS: DynamicMemorySettings = {
   enabled: false,
   summaryMessageInterval: 20,
@@ -114,6 +124,7 @@ const ensureAdvancedSettings = (settings: Settings): NonNullable<Settings["advan
   const advanced = settings.advancedSettings ?? {
     creationHelperEnabled: false,
     helpMeReplyEnabled: true,
+    dynamicMemoryLlamaSamplerOverwriteEnabled: true,
     dynamicMemory: { ...DEFAULT_DYNAMIC_MEMORY_SETTINGS },
   };
   if (advanced.helpMeReplyEnabled === undefined) {
@@ -121,6 +132,9 @@ const ensureAdvancedSettings = (settings: Settings): NonNullable<Settings["advan
   }
   if (!advanced.dynamicMemory) {
     advanced.dynamicMemory = { ...DEFAULT_DYNAMIC_MEMORY_SETTINGS };
+  }
+  if (advanced.dynamicMemoryLlamaSamplerOverwriteEnabled === undefined) {
+    advanced.dynamicMemoryLlamaSamplerOverwriteEnabled = true;
   }
   advanced.dynamicMemory = hydrateDynamicMemorySettings(advanced.dynamicMemory);
   settings.advancedSettings = advanced;
@@ -186,6 +200,8 @@ export function DynamicMemoryPage() {
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [dynamicMemoryLlamaSamplerOverwriteEnabled, setDynamicMemoryLlamaSamplerOverwriteEnabled] =
+    useState(true);
 
   useEffect(() => {
     const loadData = async () => {
@@ -215,6 +231,9 @@ export function DynamicMemoryPage() {
           defaultModelIdValue && summarisationModelValue === defaultModelIdValue
             ? null
             : summarisationModelValue,
+        );
+        setDynamicMemoryLlamaSamplerOverwriteEnabled(
+          settings.advancedSettings?.dynamicMemoryLlamaSamplerOverwriteEnabled ?? true,
         );
         setEmbeddingMaxTokens(settings.advancedSettings?.embeddingMaxTokens ?? 2048);
         setEmbeddingKeepModelLoaded(settings.advancedSettings?.embeddingKeepModelLoaded ?? false);
@@ -332,6 +351,13 @@ export function DynamicMemoryPage() {
     }, "Failed to save summarisation model:");
   };
 
+  const handleDynamicMemoryLlamaSamplerOverwriteChange = async (enabled: boolean) => {
+    setDynamicMemoryLlamaSamplerOverwriteEnabled(enabled);
+    await updateAdvancedSettings((advanced) => {
+      advanced.dynamicMemoryLlamaSamplerOverwriteEnabled = enabled;
+    }, "Failed to save dynamic memory llama sampler overwrite setting:");
+  };
+
   const handleEmbeddingMaxTokensChange = async (val: number) => {
     setEmbeddingMaxTokens(val);
     await updateAdvancedSettings((advanced) => {
@@ -402,6 +428,9 @@ export function DynamicMemoryPage() {
   const selectedSummarisationModel = summarisationModelId
     ? models.find((model) => model.id === summarisationModelId)
     : null;
+  const effectiveSummarisationModel =
+    selectedSummarisationModel ?? models.find((model) => model.id === defaultModelId) ?? null;
+  const isLocalLlamaSummaryModel = effectiveSummarisationModel?.providerId === "llamacpp";
   const hasV2Installed = availableEmbeddingVersions.includes("v2");
   const hasV3Installed = availableEmbeddingVersions.includes("v3");
   const hasBothMajorEmbeddingVersionsInstalled = hasV2Installed && hasV3Installed;
@@ -909,6 +938,56 @@ export function DynamicMemoryPage() {
                     {t("dynamicMemory.page.summarisationModelDescription")}
                   </p>
 
+                  {isLocalLlamaSummaryModel && (
+                    <div className="rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-fg">
+                            Overwrite Model Sampler Configuration
+                          </div>
+                          <div className="mt-1 text-[11px] leading-relaxed text-fg/45">
+                            Use a fixed llama.cpp sampler setup for dynamic memory instead of the
+                            summarisation model&apos;s saved sampler configuration.
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={dynamicMemoryLlamaSamplerOverwriteEnabled}
+                            onChange={(e) =>
+                              handleDynamicMemoryLlamaSamplerOverwriteChange(e.target.checked)
+                            }
+                            className="sr-only peer"
+                          />
+                          <div className="h-6 w-11 rounded-full border border-fg/10 bg-fg/10 transition-colors peer-checked:border-info/40 peer-checked:bg-info after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-[0_1px_4px_rgba(0,0,0,0.24)] after:transition-transform after:content-[''] peer-checked:after:translate-x-5"></div>
+                        </label>
+                      </div>
+
+                      {dynamicMemoryLlamaSamplerOverwriteEnabled && (
+                        <div className="rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2.5 space-y-2">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-fg/35">
+                            Overwrite Values
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-fg/65">
+                            <div>Temperature: 0.2</div>
+                            <div>Top P: 1.0</div>
+                            <div>Top K: 40</div>
+                            <div>Frequency Penalty: 0.0</div>
+                            <div>Presence Penalty: 0.0</div>
+                            <div>Min P: disabled</div>
+                            <div>Typical P: disabled</div>
+                          </div>
+                          <div className="text-xs text-fg/55">
+                            Order:{" "}
+                            <span className="font-mono text-[11px] text-fg/70">
+                              {DYNAMIC_MEMORY_LLAMA_OVERWRITE_ORDER.join(" -> ")}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Desktop: Model Management under Summarisation to avoid large left-column gap */}
                   <div className="hidden lg:block space-y-3 pt-4">
                     <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
@@ -1049,7 +1128,7 @@ export function DynamicMemoryPage() {
                             onChange={(e) => handleEmbeddingKeepModelLoadedChange(e.target.checked)}
                             className="sr-only peer"
                           />
-                          <div className="w-11 h-6 bg-fg/10 rounded-full peer peer-checked:bg-info transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-fg after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                          <div className="h-6 w-11 rounded-full border border-fg/10 bg-fg/10 transition-colors peer-checked:border-info/40 peer-checked:bg-info after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-[0_1px_4px_rgba(0,0,0,0.24)] after:transition-transform after:content-[''] peer-checked:after:translate-x-5"></div>
                         </label>
                       </div>
                     </div>

@@ -82,6 +82,14 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "other",
 ];
 
+fn dynamic_memory_llama_sampler_overwrite_enabled(settings: &Settings) -> bool {
+    settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| advanced.dynamic_memory_llama_sampler_overwrite_enabled)
+        .unwrap_or(true)
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -1350,6 +1358,7 @@ async fn send_dynamic_memory_request(
     app: &AppHandle,
     provider_cred: &ProviderCredential,
     model: &Model,
+    overwrite_llama_sampler_config: bool,
     api_key: &str,
     messages_for_api: &Vec<Value>,
     max_tokens: u32,
@@ -1358,7 +1367,10 @@ async fn send_dynamic_memory_request(
     tool_config: Option<&ToolConfig>,
     request_id: Option<&str>,
 ) -> Result<ApiResponse, String> {
-    let extra_body_fields = sanitize_dynamic_memory_extra_body_fields(extra_body_fields);
+    let extra_body_fields = sanitize_dynamic_memory_extra_body_fields(
+        extra_body_fields,
+        overwrite_llama_sampler_config,
+    );
     let built = crate::chat_manager::request_builder::build_chat_request(
         provider_cred,
         api_key,
@@ -1458,16 +1470,39 @@ async fn send_dynamic_memory_request(
 
 fn sanitize_dynamic_memory_extra_body_fields(
     extra_body_fields: Option<HashMap<String, Value>>,
+    overwrite_llama_sampler_config: bool,
 ) -> Option<HashMap<String, Value>> {
-    let mut extra = extra_body_fields?;
+    if !overwrite_llama_sampler_config {
+        return extra_body_fields;
+    }
+    let mut extra = extra_body_fields.unwrap_or_default();
     for key in [
         "llamaSamplerProfile",
         "llamaSamplerOrder",
         "llamaMinP",
         "llamaTypicalP",
+        "llamaDisableSamplerProfileDefaults",
+        "top_k",
+        "frequency_penalty",
+        "presence_penalty",
+        "min_p",
+        "typical_p",
     ] {
         extra.remove(key);
     }
+    extra.insert(
+        "llamaDisableSamplerProfileDefaults".to_string(),
+        json!(true),
+    );
+    extra.insert(
+        "llamaSamplerOrder".to_string(),
+        json!(["penalties", "grammar", "top_k", "top_p", "temp", "min_p", "typical"]),
+    );
+    extra.insert("top_k".to_string(), json!(40));
+    extra.insert("frequency_penalty".to_string(), json!(0.0));
+    extra.insert("presence_penalty".to_string(), json!(0.0));
+    extra.insert("min_p".to_string(), json!(0.0));
+    extra.insert("typical_p".to_string(), json!(0.0));
 
     if extra.is_empty() { None } else { Some(extra) }
 }
@@ -2204,6 +2239,7 @@ async fn summarize_group_messages(
     request_id: Option<&str>,
     cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<String, String> {
+    let overwrite_llama_sampler_config = dynamic_memory_llama_sampler_overwrite_enabled(settings);
     let mut messages_for_api = Vec::new();
     let system_role = crate::chat_manager::request_builder::system_role_for(provider_cred);
 
@@ -2275,6 +2311,7 @@ async fn summarize_group_messages(
         app,
         provider_cred,
         model,
+        overwrite_llama_sampler_config,
         api_key,
         &messages_for_api,
         max_tokens,
@@ -2367,6 +2404,7 @@ async fn summarize_group_messages(
         app,
         provider_cred,
         model,
+        overwrite_llama_sampler_config,
         api_key,
         &fallback_messages,
         max_tokens,
@@ -2430,6 +2468,7 @@ async fn run_group_memory_tool_update(
     request_id: Option<&str>,
     cancel_token: Option<&DynamicMemoryCancellationToken>,
 ) -> Result<Vec<Value>, String> {
+    let overwrite_llama_sampler_config = dynamic_memory_llama_sampler_overwrite_enabled(settings);
     let tool_config = build_memory_tool_config();
     let max_entries = dynamic_settings.max_entries.max(1) as usize;
 
@@ -2510,6 +2549,7 @@ async fn run_group_memory_tool_update(
         app,
         provider_cred,
         model,
+        overwrite_llama_sampler_config,
         api_key,
         &messages_for_api,
         max_tokens,
@@ -2545,6 +2585,7 @@ async fn run_group_memory_tool_update(
                     app,
                     provider_cred,
                     model,
+                    overwrite_llama_sampler_config,
                     api_key,
                     &fallback_messages,
                     max_tokens,
@@ -2594,6 +2635,7 @@ async fn run_group_memory_tool_update(
                         app,
                         provider_cred,
                         model,
+                        overwrite_llama_sampler_config,
                         api_key,
                         &fallback_messages,
                         max_tokens,
@@ -2646,6 +2688,7 @@ async fn run_group_memory_tool_update(
                 app,
                 provider_cred,
                 model,
+                overwrite_llama_sampler_config,
                 api_key,
                 &fallback_messages,
                 max_tokens,
@@ -2926,7 +2969,14 @@ async fn run_group_memory_tool_update(
             ),
         );
 
-        match run_group_memory_tag_repair(app, provider_cred, model, api_key, &candidate_texts)
+        match run_group_memory_tag_repair(
+            app,
+            provider_cred,
+            model,
+            overwrite_llama_sampler_config,
+            api_key,
+            &candidate_texts,
+        )
             .await
         {
             Ok(repaired) => {
@@ -3136,6 +3186,7 @@ async fn run_group_memory_tag_repair(
     app: &AppHandle,
     provider_cred: &ProviderCredential,
     model: &Model,
+    overwrite_llama_sampler_config: bool,
     api_key: &str,
     texts: &[String],
 ) -> Result<HashMap<String, String>, String> {
@@ -3172,6 +3223,7 @@ async fn run_group_memory_tag_repair(
         app,
         provider_cred,
         model,
+        overwrite_llama_sampler_config,
         api_key,
         &messages_for_api,
         512,
@@ -3234,6 +3286,7 @@ async fn run_group_memory_tag_repair(
             app,
             provider_cred,
             model,
+            overwrite_llama_sampler_config,
             api_key,
             &fallback_messages,
             512,

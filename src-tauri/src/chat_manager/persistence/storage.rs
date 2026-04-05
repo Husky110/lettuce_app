@@ -152,6 +152,7 @@ fn default_settings() -> Settings {
         advanced_model_settings: AdvancedModelSettings::default(),
         advanced_settings: Some(AdvancedSettings {
             summarisation_model_id: None,
+            dynamic_memory_llama_sampler_overwrite_enabled: Some(true),
             avatar_generation_enabled: Some(true),
             avatar_generation_model_id: None,
             scene_generation_enabled: Some(true),

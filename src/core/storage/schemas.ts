@@ -2486,6 +2486,7 @@ export const SettingsSchema = z.object({
   advancedSettings: z
     .object({
       summarisationModelId: z.string().optional(),
+      dynamicMemoryLlamaSamplerOverwriteEnabled: z.boolean().optional(),
       avatarGenerationEnabled: z.boolean().optional(),
       avatarGenerationModelId: z.string().optional(),
       sceneGenerationEnabled: z.boolean().optional(),
@@ -2531,6 +2532,7 @@ export function createDefaultSettings(): Settings {
     models: [],
     appState: createDefaultAppState(),
     advancedSettings: {
+      dynamicMemoryLlamaSamplerOverwriteEnabled: true,
       avatarGenerationEnabled: true,
       creationHelperEnabled: false,
       helpMeReplyEnabled: true,
