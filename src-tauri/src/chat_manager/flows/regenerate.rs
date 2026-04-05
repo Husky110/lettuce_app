@@ -37,7 +37,9 @@ use crate::chat_manager::types::{
     ChatRegenerateArgs, ImageAttachment, RegenerateResult, StoredMessage,
 };
 use crate::usage::tracking::UsageOperationType;
-use crate::utils::{emit_debug, log_info, log_warn, now_millis};
+use crate::utils::{
+    emit_debug, emit_error_event, emit_info, emit_warn_event, log_info, log_warn, now_millis,
+};
 
 pub struct RegenerateFlow {
     app: AppHandle,
@@ -439,7 +441,7 @@ impl RegenerateFlow {
 
             let request_started_at = now_millis().unwrap_or_default();
 
-            emit_debug(
+            emit_info(
                 &app,
                 "regenerate_request",
                 json!({
@@ -493,7 +495,7 @@ impl RegenerateFlow {
                 }
             };
 
-            emit_debug(
+            emit_info(
                 &app,
                 "regenerate_response",
                 json!({
@@ -505,7 +507,6 @@ impl RegenerateFlow {
                     "ok": api_response.ok,
                     "model": attempt_model.name,
                     "elapsedMs": now_millis().unwrap_or_default().saturating_sub(request_started_at),
-                    "responseData": api_response.data(),
                 }),
             );
 
@@ -514,7 +515,7 @@ impl RegenerateFlow {
                 let err_message =
                     extract_error_message(api_response.data()).unwrap_or(fallback.clone());
                 let failed_usage = extract_usage(api_response.data());
-                emit_debug(
+                emit_error_event(
                     &app,
                     "regenerate_provider_error",
                     json!({
@@ -526,7 +527,6 @@ impl RegenerateFlow {
                         "message": err_message,
                         "usage": failed_usage,
                         "model": attempt_model.name,
-                        "responseData": api_response.data(),
                     }),
                 );
                 if !has_next_attempt {
@@ -589,9 +589,6 @@ impl RegenerateFlow {
             extract_reasoning(api_response.data(), Some(&selected_credential.provider_id));
 
         if text.trim().is_empty() && images_from_sse.is_empty() {
-            let preview =
-                serde_json::to_string(api_response.data()).unwrap_or_else(|_| "<non-json>".into());
-
             let has_reasoning = reasoning.as_ref().is_some_and(|r| !r.trim().is_empty());
             let error_detail = if has_reasoning {
                 "Model completed reasoning but generated no response text. This may indicate the model ran out of tokens or encountered an issue during generation."
@@ -599,10 +596,10 @@ impl RegenerateFlow {
                 "Empty response from provider"
             };
 
-            emit_debug(
+            emit_warn_event(
                 &app,
                 "regenerate_empty_response",
-                json!({ "preview": preview, "hasReasoning": has_reasoning }),
+                json!({ "hasReasoning": has_reasoning, "requestId": request_id }),
             );
             return Err(error_detail.to_string());
         }

@@ -5,7 +5,7 @@ use tokio::time::sleep;
 
 use crate::chat_manager::types::NormalizedEvent;
 use crate::error::AppError;
-use crate::utils::{emit_debug, log_warn};
+use crate::utils::log_warn;
 
 pub const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 30 * 60 * 1000;
 
@@ -129,7 +129,7 @@ pub async fn send_with_retries(
                         ),
                     );
                     if let Some(request_id) = request_id {
-                        emit_debug(
+                        crate::utils::emit_warn_event(
                             app,
                             "transport_retry",
                             json!({
@@ -161,7 +161,7 @@ pub async fn send_with_retries(
                         ),
                     );
                     if let Some(request_id) = request_id {
-                        emit_debug(
+                        crate::utils::emit_warn_event(
                             app,
                             "transport_retry",
                             json!({

@@ -115,6 +115,128 @@ import { recordChatDebugEvent } from "./core/debug/chatDebugStore";
 
 const chatLog = logManager({ component: "Chat" });
 
+function getPayloadObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
+}
+
+function getString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function getBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function getNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function summarizeChatDebugEvent(
+  state: string,
+  payload: unknown,
+  level?: string,
+): { level: "info" | "warn" | "error"; message: string } | null {
+  const obj = getPayloadObject(payload);
+  if (!obj) return null;
+
+  const operation = getString(obj.operation);
+  const providerId = getString(obj.providerId);
+  const model = getString(obj.model);
+  const requestId = getString(obj.requestId);
+  const status = getNumber(obj.status);
+  const elapsedMs = getNumber(obj.elapsedMs);
+  const stream = getBoolean(obj.stream);
+  const fallbackAttempt = getBoolean(obj.fallbackAttempt);
+  const message = getString(obj.message);
+  const hasReasoning = getBoolean(obj.hasReasoning);
+  const length = getNumber(obj.length);
+
+  switch (state) {
+    case "continue_start":
+      return {
+        level: "info",
+        message: `session=${getString(obj.sessionId) ?? "unknown"} character=${getString(obj.characterId) ?? "unknown"} messages=${getNumber(obj.messageCount) ?? 0}`,
+      };
+    case "continue_model_selected":
+      return {
+        level: "info",
+        message: `provider=${providerId ?? "unknown"} model=${model ?? "unknown"} credential=${getString(obj.credentialId) ?? "unknown"}`,
+      };
+    case "system_prompt_built": {
+      const debug = getPayloadObject(obj.system_prompt_debug);
+      return {
+        level: "info",
+        message: `session=${getString(debug?.session_id) ?? "unknown"} base_source=${getString(debug?.base_template_source) ?? "unknown"} entries=${getNumber(debug?.entry_count) ?? 0} total_chars=${getNumber(debug?.total_chars) ?? 0}`,
+      };
+    }
+    case "sending_request":
+    case "continue_request":
+    case "regenerate_request":
+      return {
+        level: "info",
+        message:
+          `operation=${operation ?? state} provider=${providerId ?? "unknown"} model=${model ?? "unknown"}` +
+          ` stream=${stream ?? false} request_id=${requestId ?? "missing"}` +
+          (fallbackAttempt ? " fallback_attempt=true" : ""),
+      };
+    case "response":
+    case "continue_response":
+    case "regenerate_response":
+      return {
+        level: "info",
+        message:
+          `operation=${operation ?? state} model=${model ?? "unknown"} status=${status ?? "unknown"}` +
+          (elapsedMs != null ? ` elapsed_ms=${elapsedMs}` : "") +
+          (requestId ? ` request_id=${requestId}` : ""),
+      };
+    case "provider_error":
+    case "continue_provider_error":
+    case "regenerate_provider_error":
+      return {
+        level: "error",
+        message:
+          `operation=${operation ?? state} model=${model ?? "unknown"} status=${status ?? "unknown"}` +
+          (requestId ? ` request_id=${requestId}` : "") +
+          (message ? ` message=${message}` : ""),
+      };
+    case "assistant_reply":
+    case "continue_assistant_reply":
+      return {
+        level: "info",
+        message:
+          `operation=${operation ?? state} reply_length=${length ?? 0}` +
+          (requestId ? ` request_id=${requestId}` : ""),
+      };
+    case "continue_empty_response":
+    case "regenerate_empty_response":
+      return {
+        level: "warn",
+        message:
+          `operation=${operation ?? state} empty_response=true has_reasoning=${hasReasoning ?? false}` +
+          (requestId ? ` request_id=${requestId}` : ""),
+      };
+    case "transport_retry":
+      return {
+        level: "warn",
+        message:
+          `scope=${getString(obj.scope) ?? "unknown"} attempt=${getNumber(obj.attempt) ?? 0}/${getNumber(obj.maxRetries) ?? 0}` +
+          ` reason=${getString(obj.reason) ?? "unknown"}` +
+          (status != null ? ` status=${status}` : "") +
+          (getNumber(obj.delayMs) != null ? ` delay_ms=${getNumber(obj.delayMs)}` : "") +
+          (requestId ? ` request_id=${requestId}` : ""),
+      };
+    default:
+      if (level?.toUpperCase() === "ERROR" && message) {
+        return { level: "error", message };
+      }
+      if (level?.toUpperCase() === "WARN" && message) {
+        return { level: "warn", message };
+      }
+      return null;
+  }
+}
+
 type LlamaModelLoadProgressEvent = {
   requestId?: string | null;
   modelPath?: string | null;
@@ -242,9 +364,10 @@ function App() {
               }
             } else if (payload !== undefined) {
               recordChatDebugEvent({ state, payload, level });
-              chatLog.with({ fn: state }).log(payload);
-            } else {
-              chatLog.with({ fn: state }).log(event.payload);
+              const summary = summarizeChatDebugEvent(state, payload, level);
+              if (summary) {
+                chatLog.with({ fn: state })[summary.level](summary.message);
+              }
             }
           } else {
             chatLog.warn("unknown event payload", event.payload);

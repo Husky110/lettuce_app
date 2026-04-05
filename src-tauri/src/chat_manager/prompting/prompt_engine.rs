@@ -1929,7 +1929,7 @@ pub fn build_system_prompt_entries(
 
     let combined_hash = hasher.finalize().to_hex().to_string();
 
-    utils::emit_debug(
+    utils::emit_info(
         app,
         "system_prompt_built",
         json!({

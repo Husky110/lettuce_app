@@ -37,7 +37,10 @@ use crate::chat_manager::types::{
     ChatContinueArgs, ContinueResult, ImageAttachment, StoredMessage,
 };
 use crate::usage::tracking::UsageOperationType;
-use crate::utils::{emit_debug, log_error, log_info, log_warn, now_millis};
+use crate::utils::{
+    emit_debug, emit_error_event, emit_info, emit_warn_event, log_error, log_info, log_warn,
+    now_millis,
+};
 
 pub struct ContinueFlow {
     app: AppHandle,
@@ -84,7 +87,7 @@ impl ContinueFlow {
         } = prepared;
         let settings = &context.settings;
 
-        emit_debug(
+        emit_info(
             &app,
             "continue_start",
             json!({
@@ -116,7 +119,7 @@ impl ContinueFlow {
             ),
         );
 
-        emit_debug(
+        emit_info(
             &app,
             "continue_model_selected",
             json!({
@@ -375,7 +378,7 @@ impl ContinueFlow {
 
             let request_started_at = now_millis().unwrap_or_default();
 
-            emit_debug(
+            emit_info(
                 &app,
                 "continue_request",
                 json!({
@@ -428,7 +431,7 @@ impl ContinueFlow {
                 }
             };
 
-            emit_debug(
+            emit_info(
                 &app,
                 "continue_response",
                 json!({
@@ -439,7 +442,6 @@ impl ContinueFlow {
                     "ok": api_response.ok,
                     "model": attempt_model.name,
                     "elapsedMs": now_millis().unwrap_or_default().saturating_sub(request_started_at),
-                    "responseData": api_response.data(),
                 }),
             );
 
@@ -448,7 +450,7 @@ impl ContinueFlow {
                 let err_message =
                     extract_error_message(api_response.data()).unwrap_or(fallback.clone());
                 let failed_usage = extract_usage(api_response.data());
-                emit_debug(
+                emit_error_event(
                     &app,
                     "continue_provider_error",
                     json!({
@@ -459,7 +461,6 @@ impl ContinueFlow {
                         "message": err_message,
                         "usage": failed_usage,
                         "model": attempt_model.name,
-                        "responseData": api_response.data(),
                     }),
                 );
                 if !has_next_attempt {
@@ -522,9 +523,6 @@ impl ContinueFlow {
             extract_reasoning(api_response.data(), Some(&selected_credential.provider_id));
 
         if text.trim().is_empty() && images_from_sse.is_empty() {
-            let preview =
-                serde_json::to_string(api_response.data()).unwrap_or_else(|_| "<non-json>".into());
-
             let has_reasoning = reasoning.as_ref().is_some_and(|r| !r.trim().is_empty());
             let error_detail = if has_reasoning {
                 "Model completed reasoning but generated no response text. This may indicate the model ran out of tokens or encountered an issue during generation."
@@ -536,14 +534,14 @@ impl ContinueFlow {
                 &app,
                 "chat_continue",
                 format!(
-                    "empty response from provider, has_reasoning={}, preview={}",
-                    has_reasoning, &preview
+                    "empty response from provider, has_reasoning={}",
+                    has_reasoning
                 ),
             );
-            emit_debug(
+            emit_warn_event(
                 &app,
                 "continue_empty_response",
-                json!({ "preview": preview, "hasReasoning": has_reasoning }),
+                json!({ "hasReasoning": has_reasoning, "requestId": request_id }),
             );
             return Err(error_detail.to_string());
         }
@@ -567,11 +565,13 @@ impl ContinueFlow {
             }
         }
 
-        emit_debug(
+        emit_info(
             &app,
             "continue_assistant_reply",
             json!({
                 "length": text.len(),
+                "requestId": request_id,
+                "operation": "continue",
             }),
         );
 

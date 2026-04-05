@@ -43,12 +43,34 @@ pub fn now_millis() -> Result<u64, String> {
         .as_millis() as u64)
 }
 
-pub fn emit_debug(app: &AppHandle, phase: &str, payload: Value) {
+fn emit_event(app: &AppHandle, phase: &str, payload: Value, level: LogLevel) {
     let event = json!({
         "state": phase,
+        "level": match level {
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info => "INFO",
+            LogLevel::Warn => "WARN",
+            LogLevel::Error => "ERROR",
+        },
         "payload": payload,
     });
     let _ = app.emit("chat://debug", event);
+}
+
+pub fn emit_debug(app: &AppHandle, phase: &str, payload: Value) {
+    emit_event(app, phase, payload, LogLevel::Debug);
+}
+
+pub fn emit_info(app: &AppHandle, phase: &str, payload: Value) {
+    emit_event(app, phase, payload, LogLevel::Info);
+}
+
+pub fn emit_warn_event(app: &AppHandle, phase: &str, payload: Value) {
+    emit_event(app, phase, payload, LogLevel::Warn);
+}
+
+pub fn emit_error_event(app: &AppHandle, phase: &str, payload: Value) {
+    emit_event(app, phase, payload, LogLevel::Error);
 }
 
 #[derive(Debug, Clone, Copy)]
