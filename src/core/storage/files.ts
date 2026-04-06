@@ -300,6 +300,8 @@ export const storageBridge = {
     invoke<number>("session_message_count", { sessionId }),
   sessionUpsert: (session: unknown) =>
     invoke("session_upsert", { sessionJson: JSON.stringify(session) }) as Promise<void>,
+  sessionUpsertMeta: (session: unknown) =>
+    invoke("session_upsert_meta", { sessionJson: JSON.stringify(session) }) as Promise<void>,
   sessionDelete: (id: string) => invoke("session_delete", { id }) as Promise<void>,
   sessionArchive: (id: string, archived: boolean) =>
     invoke("session_archive", { id, archived }) as Promise<void>,

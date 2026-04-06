@@ -970,6 +970,25 @@ export async function saveSession(s: Session): Promise<void> {
   broadcastSessionUpdated();
 }
 
+export async function updateSessionBackgroundImage(
+  id: string,
+  backgroundImagePath: string | null,
+): Promise<Session | null> {
+  const session = await getSessionMeta(id);
+  if (!session) return null;
+
+  const next: Session = {
+    ...session,
+    backgroundImagePath: backgroundImagePath ?? undefined,
+    updatedAt: now(),
+  };
+
+  SessionSchema.parse(next);
+  await storageBridge.sessionUpsertMeta(next);
+  broadcastSessionUpdated();
+  return getSessionMeta(id);
+}
+
 export async function archiveSession(id: string, archived = true): Promise<Session | null> {
   await storageBridge.sessionArchive(id, archived);
   broadcastSessionUpdated();
@@ -1094,6 +1113,7 @@ export async function createBranchedSession(
     id,
     characterId: sourceSession.characterId,
     title: `${sourceSession.title} (branch)`,
+    backgroundImagePath: sourceSession.backgroundImagePath,
     selectedSceneId: sourceSession.selectedSceneId,
     promptTemplateId: sourceSession.promptTemplateId,
     personaId: sourceSession.personaId,
@@ -1146,6 +1166,7 @@ export async function createBranchedSessionToCharacter(
     id,
     characterId: targetCharacterId,
     title: `Branch to ${characterName}`,
+    backgroundImagePath: undefined,
     selectedSceneId: targetCharacter?.defaultSceneId ?? targetCharacter?.scenes?.[0]?.id,
     promptTemplateId: targetCharacter?.promptTemplateId ?? null,
     personaId: sourceSession.personaId,

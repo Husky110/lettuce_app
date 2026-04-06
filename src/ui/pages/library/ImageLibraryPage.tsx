@@ -161,11 +161,13 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
   backgroundIds,
   scrollContainerRef,
   onSelect,
+  columnCountOverride,
 }: {
   items: ImageLibraryItem[];
   backgroundIds: Set<string>;
   scrollContainerRef: RefObject<HTMLElement | null>;
   onSelect: (item: ImageLibraryItem) => void;
+  columnCountOverride?: number;
 }) {
   const [viewportWidth, setViewportWidth] = useState(0);
   const [gridWidth, setGridWidth] = useState(0);
@@ -196,11 +198,12 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
   }, [items.length]);
 
   const columnCount = useMemo(() => {
+    if (columnCountOverride && columnCountOverride > 0) return columnCountOverride;
     if (viewportWidth >= 1536) return 6;
     if (viewportWidth >= 1280) return 5;
     if (viewportWidth >= 1024) return 4;
     return 2;
-  }, [viewportWidth]);
+  }, [columnCountOverride, viewportWidth]);
 
   const itemSize = useMemo(() => {
     const safeGridWidth = gridWidth || Math.max(0, window.innerWidth - 32);
@@ -263,17 +266,23 @@ export function ImageLibraryPanel({
   embedded: _embedded = false,
   mode = "default",
   onUseItem,
+  fixedFilter,
+  hideFilterTabs = false,
+  columnCountOverride,
 }: {
   scrollContainerRef: RefObject<HTMLElement | null>;
   embedded?: boolean;
   mode?: "default" | "picker";
   onUseItem?: (item: ImageLibraryItem) => Promise<void> | void;
+  fixedFilter?: FilterOption;
+  hideFilterTabs?: boolean;
+  columnCountOverride?: number;
 }) {
   const { t } = useI18n();
   const [items, setItems] = useState<ImageLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<FilterOption>("All");
+  const [filter, setFilter] = useState<FilterOption>(fixedFilter ?? "All");
   const [sort, setSort] = useState<SortOption>("Newest");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ImageLibraryItem | null>(null);
@@ -281,6 +290,12 @@ export function ImageLibraryPanel({
   const [downloadingItemId, setDownloadingItemId] = useState<string | null>(null);
   const [usingItemId, setUsingItemId] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fixedFilter) {
+      setFilter(fixedFilter);
+    }
+  }, [fixedFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -418,52 +433,54 @@ export function ImageLibraryPanel({
   return (
     <>
       <div className="mb-4 space-y-3">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          {[
-            {
-              key: "All" as const,
-              label: t("library.imageLibrary.filters.all"),
-              count: counts.all,
-            },
-            {
-              key: "Backgrounds" as const,
-              label: t("library.imageLibrary.filters.backgrounds"),
-              count: counts.backgrounds,
-            },
-            {
-              key: "Avatars" as const,
-              label: t("library.imageLibrary.filters.avatars"),
-              count: counts.avatars,
-            },
-            {
-              key: "Attachments" as const,
-              label: t("library.imageLibrary.filters.attachments"),
-              count: counts.attachments,
-            },
-            {
-              key: "Other" as const,
-              label: t("library.imageLibrary.filters.other"),
-              count: counts.other,
-            },
-          ].map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => setFilter(option.key)}
-              className={cn(
-                "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm transition",
-                filter === option.key
-                  ? "border-fg/15 bg-fg/10 text-fg"
-                  : "border-fg/10 bg-surface-el/20 text-fg/65 hover:bg-fg/5 hover:text-fg",
-              )}
-            >
-              <span className="font-medium">{option.label}</span>
-              <span className="rounded-md bg-fg/8 px-1.5 py-0.5 text-[11px] text-fg/55">
-                {option.count}
-              </span>
-            </button>
-          ))}
-        </div>
+        {!hideFilterTabs && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {[
+              {
+                key: "All" as const,
+                label: t("library.imageLibrary.filters.all"),
+                count: counts.all,
+              },
+              {
+                key: "Backgrounds" as const,
+                label: t("library.imageLibrary.filters.backgrounds"),
+                count: counts.backgrounds,
+              },
+              {
+                key: "Avatars" as const,
+                label: t("library.imageLibrary.filters.avatars"),
+                count: counts.avatars,
+              },
+              {
+                key: "Attachments" as const,
+                label: t("library.imageLibrary.filters.attachments"),
+                count: counts.attachments,
+              },
+              {
+                key: "Other" as const,
+                label: t("library.imageLibrary.filters.other"),
+                count: counts.other,
+              },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setFilter(option.key)}
+                className={cn(
+                  "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm transition",
+                  filter === option.key
+                    ? "border-fg/15 bg-fg/10 text-fg"
+                    : "border-fg/10 bg-surface-el/20 text-fg/65 hover:bg-fg/5 hover:text-fg",
+                )}
+              >
+                <span className="font-medium">{option.label}</span>
+                <span className="rounded-md bg-fg/8 px-1.5 py-0.5 text-[11px] text-fg/55">
+                  {option.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <input
@@ -511,6 +528,7 @@ export function ImageLibraryPanel({
           backgroundIds={backgroundIds}
           scrollContainerRef={scrollContainerRef}
           onSelect={setSelectedItem}
+          columnCountOverride={columnCountOverride}
         />
       )}
 

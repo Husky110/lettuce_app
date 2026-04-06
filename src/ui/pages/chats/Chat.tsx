@@ -10,7 +10,7 @@ import {
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { ArrowLeftRight, ChevronDown, User, X } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AccessibilitySettings,
   Character,
@@ -48,6 +48,7 @@ import {
   saveSession,
   SETTINGS_UPDATED_EVENT,
   SESSION_UPDATED_EVENT,
+  updateSessionBackgroundImage,
 } from "../../../core/storage";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { playAccessibilitySound } from "../../../core/utils/accessibilityAudio";
@@ -71,6 +72,11 @@ import { radius, cn } from "../../design-tokens";
 import { useI18n } from "../../../core/i18n/context";
 import { PersonaSelector } from "../group-chats/components/settings";
 import { sanitizeAssistantSceneDirective } from "./hooks/sceneImageProtocol";
+import { processBackgroundImage } from "../../../core/utils/image";
+import { convertToImageRef } from "../../../core/storage/images";
+import { useImageData } from "../../hooks/useImageData";
+import { ImageLibraryPanel } from "../library/ImageLibraryPage";
+import type { ImageLibraryItem } from "../../../core/storage/repo";
 import {
   SCENE_PROMPT_APPROVAL_EVENT,
   type ScenePromptApprovalDetail,
@@ -152,6 +158,8 @@ export function ChatConversationPage() {
   const [showChoiceMenu, setShowChoiceMenu] = useState(false);
   const [showResultMenu, setShowResultMenu] = useState(false);
   const [showPersonaSelector, setShowPersonaSelector] = useState(false);
+  const [showBackgroundMenu, setShowBackgroundMenu] = useState(false);
+  const [showBackgroundLibraryMenu, setShowBackgroundLibraryMenu] = useState(false);
   const [generatedReply, setGeneratedReply] = useState<string | null>(null);
   const [generatingReply, setGeneratingReply] = useState(false);
   const [helpMeReplyError, setHelpMeReplyError] = useState<string | null>(null);
@@ -172,6 +180,7 @@ export function ChatConversationPage() {
   const [helpMeReplyEnabled, setHelpMeReplyEnabled] = useState(true);
   const [sceneGenerationEnabled, setSceneGenerationEnabled] = useState(false);
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
+  const [savingSessionBackground, setSavingSessionBackground] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const isMobile = useMemo(() => getPlatform().type === "mobile", []);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
@@ -181,10 +190,77 @@ export function ChatConversationPage() {
   const helpMeReplyRequestIdRef = useRef<string | null>(null);
   const helpMeReplyUnlistenRef = useRef<UnlistenFn | null>(null);
   const helpMeReplyLoadingTimeoutRef = useRef<number | null>(null);
+  const sessionBackgroundInputRef = useRef<HTMLInputElement | null>(null);
+  const backgroundLibraryScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const sessionBackgroundPreview = useImageData(chatController.session?.backgroundImagePath);
+  const characterBackgroundPreview = useImageData(chatController.character?.backgroundImagePath);
+  const hasSessionBackgroundOverride = !!chatController.session?.backgroundImagePath;
+  const hasCharacterBackgroundDefault = !!chatController.character?.backgroundImagePath;
 
   const handleImageClick = useCallback((src: string, alt: string) => {
     setSelectedImage({ src, alt });
   }, []);
+
+  const handleUpdateSessionBackground = useCallback(
+    async (backgroundImagePath: string | null) => {
+      if (!chatController.session?.id) return;
+      await updateSessionBackgroundImage(chatController.session.id, backgroundImagePath);
+    },
+    [chatController.session?.id],
+  );
+
+  const handleSessionBackgroundUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      const input = event.target;
+      if (!file) return;
+
+      setSavingSessionBackground(true);
+      try {
+        const dataUrl = await processBackgroundImage(file);
+        const imageRef = await convertToImageRef(dataUrl);
+        await handleUpdateSessionBackground(imageRef);
+        setShowBackgroundMenu(false);
+      } catch (error) {
+        console.error("Failed to update session background:", error);
+      } finally {
+        input.value = "";
+        setSavingSessionBackground(false);
+      }
+    },
+    [handleUpdateSessionBackground],
+  );
+
+  const handleUseCharacterBackground = useCallback(async () => {
+    setSavingSessionBackground(true);
+    try {
+      await handleUpdateSessionBackground(null);
+      setShowBackgroundMenu(false);
+    } catch (error) {
+      console.error("Failed to revert to character background:", error);
+    } finally {
+      setSavingSessionBackground(false);
+    }
+  }, [handleUpdateSessionBackground]);
+
+  const handleUseLibraryBackground = useCallback(
+    async (item: ImageLibraryItem) => {
+      setSavingSessionBackground(true);
+      try {
+        const storedId =
+          item.bucket === "stored" ? item.filename.replace(/\.[^.]+$/, "") || null : null;
+        await handleUpdateSessionBackground(storedId ?? convertFileSrc(item.filePath));
+        setShowBackgroundLibraryMenu(false);
+        setShowBackgroundMenu(false);
+      } catch (error) {
+        console.error("Failed to use library background:", error);
+      } finally {
+        setSavingSessionBackground(false);
+      }
+    },
+    [handleUpdateSessionBackground],
+  );
 
   const selectedImagePrompt = useMemo(() => {
     const value = selectedImage?.alt?.trim();
@@ -2084,6 +2160,21 @@ export function ChatConversationPage() {
             }}
           />
           <MenuButton
+            icon={Image}
+            title="Chat Background"
+            description={
+              hasSessionBackgroundOverride
+                ? "Session override active"
+                : hasCharacterBackgroundDefault
+                  ? "Using character default background"
+                  : "No background selected"
+            }
+            onClick={() => {
+              setShowPlusMenu(false);
+              setShowBackgroundMenu(true);
+            }}
+          />
+          <MenuButton
             icon={ArrowLeftRight}
             title={swapPlaces ? t("chats.swapPlacesOn") : t("chats.swapPlaces")}
             description={
@@ -2125,6 +2216,108 @@ export function ChatConversationPage() {
         selectedPersonaId={selectedPersonaId}
         onSelect={handleChangePersona}
       />
+
+      <BottomMenu
+        isOpen={showBackgroundMenu}
+        onClose={() => !savingSessionBackground && setShowBackgroundMenu(false)}
+        title="Chat Background"
+      >
+        <div className="space-y-4">
+          <input
+            ref={sessionBackgroundInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              void handleSessionBackgroundUpload(event);
+            }}
+          />
+
+          {(backgroundImageData || characterBackgroundPreview || sessionBackgroundPreview) && (
+            <div className="space-y-3">
+              {backgroundImageData && (
+                <div className="overflow-hidden rounded-2xl border border-fg/10 bg-fg/[0.04]">
+                  <img
+                    src={backgroundImageData}
+                    alt="Current chat background"
+                    className="h-32 w-full object-cover"
+                  />
+                  <div className="border-t border-fg/10 px-4 py-3 text-sm text-fg/70">
+                    {hasSessionBackgroundOverride
+                      ? "Current session background"
+                      : "Current character default background"}
+                  </div>
+                </div>
+              )}
+
+              {hasSessionBackgroundOverride &&
+                characterBackgroundPreview &&
+                characterBackgroundPreview !== sessionBackgroundPreview && (
+                  <div className="overflow-hidden rounded-2xl border border-fg/10 bg-fg/[0.04]">
+                    <img
+                      src={characterBackgroundPreview}
+                      alt="Character default background"
+                      className="h-24 w-full object-cover"
+                    />
+                    <div className="border-t border-fg/10 px-4 py-3 text-sm text-fg/55">
+                      Character default background
+                    </div>
+                  </div>
+                )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <MenuButton
+              icon={Image}
+              title={hasSessionBackgroundOverride ? "Replace Session Background" : "Upload Session Background"}
+              description="Only changes this chat session"
+              loading={savingSessionBackground}
+              onClick={() => sessionBackgroundInputRef.current?.click()}
+            />
+            <MenuButton
+              icon={Image}
+              title="Choose from Library"
+              description="Pick an existing image library item for this chat session"
+              loading={savingSessionBackground}
+              onClick={() => setShowBackgroundLibraryMenu(true)}
+            />
+            {(hasSessionBackgroundOverride || hasCharacterBackgroundDefault) && (
+              <MenuButton
+                icon={X}
+                title={hasCharacterBackgroundDefault ? "Use Character Default" : "Remove Background"}
+                description={
+                  hasCharacterBackgroundDefault
+                    ? "Clear the session override and return to the character background"
+                    : "Remove the session background override"
+                }
+                loading={savingSessionBackground}
+                onClick={() => {
+                  void handleUseCharacterBackground();
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={showBackgroundLibraryMenu}
+        onClose={() => !savingSessionBackground && setShowBackgroundLibraryMenu(false)}
+        title="Choose Background"
+      >
+        <div ref={backgroundLibraryScrollRef} className="max-h-[60vh] overflow-y-auto">
+          <ImageLibraryPanel
+            scrollContainerRef={backgroundLibraryScrollRef}
+            embedded
+            mode="picker"
+            fixedFilter="Backgrounds"
+            hideFilterTabs
+            columnCountOverride={2}
+            onUseItem={(item) => void handleUseLibraryBackground(item)}
+          />
+        </div>
+      </BottomMenu>
 
       {/* Choice Menu - Use existing draft or generate new */}
       <BottomMenu

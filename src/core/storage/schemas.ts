@@ -2650,6 +2650,7 @@ export const SessionSchema = z.object({
   id: z.string().uuid(),
   characterId: z.string().uuid(),
   title: z.string(),
+  backgroundImagePath: z.string().nullish().optional(),
   selectedSceneId: z.string().uuid().nullish(), // ID of the scene from character.scenes array
   promptTemplateId: z.string().nullish().optional(),
   personaId: z.union([z.string().uuid(), z.literal(""), z.null(), z.undefined()]).optional(),

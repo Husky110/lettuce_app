@@ -2467,6 +2467,7 @@ mod tests {
             id: "s1".into(),
             character_id: "c1".into(),
             title: "t".into(),
+            background_image_path: None,
             system_prompt: None,
             selected_scene_id: None,
             prompt_template_id: None,

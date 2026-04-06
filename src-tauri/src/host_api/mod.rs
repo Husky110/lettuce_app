@@ -246,6 +246,7 @@ fn build_gateway_session() -> Session {
         id: "host-api".to_string(),
         character_id: "host-api".to_string(),
         title: "Host API".to_string(),
+        background_image_path: None,
         system_prompt: None,
         selected_scene_id: None,
         prompt_template_id: None,

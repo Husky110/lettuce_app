@@ -892,6 +892,7 @@ pub fn render_prompt_preview(
             id: "preview".to_string(),
             character_id: character.id.clone(),
             title: "Preview".to_string(),
+            background_image_path: None,
             system_prompt: None,
             selected_scene_id: None,
             prompt_template_id: None,

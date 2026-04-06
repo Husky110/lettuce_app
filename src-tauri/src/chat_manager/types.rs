@@ -709,6 +709,8 @@ pub struct Session {
     pub id: String,
     pub character_id: String,
     pub title: String,
+    #[serde(default)]
+    pub background_image_path: Option<String>,
     /// DEPRECATED: System prompts are now always rebuilt dynamically
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]

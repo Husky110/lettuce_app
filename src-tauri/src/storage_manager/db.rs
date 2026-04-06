@@ -476,6 +476,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           id TEXT PRIMARY KEY,
           character_id TEXT NOT NULL,
           title TEXT NOT NULL,
+          background_image_path TEXT,
           system_prompt TEXT,
           selected_scene_id TEXT,
           prompt_template_id TEXT,

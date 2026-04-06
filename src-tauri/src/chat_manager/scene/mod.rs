@@ -1785,6 +1785,7 @@ pub async fn chat_generate_design_reference_description(
         id: "scene-writer-preview".to_string(),
         character_id: String::new(),
         title: "Scene writer preview".to_string(),
+        background_image_path: None,
         system_prompt: None,
         selected_scene_id: None,
         prompt_template_id: None,

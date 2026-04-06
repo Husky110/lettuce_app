@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 49;
+pub const CURRENT_MIGRATION_VERSION: u32 = 50;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -527,6 +527,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v48_to_v49(app)?;
         version = 49;
+    }
+
+    if version < 50 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v49 -> v50: Add direct session background override",
+        );
+        migrate_v49_to_v50(app)?;
+        version = 50;
     }
 
     // Update the stored version
@@ -2803,5 +2813,31 @@ fn migrate_v48_to_v49(app: &AppHandle) -> Result<(), String> {
         [],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(())
+}
+
+fn migrate_v49_to_v50(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+
+    let mut has_background_image_path = false;
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(sessions)")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    for col in rows {
+        let name = col.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        if name == "background_image_path" {
+            has_background_image_path = true;
+            break;
+        }
+    }
+
+    if !has_background_image_path {
+        let _ = conn.execute("ALTER TABLE sessions ADD COLUMN background_image_path TEXT", []);
+    }
+
     Ok(())
 }
