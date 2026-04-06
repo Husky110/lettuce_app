@@ -81,6 +81,16 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "preference",
     "other",
 ];
+const HARD_DELETE_CONFIDENCE_THRESHOLD: f32 = 0.7;
+fn max_hard_deletes_per_cycle(initial_count: usize, ratio: f32) -> usize {
+    if initial_count == 0 {
+        return 0;
+    }
+
+    ((initial_count as f32) * ratio)
+        .floor()
+        .max(1.0) as usize
+}
 
 fn dynamic_memory_llama_sampler_overwrite_enabled(settings: &Settings) -> bool {
     settings
@@ -2720,6 +2730,12 @@ async fn run_group_memory_tool_update(
 
     let mut actions_log: Vec<Value> = Vec::new();
     let mut untagged_candidates: Vec<(String, bool)> = Vec::new();
+    let initial_memory_count = session.memory_embeddings.len();
+    let max_hard_deletes = max_hard_deletes_per_cycle(
+        initial_memory_count,
+        dynamic_settings.max_hard_delete_ratio_per_cycle,
+    );
+    let mut hard_delete_count = 0usize;
     for call in calls {
         match call.name.as_str() {
             "create_memory" => {
@@ -2861,8 +2877,14 @@ async fn run_group_memory_tool_update(
                             .arguments
                             .get("confidence")
                             .and_then(|v| v.as_f64())
-                            .unwrap_or(1.0) as f32;
-                        if confidence < 0.7 {
+                            .unwrap_or(dynamic_settings.delete_confidence_default as f64)
+                            as f32;
+                        let confidence_defaulted =
+                            call.arguments.get("confidence").and_then(|v| v.as_f64()).is_none();
+                        let force_soft_delete =
+                            confidence >= HARD_DELETE_CONFIDENCE_THRESHOLD
+                                && hard_delete_count >= max_hard_deletes;
+                        if confidence < HARD_DELETE_CONFIDENCE_THRESHOLD || force_soft_delete {
                             // Soft-delete: move to cold storage instead of removing
                             if idx < session.memory_embeddings.len() {
                                 let cold_threshold = dynamic_settings.cold_threshold;
@@ -2871,14 +2893,34 @@ async fn run_group_memory_tool_update(
                                 log_info(
                                     app,
                                     "group_dynamic_memory",
-                                    format!("Soft-deleted memory (confidence={:.2})", confidence),
+                                    if force_soft_delete {
+                                        format!(
+                                            "Soft-deleted memory due to hard-delete safeguard (hard_deletes={}/{}, confidence={:.2})",
+                                            hard_delete_count,
+                                            max_hard_deletes,
+                                            confidence
+                                        )
+                                    } else {
+                                        format!(
+                                            "Soft-deleted memory (confidence={:.2}, defaulted={})",
+                                            confidence, confidence_defaulted
+                                        )
+                                    },
                                 );
                             }
                             actions_log.push(json!({
                                 "name": "delete_memory",
                                 "arguments": call.arguments,
                                 "softDelete": true,
+                                "reason": if force_soft_delete {
+                                    "hard_delete_limit_reached"
+                                } else {
+                                    "low_confidence"
+                                },
                                 "confidence": confidence,
+                                "confidenceDefaulted": confidence_defaulted,
+                                "hardDeleteCount": hard_delete_count,
+                                "hardDeleteLimit": max_hard_deletes,
                                 "timestamp": now_millis().unwrap_or_default(),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));
@@ -2891,9 +2933,14 @@ async fn run_group_memory_tool_update(
                                     format!("Deleted memory {}", removed.id),
                                 );
                             }
+                            hard_delete_count += 1;
                             actions_log.push(json!({
                                 "name": "delete_memory",
                                 "arguments": call.arguments,
+                                "confidence": confidence,
+                                "confidenceDefaulted": confidence_defaulted,
+                                "hardDeleteCount": hard_delete_count,
+                                "hardDeleteLimit": max_hard_deletes,
                                 "timestamp": now_millis().unwrap_or_default(),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));

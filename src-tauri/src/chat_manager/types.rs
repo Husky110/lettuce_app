@@ -402,6 +402,12 @@ pub struct DynamicMemorySettings {
     /// Score below which memories are demoted to cold (0.2-0.4 recommended)
     #[serde(default = "default_cold_threshold")]
     pub cold_threshold: f32,
+    /// Default delete confidence when the model omits it. Lower values prefer soft-delete.
+    #[serde(default = "default_delete_confidence")]
+    pub delete_confidence_default: f32,
+    /// Maximum fraction of the starting hot set that can be hard-deleted in one cycle.
+    #[serde(default = "default_max_hard_delete_ratio_per_cycle")]
+    pub max_hard_delete_ratio_per_cycle: f32,
     /// v2 exclusive: Use last 2 messages for better memory retrieval
     #[serde(default = "default_context_enrichment")]
     pub context_enrichment_enabled: bool,
@@ -429,6 +435,14 @@ fn default_decay_rate() -> f32 {
 
 fn default_cold_threshold() -> f32 {
     0.4 // Memories below this score are demoted to cold
+}
+
+fn default_delete_confidence() -> f32 {
+    0.5 // Omitted confidence should prefer cold storage over hard delete
+}
+
+fn default_max_hard_delete_ratio_per_cycle() -> f32 {
+    0.5 // At most half of the hot set can be hard-deleted per cycle
 }
 
 fn default_context_enrichment() -> bool {

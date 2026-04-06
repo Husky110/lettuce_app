@@ -264,6 +264,8 @@ pub fn effective_dynamic_memory_settings(
         hot_memory_token_budget: FALLBACK_HOT_MEMORY_TOKEN_BUDGET,
         decay_rate: FALLBACK_DECAY_RATE,
         cold_threshold: FALLBACK_COLD_THRESHOLD,
+        delete_confidence_default: 0.5,
+        max_hard_delete_ratio_per_cycle: 0.5,
         context_enrichment_enabled: true,
     }
 }

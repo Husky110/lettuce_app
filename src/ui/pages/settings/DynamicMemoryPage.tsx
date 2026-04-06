@@ -52,6 +52,8 @@ const DEFAULT_DYNAMIC_MEMORY_SETTINGS: DynamicMemorySettings = {
   hotMemoryTokenBudget: 2000,
   decayRate: 0.08,
   coldThreshold: 0.3,
+  deleteConfidenceDefault: 0.5,
+  maxHardDeleteRatioPerCycle: 0.5,
   contextEnrichmentEnabled: true,
 };
 
@@ -59,35 +61,41 @@ type MemoryPreset = "minimal" | "balanced" | "comprehensive" | "custom";
 
 const PRESETS: Record<
   Exclude<MemoryPreset, "custom">,
-  Omit<DynamicMemorySettings, "enabled" | "contextEnrichmentEnabled">
+  Omit<
+    DynamicMemorySettings,
+    | "enabled"
+    | "contextEnrichmentEnabled"
+    | "deleteConfidenceDefault"
+    | "maxHardDeleteRatioPerCycle"
+  >
 > = {
   minimal: {
     summaryMessageInterval: 30,
-    maxEntries: 25,
+    maxEntries: 100,
     minSimilarityThreshold: 0.5,
     retrievalLimit: 3,
     retrievalStrategy: "smart",
-    hotMemoryTokenBudget: 1000,
+    hotMemoryTokenBudget: 3072,
     decayRate: 0.15,
     coldThreshold: 0.4,
   },
   balanced: {
     summaryMessageInterval: 20,
-    maxEntries: 50,
+    maxEntries: 200,
     minSimilarityThreshold: 0.35,
     retrievalLimit: 5,
     retrievalStrategy: "smart",
-    hotMemoryTokenBudget: 2000,
+    hotMemoryTokenBudget: 6144,
     decayRate: 0.08,
     coldThreshold: 0.3,
   },
   comprehensive: {
     summaryMessageInterval: 15,
-    maxEntries: 100,
+    maxEntries: 400,
     minSimilarityThreshold: 0.25,
     retrievalLimit: 8,
     retrievalStrategy: "smart",
-    hotMemoryTokenBudget: 4000,
+    hotMemoryTokenBudget: 10240,
     decayRate: 0.05,
     coldThreshold: 0.2,
   },
@@ -720,7 +728,7 @@ export function DynamicMemoryPage() {
                             value={currentSettings.maxEntries}
                             unit={t("dynamicMemory.page.entriesUnit")}
                             min={10}
-                            max={200}
+                            max={500}
                             step={10}
                             onChange={(val) => {
                               if (activeTab === "direct") {
@@ -738,7 +746,7 @@ export function DynamicMemoryPage() {
                             value={currentSettings.hotMemoryTokenBudget}
                             unit={t("dynamicMemory.page.tokensUnit")}
                             min={500}
-                            max={10000}
+                            max={16384}
                             step={500}
                             onChange={(val) => {
                               if (activeTab === "direct") {
@@ -864,6 +872,40 @@ export function DynamicMemoryPage() {
                                 handleDirectSettingChange("coldThreshold", val);
                               } else {
                                 handleGroupSettingChange("coldThreshold", val);
+                              }
+                            }}
+                          />
+
+                          <SettingRow
+                            label="Delete Confidence Default"
+                            description="Used when the model omits delete confidence. Lower values prefer cold storage instead of hard delete."
+                            value={currentSettings.deleteConfidenceDefault}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            decimals={2}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("deleteConfidenceDefault", val);
+                              } else {
+                                handleGroupSettingChange("deleteConfidenceDefault", val);
+                              }
+                            }}
+                          />
+
+                          <SettingRow
+                            label="Max Hard Delete Ratio"
+                            description="Caps how much of the starting memory set can be hard-deleted in one cycle. Extra deletes are downgraded to cold storage."
+                            value={currentSettings.maxHardDeleteRatioPerCycle}
+                            min={0.1}
+                            max={1}
+                            step={0.05}
+                            decimals={2}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("maxHardDeleteRatioPerCycle", val);
+                              } else {
+                                handleGroupSettingChange("maxHardDeleteRatioPerCycle", val);
                               }
                             }}
                           />

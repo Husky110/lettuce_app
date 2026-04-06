@@ -411,6 +411,8 @@ export function AdvancedPage() {
           hotMemoryTokenBudget: 2000,
           decayRate: 0.08,
           coldThreshold: 0.3,
+          deleteConfidenceDefault: 0.5,
+          maxHardDeleteRatioPerCycle: 0.5,
           contextEnrichmentEnabled: true,
         };
       }
@@ -419,7 +421,9 @@ export function AdvancedPage() {
         advanced.summarisationModelId = settings.defaultModelId;
       }
 
-      advanced.dynamicMemory.enabled = newValue;
+      if (advanced.dynamicMemory) {
+        advanced.dynamicMemory.enabled = newValue;
+      }
       await saveAdvancedSettings(advanced);
     } catch (err) {
       console.error("Failed to save dynamic memory setting:", err);

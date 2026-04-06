@@ -51,6 +51,17 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "preference",
     "other",
 ];
+const HARD_DELETE_CONFIDENCE_THRESHOLD: f32 = 0.7;
+fn max_hard_deletes_per_cycle(initial_count: usize, ratio: f32) -> usize {
+    if initial_count == 0 {
+        return 0;
+    }
+
+    ((initial_count as f32) * ratio)
+        .floor()
+        .max(1.0) as usize
+}
+
 fn dynamic_memory_run_key(session_id: &str) -> String {
     format!("chat:{}", session_id)
 }
@@ -1812,6 +1823,21 @@ async fn run_memory_tool_update(
 
     let mut actions_log: Vec<Value> = Vec::new();
     let mut untagged_candidates: Vec<(String, bool)> = Vec::new();
+    let initial_memory_count = session.memory_embeddings.len();
+    let delete_confidence_default = settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| advanced.dynamic_memory.as_ref())
+        .map(|dynamic| dynamic.delete_confidence_default)
+        .unwrap_or(0.5);
+    let max_hard_delete_ratio = settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| advanced.dynamic_memory.as_ref())
+        .map(|dynamic| dynamic.max_hard_delete_ratio_per_cycle)
+        .unwrap_or(0.5);
+    let max_hard_deletes = max_hard_deletes_per_cycle(initial_memory_count, max_hard_delete_ratio);
+    let mut hard_delete_count = 0usize;
     for call in calls {
         match call.name.as_str() {
             "create_memory" => {
@@ -1946,8 +1972,14 @@ async fn run_memory_tool_update(
                             .arguments
                             .get("confidence")
                             .and_then(|v| v.as_f64())
-                            .unwrap_or(1.0) as f32;
-                        if confidence < 0.7 {
+                            .unwrap_or(delete_confidence_default as f64)
+                            as f32;
+                        let confidence_defaulted =
+                            call.arguments.get("confidence").and_then(|v| v.as_f64()).is_none();
+                        let force_soft_delete =
+                            confidence >= HARD_DELETE_CONFIDENCE_THRESHOLD
+                                && hard_delete_count >= max_hard_deletes;
+                        if confidence < HARD_DELETE_CONFIDENCE_THRESHOLD || force_soft_delete {
                             // Soft-delete: move to cold storage instead of removing
                             if idx < session.memory_embeddings.len() {
                                 let cold_threshold = dynamic_cold_threshold(settings);
@@ -1956,14 +1988,34 @@ async fn run_memory_tool_update(
                                 log_info(
                                     app,
                                     "dynamic_memory",
-                                    format!("Soft-deleted memory (confidence={:.2})", confidence),
+                                    if force_soft_delete {
+                                        format!(
+                                            "Soft-deleted memory due to hard-delete safeguard (hard_deletes={}/{}, confidence={:.2})",
+                                            hard_delete_count,
+                                            max_hard_deletes,
+                                            confidence
+                                        )
+                                    } else {
+                                        format!(
+                                            "Soft-deleted memory (confidence={:.2}, defaulted={})",
+                                            confidence, confidence_defaulted
+                                        )
+                                    },
                                 );
                             }
                             actions_log.push(json!({
                                 "name": "delete_memory",
                                 "arguments": call.arguments,
                                 "softDelete": true,
+                                "reason": if force_soft_delete {
+                                    "hard_delete_limit_reached"
+                                } else {
+                                    "low_confidence"
+                                },
                                 "confidence": confidence,
+                                "confidenceDefaulted": confidence_defaulted,
+                                "hardDeleteCount": hard_delete_count,
+                                "hardDeleteLimit": max_hard_deletes,
                                 "timestamp": now_millis().unwrap_or_default(),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));
@@ -1971,9 +2023,14 @@ async fn run_memory_tool_update(
                             if idx < session.memory_embeddings.len() {
                                 session.memory_embeddings.remove(idx);
                             }
+                            hard_delete_count += 1;
                             actions_log.push(json!({
                                 "name": "delete_memory",
                                 "arguments": call.arguments,
+                                "confidence": confidence,
+                                "confidenceDefaulted": confidence_defaulted,
+                                "hardDeleteCount": hard_delete_count,
+                                "hardDeleteLimit": max_hard_deletes,
                                 "timestamp": now_millis().unwrap_or_default(),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));
