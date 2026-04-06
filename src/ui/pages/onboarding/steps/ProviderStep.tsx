@@ -213,15 +213,6 @@ export function ProviderStep({
         </p>
       </div>
 
-      {/* Local LLM Button - Mobile */}
-      <button
-        onClick={() => setShowLocalLLMMenu(true)}
-        className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-400 transition hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-[0.98] mb-6"
-      >
-        <Cpu size={16} />
-        I want to use Local LLMs
-      </button>
-
       {/* Provider Selection */}
       <div className="w-full max-w-2xl mb-8">
         <div className="grid grid-cols-2 gap-3">
