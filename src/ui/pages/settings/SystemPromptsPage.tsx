@@ -154,9 +154,16 @@ function normalizeImportedSystemEntry(
       ? (entry.promptEntryPayload as Record<string, unknown>)
       : null;
   const payloadSlot = payload?.slot;
-  const resolvedPayloadSlot: "character" | "persona" | "avatar" | "references" | null =
+  const resolvedPayloadSlot:
+    | "character"
+    | "persona"
+    | "chatBackground"
+    | "avatar"
+    | "references"
+    | null =
     payloadSlot === "character" ||
     payloadSlot === "persona" ||
+    payloadSlot === "chatBackground" ||
     payloadSlot === "avatar" ||
     payloadSlot === "references"
       ? payloadSlot

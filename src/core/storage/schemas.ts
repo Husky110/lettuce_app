@@ -110,6 +110,7 @@ export type PromptEntryCondition =
   | { type: "hasSubjectDescription"; value: boolean }
   | { type: "hasCurrentDescription"; value: boolean }
   | { type: "hasCharacterReferenceImages"; value: boolean }
+  | { type: "hasChatBackground"; value: boolean }
   | { type: "hasPersonaReferenceImages"; value: boolean }
   | { type: "hasCharacterReferenceText"; value: boolean }
   | { type: "hasPersonaReferenceText"; value: boolean }
@@ -142,6 +143,7 @@ export const PromptEntryConditionSchema: z.ZodType<PromptEntryCondition> = z.laz
     z.object({ type: z.literal("hasSubjectDescription"), value: z.boolean() }),
     z.object({ type: z.literal("hasCurrentDescription"), value: z.boolean() }),
     z.object({ type: z.literal("hasCharacterReferenceImages"), value: z.boolean() }),
+    z.object({ type: z.literal("hasChatBackground"), value: z.boolean() }),
     z.object({ type: z.literal("hasPersonaReferenceImages"), value: z.boolean() }),
     z.object({ type: z.literal("hasCharacterReferenceText"), value: z.boolean() }),
     z.object({ type: z.literal("hasPersonaReferenceText"), value: z.boolean() }),
@@ -186,7 +188,7 @@ export const SystemPromptEntrySchema = z.object({
   promptEntryPayload: z
     .object({
       type: z.literal("imageSlot"),
-      slot: z.enum(["character", "persona", "avatar", "references"]),
+      slot: z.enum(["character", "persona", "chatBackground", "avatar", "references"]),
     })
     .nullable()
     .optional(),

@@ -40,6 +40,7 @@ impl Default for PromptEntryPosition {
 pub enum PromptEntryImageSlot {
     Character,
     Persona,
+    ChatBackground,
     Avatar,
     References,
 }
@@ -112,6 +113,9 @@ pub enum PromptEntryCondition {
         value: bool,
     },
     HasCharacterReferenceImages {
+        value: bool,
+    },
+    HasChatBackground {
         value: bool,
     },
     HasPersonaReferenceImages {

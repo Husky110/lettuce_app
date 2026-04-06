@@ -4352,6 +4352,7 @@ fn build_group_system_prompt(
         has_subject_description: false,
         has_current_description: false,
         has_character_reference_images: false,
+        has_chat_background: false,
         has_persona_reference_images: false,
         has_character_reference_text: false,
         has_persona_reference_text: false,

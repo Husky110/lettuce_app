@@ -82,6 +82,9 @@ fn prompt_entry_payload_variable(payload: &PromptEntryPayload) -> &'static str {
             slot: PromptEntryImageSlot::Persona,
         } => "{{image[persona]}}",
         PromptEntryPayload::ImageSlot {
+            slot: PromptEntryImageSlot::ChatBackground,
+        } => "{{image[chatBackground]}}",
+        PromptEntryPayload::ImageSlot {
             slot: PromptEntryImageSlot::Avatar,
         } => "{{image[avatar]}}",
         PromptEntryPayload::ImageSlot {
@@ -378,6 +381,7 @@ fn migrate_legacy_scene_generation_entry_roles(app: &AppHandle) -> Result<(), St
             entry.id.as_str(),
             "scene_gen_context"
                 | "scene_gen_character_image"
+                | "scene_gen_chat_background"
                 | "scene_gen_persona_image"
                 | "scene_gen_request"
         );
@@ -1147,6 +1151,18 @@ pub fn ensure_scene_generation_template(app: &AppHandle) -> Result<(), String> {
                 app,
                 APP_SCENE_GENERATION_TEMPLATE_ID,
                 "scene_gen_persona_reference",
+                entry,
+            );
+        }
+        if let Some(entry) = scene_entries
+            .iter()
+            .find(|entry| entry.id == "scene_gen_chat_background")
+            .cloned()
+        {
+            let _ = append_missing_entry(
+                app,
+                APP_SCENE_GENERATION_TEMPLATE_ID,
+                "scene_gen_chat_background",
                 entry,
             );
         }

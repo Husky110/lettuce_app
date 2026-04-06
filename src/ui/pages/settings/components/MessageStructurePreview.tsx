@@ -23,11 +23,12 @@ interface PreviewMessage {
   injectionInfo?: string;
 }
 
-type PromptEntryImageSlot = "character" | "persona" | "avatar" | "references";
+type PromptEntryImageSlot = "character" | "persona" | "chatBackground" | "avatar" | "references";
 
 const IMAGE_SLOT_LABELS: Record<PromptEntryImageSlot, string> = {
   character: "Character reference image",
   persona: "Persona reference image",
+  chatBackground: "Chat background image",
   avatar: "Avatar image",
   references: "Reference images",
 };

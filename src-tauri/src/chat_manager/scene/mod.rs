@@ -184,6 +184,7 @@ struct SceneReferenceImages {
     character_images: Vec<String>,
     character_reference_count: usize,
     character_reference_source: SceneReferenceSource,
+    chat_background_images: Vec<String>,
     persona_images: Vec<String>,
     persona_reference_count: usize,
     persona_reference_source: SceneReferenceSource,
@@ -202,6 +203,19 @@ fn resolve_design_reference_images(app: &AppHandle, image_ids: &[String]) -> Vec
         .collect()
 }
 
+fn resolve_chat_background_image(app: &AppHandle, background_image_path: Option<&str>) -> Vec<String> {
+    let Some(image_id) = background_image_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Vec::new();
+    };
+
+    storage_read_image_data(app, image_id)
+        .map(|image| vec![image])
+        .unwrap_or_default()
+}
+
 fn build_scene_reference_images(
     app: &AppHandle,
     character: &Character,
@@ -209,6 +223,8 @@ fn build_scene_reference_images(
 ) -> SceneReferenceImages {
     let character_design_images =
         resolve_design_reference_images(app, &character.design_reference_image_ids);
+    let chat_background_images =
+        resolve_chat_background_image(app, character.background_image_path.as_deref());
     let (character_images, character_reference_count, character_reference_source) =
         if !character_design_images.is_empty() {
             let count = character_design_images.len();
@@ -258,6 +274,7 @@ fn build_scene_reference_images(
         character_images,
         character_reference_count,
         character_reference_source,
+        chat_background_images,
         persona_images,
         persona_reference_count,
         persona_reference_source,
@@ -335,6 +352,19 @@ fn build_scene_prompt_reference_text(
     sections.join("\n\n")
 }
 
+fn build_chat_background_reference_hint() -> &'static str {
+    "The image model will receive the chat background image as an environment reference."
+}
+
+fn build_chat_background_reference_text() -> String {
+    [
+        "# Chat Background Notes",
+        "The attached chat background image represents the intended environment or backdrop for this chat.",
+        "Use it as the scene's environmental anchor when it fits the current moment, preserving major location cues, palette, lighting mood, architecture, and large background features unless the recent messages clearly establish a different setting.",
+    ]
+    .join("\n")
+}
+
 fn build_scene_prompt_image_parts(images: &[String]) -> Vec<Value> {
     images
         .iter()
@@ -353,6 +383,8 @@ fn build_scene_prompt_image_parts(images: &[String]) -> Vec<Value> {
 
 const SCENE_CHARACTER_TOKEN: &str = "{{image[character]}}";
 const SCENE_PERSONA_TOKEN: &str = "{{image[persona]}}";
+const SCENE_CHAT_BACKGROUND_TOKEN: &str = "{{image[chatBackground]}}";
+const SCENE_CHAT_BACKGROUND_LEGACY_TOKEN: &str = "{{image[chat_background]}}";
 const DESIGN_REFERENCE_AVATAR_TOKEN: &str = "{{image[avatar]}}";
 const DESIGN_REFERENCE_REFERENCES_TOKEN: &str = "{{image[references]}}";
 
@@ -361,6 +393,10 @@ fn legacy_prompt_entry_image_slot(content: &str) -> Option<PromptEntryImageSlot>
         Some(PromptEntryImageSlot::Character)
     } else if content.contains(SCENE_PERSONA_TOKEN) {
         Some(PromptEntryImageSlot::Persona)
+    } else if content.contains(SCENE_CHAT_BACKGROUND_TOKEN)
+        || content.contains(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN)
+    {
+        Some(PromptEntryImageSlot::ChatBackground)
     } else if content.contains(DESIGN_REFERENCE_AVATAR_TOKEN) {
         Some(PromptEntryImageSlot::Avatar)
     } else if content.contains(DESIGN_REFERENCE_REFERENCES_TOKEN) {
@@ -385,6 +421,8 @@ fn cleaned_image_entry_text(content: &str) -> Option<String> {
     let stripped = content
         .replace(SCENE_CHARACTER_TOKEN, "")
         .replace(SCENE_PERSONA_TOKEN, "")
+        .replace(SCENE_CHAT_BACKGROUND_TOKEN, "")
+        .replace(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN, "")
         .replace(DESIGN_REFERENCE_AVATAR_TOKEN, "")
         .replace(DESIGN_REFERENCE_REFERENCES_TOKEN, "");
     let cleaned = condense_prompt_whitespace(stripped);
@@ -421,6 +459,9 @@ fn build_scene_prompt_content_with_images(
             PromptEntryImageSlot::Character => {
                 build_scene_prompt_image_parts(&reference_images.character_images)
             }
+            PromptEntryImageSlot::ChatBackground => {
+                build_scene_prompt_image_parts(&reference_images.chat_background_images)
+            }
             PromptEntryImageSlot::Persona => {
                 build_scene_prompt_image_parts(&reference_images.persona_images)
             }
@@ -440,6 +481,13 @@ fn build_scene_prompt_content_with_images(
             &reference_images.persona_images,
         ));
     }
+    if entry.content.contains(SCENE_CHAT_BACKGROUND_TOKEN)
+        || entry.content.contains(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN)
+    {
+        parts.extend(build_scene_prompt_image_parts(
+            &reference_images.chat_background_images,
+        ));
+    }
 
     build_multimodal_image_content(cleaned_image_entry_text(&entry.content), parts)
 }
@@ -456,14 +504,17 @@ fn build_scene_generation_request(
         character_images,
         character_reference_count,
         character_reference_source,
+        chat_background_images,
         persona_images,
         persona_reference_count,
         persona_reference_source,
     } = reference_images;
     let mut prompt_sections = Vec::new();
     let mut input_images = character_images.clone();
+    input_images.extend(chat_background_images.clone());
     input_images.extend(persona_images.clone());
     let has_character_reference = character_reference_count > 0;
+    let has_chat_background_reference = !chat_background_images.is_empty();
     let has_persona_reference = persona_reference_count > 0;
 
     if let Some(design_description) = character
@@ -493,7 +544,7 @@ fn build_scene_generation_request(
         }
     }
 
-    if has_character_reference || has_persona_reference {
+    if has_character_reference || has_chat_background_reference || has_persona_reference {
         let mut reference_lines = Vec::new();
         let mut next_image_index = 1;
         if has_character_reference {
@@ -509,6 +560,15 @@ fn build_scene_generation_request(
                 range_label, source_label, character.name, character.name
             ));
             next_image_index += character_reference_count;
+        }
+        if has_chat_background_reference {
+            let range_label =
+                format_scene_reference_range(next_image_index, chat_background_images.len());
+            reference_lines.push(format!(
+                "The {} is the chat background environment reference. Use it for setting, palette, lighting mood, architecture, and large backdrop elements. Do not treat it as a character identity reference.",
+                range_label
+            ));
+            next_image_index += chat_background_images.len();
         }
         if has_persona_reference {
             let persona_name = persona_scene_name(persona);
@@ -664,6 +724,7 @@ fn render_scene_generation_prompt_content(
     character: &Character,
     persona: Option<&Persona>,
     recent_messages_text: &str,
+    has_chat_background: bool,
 ) -> String {
     let mut prompt = template_content.to_string();
     let char_name = character.name.as_str();
@@ -731,6 +792,11 @@ fn render_scene_generation_prompt_content(
     } else {
         String::new()
     };
+    let chat_background_reference_text = if has_chat_background {
+        build_chat_background_reference_text()
+    } else {
+        String::new()
+    };
     prompt = prompt.replace("{{char.name}}", char_name);
     prompt = prompt.replace("{{char}}", char_name);
     prompt = prompt.replace("{{user}}", persona_name);
@@ -753,6 +819,8 @@ fn render_scene_generation_prompt_content(
     prompt = prompt.replace("{{scene_request}}", &scene_request);
     prompt = prompt.replace("{{reference[character]}}", &character_reference_text);
     prompt = prompt.replace("{{reference[persona]}}", &persona_reference_text);
+    prompt = prompt.replace("{{reference[chatBackground]}}", &chat_background_reference_text);
+    prompt = prompt.replace("{{reference[chat_background]}}", &chat_background_reference_text);
 
     condense_prompt_whitespace(prompt)
 }
@@ -924,6 +992,7 @@ fn render_design_reference_prompt_entries(
         has_subject_description: subject_description.is_some(),
         has_current_description: current_description.is_some(),
         has_character_reference_images: false,
+        has_chat_background: false,
         has_persona_reference_images: false,
         has_character_reference_text: false,
         has_persona_reference_text: false,
@@ -981,7 +1050,9 @@ fn build_design_reference_prompt_content_with_images(
                 .map(|image| build_scene_prompt_image_parts(&[image.to_string()]))
                 .unwrap_or_default(),
             PromptEntryImageSlot::References => build_scene_prompt_image_parts(reference_images),
-            PromptEntryImageSlot::Character | PromptEntryImageSlot::Persona => Vec::new(),
+            PromptEntryImageSlot::Character
+            | PromptEntryImageSlot::Persona
+            | PromptEntryImageSlot::ChatBackground => Vec::new(),
         };
         return build_multimodal_image_content(cleaned_image_entry_text(&entry.content), parts);
     }
@@ -1142,6 +1213,7 @@ fn render_scene_generation_prompt_entries(
         has_subject_description: false,
         has_current_description: false,
         has_character_reference_images: !reference_images.character_images.is_empty(),
+        has_chat_background: !reference_images.chat_background_images.is_empty(),
         has_persona_reference_images: !reference_images.persona_images.is_empty(),
         has_character_reference_text,
         has_persona_reference_text,
@@ -1165,6 +1237,7 @@ fn render_scene_generation_prompt_entries(
             character,
             persona,
             recent_messages_text,
+            !reference_images.chat_background_images.is_empty(),
         );
         if rendered.trim().is_empty() && entry.prompt_entry_payload.is_none() {
             continue;
@@ -1193,7 +1266,9 @@ fn scene_prompt_entry_to_message(
     }
 
     let contains_legacy_image_tokens = entry.content.contains(SCENE_CHARACTER_TOKEN)
-        || entry.content.contains(SCENE_PERSONA_TOKEN);
+        || entry.content.contains(SCENE_PERSONA_TOKEN)
+        || entry.content.contains(SCENE_CHAT_BACKGROUND_TOKEN)
+        || entry.content.contains(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN);
     if entry.prompt_entry_payload.is_some()
         || (contains_legacy_image_tokens
             && matches!(entry.role, super::types::PromptEntryRole::User))
@@ -1237,6 +1312,11 @@ fn content_with_scene_image_hints(
         reference_images.persona_reference_count,
         reference_images.persona_reference_source,
     );
+    let chat_background_hint = if reference_images.chat_background_images.is_empty() {
+        String::new()
+    } else {
+        build_chat_background_reference_hint().to_string()
+    };
 
     match entry
         .prompt_entry_payload
@@ -1270,10 +1350,27 @@ fn content_with_scene_image_hints(
                 replaced
             }
         }
+        Some(PromptEntryImageSlot::ChatBackground) => {
+            let replaced = entry
+                .content
+                .replace(SCENE_CHAT_BACKGROUND_TOKEN, &chat_background_hint)
+                .replace(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN, &chat_background_hint);
+            if replaced == entry.content && !chat_background_hint.trim().is_empty() {
+                if entry.content.trim().is_empty() {
+                    chat_background_hint
+                } else {
+                    format!("{}\n{}", entry.content.trim(), chat_background_hint)
+                }
+            } else {
+                replaced
+            }
+        }
         _ => entry
             .content
             .replace(SCENE_CHARACTER_TOKEN, &character_hint)
-            .replace(SCENE_PERSONA_TOKEN, &persona_hint),
+            .replace(SCENE_PERSONA_TOKEN, &persona_hint)
+            .replace(SCENE_CHAT_BACKGROUND_TOKEN, &chat_background_hint)
+            .replace(SCENE_CHAT_BACKGROUND_LEGACY_TOKEN, &chat_background_hint),
     }
 }
 

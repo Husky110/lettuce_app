@@ -19,6 +19,7 @@ pub(crate) struct PromptEntryConditionContext<'a> {
     pub(crate) has_subject_description: bool,
     pub(crate) has_current_description: bool,
     pub(crate) has_character_reference_images: bool,
+    pub(crate) has_chat_background: bool,
     pub(crate) has_persona_reference_images: bool,
     pub(crate) has_character_reference_text: bool,
     pub(crate) has_persona_reference_text: bool,
@@ -91,6 +92,7 @@ pub(crate) fn matches_condition(
         PromptEntryCondition::HasCharacterReferenceImages { value } => {
             context.has_character_reference_images == *value
         }
+        PromptEntryCondition::HasChatBackground { value } => context.has_chat_background == *value,
         PromptEntryCondition::HasPersonaReferenceImages { value } => {
             context.has_persona_reference_images == *value
         }
@@ -184,6 +186,7 @@ mod tests {
             has_subject_description: false,
             has_current_description: false,
             has_character_reference_images: false,
+            has_chat_background: false,
             has_persona_reference_images: false,
             has_character_reference_text: false,
             has_persona_reference_text: false,

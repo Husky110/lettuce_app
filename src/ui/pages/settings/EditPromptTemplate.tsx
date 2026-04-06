@@ -91,7 +91,7 @@ type Variable = {
   desc: string;
 };
 
-type PromptEntryImageSlot = "character" | "persona" | "avatar" | "references";
+type PromptEntryImageSlot = "character" | "persona" | "chatBackground" | "avatar" | "references";
 type PromptEntryKind = "text" | "image";
 type ImageCapablePromptType = Exclude<PromptType, null>;
 
@@ -184,6 +184,16 @@ const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
       desc: "Injected image block for the persona avatar reference",
     },
     {
+      var: "{{image[chatBackground]}}",
+      label: "Chat Background Image",
+      desc: "Injected image block for the chat background/environment reference",
+    },
+    {
+      var: "{{reference[chatBackground]}}",
+      label: "Chat Background Text",
+      desc: "Rendered text directions for using the chat background as a scene reference",
+    },
+    {
       var: "{{reference[persona]}}",
       label: "Persona Reference Text",
       desc: "Rendered text notes for the persona design references",
@@ -255,6 +265,7 @@ const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
 const IMAGE_ENTRY_SLOT_LABELS: Record<PromptEntryImageSlot, string> = {
   character: "Character reference",
   persona: "Persona reference",
+  chatBackground: "Chat background",
   avatar: "Avatar image",
   references: "Reference images",
 };
@@ -262,6 +273,7 @@ const IMAGE_ENTRY_SLOT_LABELS: Record<PromptEntryImageSlot, string> = {
 const IMAGE_ENTRY_SLOT_TOKENS: Record<PromptEntryImageSlot, string> = {
   character: "{{image[character]}}",
   persona: "{{image[persona]}}",
+  chatBackground: "{{image[chatBackground]}}",
   avatar: "{{image[avatar]}}",
   references: "{{image[references]}}",
 };
@@ -269,7 +281,7 @@ const IMAGE_ENTRY_SLOT_TOKENS: Record<PromptEntryImageSlot, string> = {
 const IMAGE_ENTRY_SLOT_OPTIONS_BY_PROMPT_TYPE: Partial<
   Record<ImageCapablePromptType, PromptEntryImageSlot[]>
 > = {
-  scene_generation: ["character", "persona"],
+  scene_generation: ["character", "persona", "chatBackground"],
   design_reference: ["avatar", "references"],
 };
 
@@ -437,6 +449,11 @@ const SIMPLE_CONDITION_OPTIONS: Array<{
   {
     value: "hasCharacterReferenceImages",
     label: "Has character reference images",
+    kind: "boolean",
+  },
+  {
+    value: "hasChatBackground",
+    label: "Has chat background",
     kind: "boolean",
   },
   {
@@ -676,6 +693,8 @@ function describeSimpleCondition(condition: SimplePromptEntryCondition): string 
       return condition.value
         ? "character reference images exist"
         : "character reference images missing";
+    case "hasChatBackground":
+      return condition.value ? "chat background exists" : "chat background missing";
     case "hasPersonaReferenceImages":
       return condition.value
         ? "persona reference images exist"
@@ -830,6 +849,7 @@ function getScalarConditionBucket(
     case "hasSubjectDescription":
     case "hasCurrentDescription":
     case "hasCharacterReferenceImages":
+    case "hasChatBackground":
     case "hasPersonaReferenceImages":
     case "hasCharacterReferenceText":
     case "hasPersonaReferenceText":
