@@ -7,7 +7,9 @@ use std::time::Duration;
 use super::legacy::storage_root;
 use crate::migrations;
 use crate::sync::db::LOCAL_SYNC_STATE_VERSION;
-use crate::utils::{log_debug_global, log_info, log_warn, log_warn_global, now_millis};
+use crate::utils::{
+    log_info, log_info_global, log_warn, log_warn_global, now_millis,
+};
 
 pub fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(storage_root(app)?.join("app.db"))
@@ -58,13 +60,24 @@ impl SwappablePool {
                 format!("Pool lock poisoned: {}", e),
             )
         })?;
-        pool.get().map_err(|e| {
+        let conn = pool.get().map_err(|e| {
             crate::utils::err_msg(
                 module_path!(),
                 line!(),
                 format!("Failed to get connection from pool: {}", e),
             )
-        })
+        })?;
+
+        let state = pool.state();
+        log_info_global(
+            "db_status",
+            format!(
+                "connection acquired total={} idle={}",
+                state.connections, state.idle_connections
+            ),
+        );
+
+        Ok(conn)
     }
 
     /// Swap the pool with a new one (used after backup restore)
@@ -99,7 +112,7 @@ fn attach_db_logging(c: &mut Connection) {
         } else {
             trimmed.to_string()
         };
-        log_debug_global(label, &display);
+        log_info_global(label, &display);
     }));
     c.profile(Some(|stmt: &str, dur: Duration| {
         let ms = dur.as_millis();
