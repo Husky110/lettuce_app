@@ -36,6 +36,7 @@ use crate::chat_manager::request::{extract_error_message, extract_text, extract_
 use crate::chat_manager::request_builder;
 use crate::chat_manager::service::{record_usage_if_available, require_api_key, ChatContext};
 use crate::chat_manager::storage::save_session;
+use crate::chat_manager::thinking::normalize_thinking_content;
 use crate::chat_manager::tooling::{
     parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition,
 };
@@ -1174,7 +1175,7 @@ fn record_dynamic_memory_error(app: &AppHandle, session: &mut Session, error: &s
 
 fn normalize_llm_output_text(raw: &str) -> String {
     let trimmed = raw.trim();
-    if trimmed.starts_with("```") {
+    let without_fences = if trimmed.starts_with("```") {
         let mut lines = trimmed.lines();
         let _ = lines.next();
         let mut body: Vec<&str> = lines.collect();
@@ -1185,9 +1186,12 @@ fn normalize_llm_output_text(raw: &str) -> String {
         {
             body.pop();
         }
-        return body.join("\n").trim().to_string();
-    }
-    trimmed.to_string()
+        body.join("\n").trim().to_string()
+    } else {
+        trimmed.to_string()
+    };
+
+    normalize_thinking_content(Some(&without_fences), None).content
 }
 
 fn collapse_whitespace(text: &str) -> String {
