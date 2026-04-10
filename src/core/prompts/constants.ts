@@ -61,9 +61,9 @@ export function getPromptTypeLabel(id: string): string {
     case APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID:
       return "Reply Helper (Conversational)";
     case APP_GROUP_CHAT_TEMPLATE_ID:
-      return "Group Chat";
+      return "Group Chat (Conversation)";
     case APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID:
-      return "Group Chat RP";
+      return "Group Chat (Roleplay)";
     case APP_AVATAR_GENERATION_TEMPLATE_ID:
       return "Avatar Generation";
     case APP_AVATAR_EDIT_TEMPLATE_ID:

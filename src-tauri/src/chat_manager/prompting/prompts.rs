@@ -30,6 +30,8 @@ const APP_DYNAMIC_SUMMARY_TEMPLATE_NAME: &str = "Dynamic Memory: Summarizer";
 const APP_DYNAMIC_MEMORY_TEMPLATE_NAME: &str = "Dynamic Memory: Memory Manager";
 const APP_HELP_ME_REPLY_TEMPLATE_NAME: &str = "Reply Helper";
 const APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_NAME: &str = "Reply Helper (Conversational)";
+const APP_GROUP_CHAT_TEMPLATE_NAME: &str = "Group Chat (Conversation)";
+const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_NAME: &str = "Group Chat (Roleplay)";
 const APP_AVATAR_GENERATION_TEMPLATE_NAME: &str = "Avatar Generation";
 const APP_AVATAR_EDIT_TEMPLATE_NAME: &str = "Avatar Image Edit";
 const APP_SCENE_GENERATION_TEMPLATE_NAME: &str = "Scene Generation";
@@ -167,6 +169,32 @@ fn maybe_backfill_entries(
         None,
         Some(template.content),
         Some(entries),
+        None,
+    )?;
+    Ok(())
+}
+
+fn maybe_backfill_template_name(
+    app: &AppHandle,
+    id: &str,
+    expected_name: &str,
+) -> Result<(), String> {
+    let template = match get_template(app, id)? {
+        Some(template) => template,
+        None => return Ok(()),
+    };
+    if template.name == expected_name {
+        return Ok(());
+    }
+
+    let _ = update_template(
+        app,
+        id.to_string(),
+        Some(expected_name.to_string()),
+        None,
+        None,
+        None,
+        None,
         None,
     )?;
     Ok(())
@@ -569,6 +597,9 @@ fn row_to_template(row: &rusqlite::Row<'_>) -> Result<SystemPromptTemplate, rusq
 }
 
 pub fn load_templates(app: &AppHandle) -> Result<Vec<SystemPromptTemplate>, String> {
+    let _ = ensure_app_default_template(app)?;
+    let _ = ensure_local_roleplay_template(app)?;
+    ensure_group_chat_templates(app)?;
     let conn = open_db(app)?;
     let mut stmt = conn
         .prepare(
@@ -884,6 +915,75 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn ensure_group_chat_templates(app: &AppHandle) -> Result<(), String> {
+    let conn = open_db(app)?;
+    let now = now();
+    let group_chat_entries = get_base_prompt_entries(PromptType::GroupChatPrompt);
+    let group_chat_roleplay_entries = get_base_prompt_entries(PromptType::GroupChatRoleplayPrompt);
+
+    if get_template(app, APP_GROUP_CHAT_TEMPLATE_ID)?.is_none() {
+        let content = get_base_prompt(PromptType::GroupChatPrompt);
+        let entries_json = serde_json::to_string(&group_chat_entries)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO prompt_templates (id, name, scope, target_ids, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, '[]', ?4, ?5, ?6, ?6)",
+            params![
+                APP_GROUP_CHAT_TEMPLATE_ID,
+                APP_GROUP_CHAT_TEMPLATE_NAME,
+                scope_to_str(&PromptScope::AppWide),
+                content,
+                entries_json,
+                now
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    } else {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_GROUP_CHAT_TEMPLATE_ID,
+            PromptType::GroupChatPrompt,
+            group_chat_entries,
+        );
+        let _ = maybe_backfill_template_name(
+            app,
+            APP_GROUP_CHAT_TEMPLATE_ID,
+            APP_GROUP_CHAT_TEMPLATE_NAME,
+        );
+    }
+
+    if get_template(app, APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID)?.is_none() {
+        let content = get_base_prompt(PromptType::GroupChatRoleplayPrompt);
+        let entries_json = serde_json::to_string(&group_chat_roleplay_entries)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO prompt_templates (id, name, scope, target_ids, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, '[]', ?4, ?5, ?6, ?6)",
+            params![
+                APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID,
+                APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_NAME,
+                scope_to_str(&PromptScope::AppWide),
+                content,
+                entries_json,
+                now
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    } else {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID,
+            PromptType::GroupChatRoleplayPrompt,
+            group_chat_roleplay_entries,
+        );
+        let _ = maybe_backfill_template_name(
+            app,
+            APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID,
+            APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_NAME,
+        );
+    }
+
+    Ok(())
+}
+
 pub fn is_app_default_template(id: &str) -> bool {
     id == APP_DEFAULT_TEMPLATE_ID
         || id == APP_LOCAL_ROLEPLAY_TEMPLATE_ID
@@ -891,6 +991,8 @@ pub fn is_app_default_template(id: &str) -> bool {
         || id == APP_DYNAMIC_MEMORY_TEMPLATE_ID
         || id == APP_HELP_ME_REPLY_TEMPLATE_ID
         || id == APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID
+        || id == APP_GROUP_CHAT_TEMPLATE_ID
+        || id == APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID
         || id == APP_AVATAR_GENERATION_TEMPLATE_ID
         || id == APP_AVATAR_EDIT_TEMPLATE_ID
         || id == APP_SCENE_GENERATION_TEMPLATE_ID
@@ -946,6 +1048,36 @@ pub fn reset_dynamic_memory_template(app: &AppHandle) -> Result<SystemPromptTemp
     update_template(
         app,
         APP_DYNAMIC_MEMORY_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        None,
+        Some(content.clone()),
+        Some(entries),
+        None,
+    )
+}
+
+pub fn reset_group_chat_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::GroupChatPrompt);
+    let entries = get_base_prompt_entries(PromptType::GroupChatPrompt);
+    update_template(
+        app,
+        APP_GROUP_CHAT_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        None,
+        Some(content.clone()),
+        Some(entries),
+        None,
+    )
+}
+
+pub fn reset_group_chat_roleplay_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::GroupChatRoleplayPrompt);
+    let entries = get_base_prompt_entries(PromptType::GroupChatRoleplayPrompt);
+    update_template(
+        app,
+        APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID.to_string(),
         None,
         None,
         None,
@@ -1354,6 +1486,7 @@ pub fn get_help_me_reply_prompt(app: &AppHandle, style: &str) -> String {
 /// Get the Group Chat template from DB, falling back to default if not found
 #[allow(dead_code)]
 pub fn get_group_chat_prompt(app: &AppHandle) -> String {
+    let _ = ensure_group_chat_templates(app);
     match get_template(app, APP_GROUP_CHAT_TEMPLATE_ID) {
         Ok(Some(template)) => {
             let merged = template_entries_to_content(&template.entries);
@@ -1370,6 +1503,7 @@ pub fn get_group_chat_prompt(app: &AppHandle) -> String {
 /// Get the Group Chat Roleplay template from DB, falling back to default if not found
 #[allow(dead_code)]
 pub fn get_group_chat_roleplay_prompt(app: &AppHandle) -> String {
+    let _ = ensure_group_chat_templates(app);
     match get_template(app, APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID) {
         Ok(Some(template)) => {
             let merged = template_entries_to_content(&template.entries);

@@ -41,6 +41,8 @@ import {
   resetLocalRoleplayTemplate,
   resetDynamicSummaryTemplate,
   resetDynamicMemoryTemplate,
+  resetGroupChatTemplate,
+  resetGroupChatRoleplayTemplate,
   resetHelpMeReplyTemplate,
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
@@ -2349,9 +2351,9 @@ function getPromptTypeName(type: PromptType): string {
     case "design_reference":
       return "Design Reference Writer";
     case "group_chat":
-      return "Group Chat";
+      return "Group Chat (Conversation)";
     case "group_chat_roleplay":
-      return "Group Chat RP";
+      return "Group Chat (Roleplay)";
     default:
       return "Custom Prompt";
   }
@@ -2858,6 +2860,8 @@ export function EditPromptTemplate() {
         "local_roleplay",
         "summary",
         "memory",
+        "group_chat",
+        "group_chat_roleplay",
         "reply",
         "avatar_generation",
         "avatar_edit",
@@ -2888,6 +2892,10 @@ export function EditPromptTemplate() {
         updated = await resetDynamicSummaryTemplate();
       } else if (promptType === "memory") {
         updated = await resetDynamicMemoryTemplate();
+      } else if (promptType === "group_chat") {
+        updated = await resetGroupChatTemplate();
+      } else if (promptType === "group_chat_roleplay") {
+        updated = await resetGroupChatRoleplayTemplate();
       } else if (promptType === "reply") {
         updated = await resetHelpMeReplyTemplate();
       } else if (promptType === "avatar_generation") {

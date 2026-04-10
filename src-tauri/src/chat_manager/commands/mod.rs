@@ -804,6 +804,16 @@ pub fn reset_dynamic_memory_template(app: AppHandle) -> Result<SystemPromptTempl
 }
 
 #[tauri::command]
+pub fn reset_group_chat_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_group_chat_template(&app)
+}
+
+#[tauri::command]
+pub fn reset_group_chat_roleplay_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_group_chat_roleplay_template(&app)
+}
+
+#[tauri::command]
 pub fn reset_help_me_reply_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
     prompts::reset_help_me_reply_template(&app)
 }

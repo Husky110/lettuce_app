@@ -4259,6 +4259,16 @@ fn build_group_system_prompt(
     } else {
         prompts::APP_GROUP_CHAT_TEMPLATE_ID
     };
+    if let Err(err) = prompts::ensure_group_chat_templates(app) {
+        log_warn(
+            app,
+            "group_chat",
+            format!(
+                "Failed to ensure group chat templates before prompt build: {}",
+                err
+            ),
+        );
+    }
     let template = prompts::get_template(app, template_id)
         .ok()
         .flatten()

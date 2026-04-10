@@ -15,6 +15,8 @@ export {
   resetLocalRoleplayTemplate,
   resetDynamicSummaryTemplate,
   resetDynamicMemoryTemplate,
+  resetGroupChatTemplate,
+  resetGroupChatRoleplayTemplate,
   resetHelpMeReplyTemplate,
   resetHelpMeReplyConversationalTemplate,
   resetAvatarGenerationTemplate,

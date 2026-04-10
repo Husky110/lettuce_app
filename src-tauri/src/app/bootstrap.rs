@@ -180,6 +180,14 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
         );
     }
 
+    if let Err(err) = chat_manager::prompts::ensure_group_chat_templates(app) {
+        utils::log_error(
+            app,
+            "bootstrap",
+            format!("Failed to ensure group chat templates: {}", err),
+        );
+    }
+
     if let Err(err) = chat_manager::prompts::ensure_avatar_image_templates(app) {
         utils::log_error(
             app,
