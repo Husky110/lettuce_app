@@ -366,6 +366,8 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           fallback_model_id TEXT,
           memory_type TEXT NOT NULL DEFAULT 'manual',
           prompt_template_id TEXT,
+          group_chat_prompt_template_id TEXT,
+          group_chat_roleplay_prompt_template_id TEXT,
           system_prompt TEXT,
           voice_config TEXT,
           voice_autoplay INTEGER NOT NULL DEFAULT 0,

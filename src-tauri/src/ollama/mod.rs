@@ -78,14 +78,7 @@ pub async fn execute_chat_request(
         return execute_streaming_chat_request(app, &client, &chat_body, req, &request_id).await;
     }
 
-    execute_non_streaming_chat_request(
-        app,
-        &client,
-        &req.url,
-        &chat_body,
-        req,
-    )
-    .await
+    execute_non_streaming_chat_request(app, &client, &req.url, &chat_body, req).await
 }
 
 fn credential_runtime_headers(credential: &ProviderCredential) -> HashMap<String, String> {

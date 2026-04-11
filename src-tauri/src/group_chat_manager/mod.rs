@@ -3673,6 +3673,8 @@ fn load_character(conn: &rusqlite::Connection, character_id: &str) -> Result<Cha
         fallback_model_id: None,
         memory_type: row.7.unwrap_or_else(|| "manual".to_string()),
         prompt_template_id: None,
+        group_chat_prompt_template_id: None,
+        group_chat_roleplay_prompt_template_id: None,
         system_prompt: None,
         created_at: row.4 as u64,
         updated_at: row.5 as u64,
@@ -4251,13 +4253,84 @@ fn build_group_system_prompt(
     lorebook_text: &str,
 ) -> Vec<SystemPromptEntry> {
     use crate::chat_manager::storage::{get_base_prompt, PromptType};
+    use crate::chat_manager::types::PromptTemplateType;
+
+    fn resolve_group_template(
+        app: &AppHandle,
+        requested_template_id: Option<&str>,
+        expected_prompt_type: PromptTemplateType,
+        fallback_template_id: &str,
+    ) -> Option<(String, Vec<SystemPromptEntry>, bool)> {
+        if let Some(template_id) = requested_template_id {
+            match prompts::get_template(app, template_id) {
+                Ok(Some(template)) if template.prompt_type == expected_prompt_type => {
+                    return Some((
+                        template.content,
+                        template.entries,
+                        template.condense_prompt_entries,
+                    ));
+                }
+                Ok(Some(template)) => {
+                    log_warn(
+                        app,
+                        "group_chat",
+                        format!(
+                            "Ignoring character group prompt template {} due to mismatched type {:?}",
+                            template_id, template.prompt_type
+                        ),
+                    );
+                }
+                Ok(None) => {
+                    log_warn(
+                        app,
+                        "group_chat",
+                        format!(
+                            "Character group prompt template {} was not found; falling back",
+                            template_id
+                        ),
+                    );
+                }
+                Err(err) => {
+                    log_warn(
+                        app,
+                        "group_chat",
+                        format!(
+                            "Failed to load character group prompt template {}: {}",
+                            template_id, err
+                        ),
+                    );
+                }
+            }
+        }
+
+        prompts::get_template(app, fallback_template_id)
+            .ok()
+            .flatten()
+            .map(|template| {
+                (
+                    template.content,
+                    template.entries,
+                    template.condense_prompt_entries,
+                )
+            })
+    }
 
     // Select template based on chat type
     let is_roleplay = session.chat_type == "roleplay";
-    let template_id = if is_roleplay {
+    let fallback_template_id = if is_roleplay {
         prompts::APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID
     } else {
         prompts::APP_GROUP_CHAT_TEMPLATE_ID
+    };
+    let character_template_id = if is_roleplay {
+        character.group_chat_roleplay_prompt_template_id.as_deref()
+    } else {
+        character.group_chat_prompt_template_id.as_deref()
+    };
+    let expected_prompt_type = if is_roleplay {
+        PromptTemplateType::GroupChatRoleplay
+    } else {
+        PromptTemplateType::GroupChatConversational
     };
     if let Err(err) = prompts::ensure_group_chat_templates(app) {
         log_warn(
@@ -4269,41 +4342,37 @@ fn build_group_system_prompt(
             ),
         );
     }
-    let template = prompts::get_template(app, template_id)
-        .ok()
-        .flatten()
-        .map(|template| {
-            (
-                template.content,
-                template.entries,
-                template.condense_prompt_entries,
-            )
-        })
-        .unwrap_or_else(|| {
-            let content = if is_roleplay {
-                get_base_prompt(PromptType::GroupChatRoleplayPrompt)
-            } else {
-                get_base_prompt(PromptType::GroupChatPrompt)
-            };
-            (
-                content.clone(),
-                vec![SystemPromptEntry {
-                    id: "entry_system".to_string(),
-                    name: "System Prompt".to_string(),
-                    role: PromptEntryRole::System,
-                    content,
-                    enabled: true,
-                    injection_position: PromptEntryPosition::Relative,
-                    injection_depth: 0,
-                    conditional_min_messages: None,
-                    interval_turns: None,
-                    system_prompt: true,
-                    conditions: None,
-                    prompt_entry_payload: None,
-                }],
-                false,
-            )
-        });
+    let template = resolve_group_template(
+        app,
+        character_template_id,
+        expected_prompt_type,
+        fallback_template_id,
+    )
+    .unwrap_or_else(|| {
+        let content = if is_roleplay {
+            get_base_prompt(PromptType::GroupChatRoleplayPrompt)
+        } else {
+            get_base_prompt(PromptType::GroupChatPrompt)
+        };
+        (
+            content.clone(),
+            vec![SystemPromptEntry {
+                id: "entry_system".to_string(),
+                name: "System Prompt".to_string(),
+                role: PromptEntryRole::System,
+                content,
+                enabled: true,
+                injection_position: PromptEntryPosition::Relative,
+                injection_depth: 0,
+                conditional_min_messages: None,
+                interval_turns: None,
+                system_prompt: true,
+                conditions: None,
+                prompt_entry_payload: None,
+            }],
+            false,
+        )
+    });
 
     // Character and persona descriptions are passed RAW to the LLM without any
     // translation or processing. The LLM receives the full description text as-is.

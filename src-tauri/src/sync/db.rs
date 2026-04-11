@@ -2748,7 +2748,7 @@ fn fetch_characters_data(
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
     // Characters
-    let sql = format!("SELECT id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, definition, description, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, fallback_model_id, memory_type, prompt_template_id, system_prompt, voice_config, voice_autoplay, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, chat_appearance, default_chat_template_id, created_at, updated_at FROM characters WHERE id IN ({})", placeholders);
+    let sql = format!("SELECT id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, definition, description, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, fallback_model_id, memory_type, prompt_template_id, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id, system_prompt, voice_config, voice_autoplay, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, chat_appearance, default_chat_template_id, created_at, updated_at FROM characters WHERE id IN ({})", placeholders);
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -2776,18 +2776,20 @@ fn fetch_characters_data(
                 fallback_model_id: r.get(18)?,
                 memory_type: r.get(19)?,
                 prompt_template_id: r.get(20)?,
-                system_prompt: r.get(21)?,
-                voice_config: r.get(22)?,
-                voice_autoplay: r.get(23)?,
-                disable_avatar_gradient: r.get(24)?,
-                custom_gradient_enabled: r.get(25)?,
-                custom_gradient_colors: r.get(26)?,
-                custom_text_color: r.get(27)?,
-                custom_text_secondary: r.get(28)?,
-                chat_appearance: r.get(29)?,
-                default_chat_template_id: r.get(30)?,
-                created_at: r.get(31)?,
-                updated_at: r.get(32)?,
+                group_chat_prompt_template_id: r.get(21)?,
+                group_chat_roleplay_prompt_template_id: r.get(22)?,
+                system_prompt: r.get(23)?,
+                voice_config: r.get(24)?,
+                voice_autoplay: r.get(25)?,
+                disable_avatar_gradient: r.get(26)?,
+                custom_gradient_enabled: r.get(27)?,
+                custom_gradient_colors: r.get(28)?,
+                custom_text_color: r.get(29)?,
+                custom_text_secondary: r.get(30)?,
+                chat_appearance: r.get(31)?,
+                default_chat_template_id: r.get(32)?,
+                created_at: r.get(33)?,
+                updated_at: r.get(34)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?

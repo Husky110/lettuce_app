@@ -2683,6 +2683,8 @@ export const CharacterSchema = z.object({
   fallbackModelId: z.string().uuid().nullable().optional(),
   memoryType: z.enum(["manual", "dynamic"]).default("manual"),
   promptTemplateId: z.string().nullish().optional(),
+  groupChatPromptTemplateId: z.string().nullish().optional(),
+  groupChatRoleplayPromptTemplateId: z.string().nullish().optional(),
   disableAvatarGradient: z.boolean().default(false).optional(),
   customGradientEnabled: z.boolean().default(false).optional(),
   customGradientColors: z.array(z.string()).optional(), // Array of hex colors, e.g. ["#ff6b6b", "#4ecdc4"]

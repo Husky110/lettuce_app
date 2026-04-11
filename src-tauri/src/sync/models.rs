@@ -232,6 +232,10 @@ pub struct Character {
     pub fallback_model_id: Option<String>,
     pub memory_type: String,
     pub prompt_template_id: Option<String>,
+    #[serde(default)]
+    pub group_chat_prompt_template_id: Option<String>,
+    #[serde(default)]
+    pub group_chat_roleplay_prompt_template_id: Option<String>,
     pub system_prompt: Option<String>,
     pub voice_config: Option<String>,
     #[serde(default)]
