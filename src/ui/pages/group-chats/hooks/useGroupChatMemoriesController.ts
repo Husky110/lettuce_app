@@ -17,7 +17,9 @@ import { storageBridge } from "../../../../core/storage/files";
 import {
   markMemoryToolEventReverted,
   revertMemoryToolEvent,
+  summarizeRevertImpact,
 } from "../../../../core/storage/memoryToolEvents";
+import { confirmBottomMenu } from "../../../components/ConfirmBottomMenu";
 import { initUi, uiReducer } from "../reducers/groupChatMemoriesReducer";
 
 type MemoryItem = {
@@ -487,6 +489,15 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
   const handleRevertMemoryEvent = useCallback(
     async (event: NonNullable<GroupSession["memoryToolEvents"]>[number]) => {
       if (!session?.id || !event.id || !session.memoryEmbeddings) return;
+
+      const confirmed = await confirmBottomMenu({
+        title: "Revert this cycle?",
+        message: summarizeRevertImpact(event),
+        confirmLabel: "Revert",
+        destructive: true,
+      });
+      if (!confirmed) return;
+
       setRevertingEventId(event.id);
       try {
         const nextEmbeddings = revertMemoryToolEvent(session.memoryEmbeddings, event);

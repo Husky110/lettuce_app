@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   X,
   RefreshCw,
+  RotateCcw,
   Snowflake,
   Flame,
   Cpu,
@@ -44,7 +45,9 @@ import {
 import {
   markMemoryToolEventReverted,
   revertMemoryToolEvent,
+  summarizeRevertImpact,
 } from "../../../core/storage/memoryToolEvents";
+import { confirmBottomMenu } from "../../components/ConfirmBottomMenu";
 
 import { storageBridge } from "../../../core/storage/files";
 import {
@@ -560,7 +563,13 @@ const ACTION_STYLES: Record<
   },
 };
 
-function ActionCard({ action }: { action: MemoryToolEvent["actions"][number] }) {
+function ActionCard({
+  action,
+  isReverted,
+}: {
+  action: MemoryToolEvent["actions"][number];
+  isReverted?: boolean;
+}) {
   const style = ACTION_STYLES[action.name] || {
     icon: Cpu,
     color: "text-zinc-300",
@@ -589,26 +598,46 @@ function ActionCard({ action }: { action: MemoryToolEvent["actions"][number] }) 
     <div
       className={cn(
         radius.md,
-        "border px-3 py-2.5 flex items-start gap-2.5",
-        style.bg,
-        style.border,
+        "border px-3 py-2.5 flex items-start gap-2.5 transition-colors",
+        isReverted ? "bg-fg/3 border-fg/8" : style.bg,
+        isReverted ? "border-fg/8" : style.border,
       )}
     >
-      <Icon size={14} className={cn(style.color, "mt-0.5 shrink-0")} />
+      <Icon
+        size={14}
+        className={cn(isReverted ? "text-fg/30" : style.color, "mt-0.5 shrink-0")}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={cn("text-[11px] font-semibold", style.color)}>{style.label}</span>
+          <span
+            className={cn(
+              "text-[11px] font-semibold",
+              isReverted ? "text-fg/40 line-through" : style.color,
+            )}
+          >
+            {style.label}
+          </span>
+          {isReverted && (
+            <span className="rounded-md border border-fg/10 bg-fg/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg/40">
+              undone
+            </span>
+          )}
           {category && (
-            <span className="rounded-full border border-fg/8 bg-fg/5 px-1.5 py-0.5 text-[10px] text-fg/40">
+            <span
+              className={cn(
+                "rounded-full border border-fg/8 bg-fg/5 px-1.5 py-0.5 text-[10px]",
+                isReverted ? "text-fg/30" : "text-fg/40",
+              )}
+            >
               {category.replace(/_/g, " ")}
             </span>
           )}
-          {important && (
+          {important && !isReverted && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
               pinned
             </span>
           )}
-          {confidence != null && (
+          {confidence != null && !isReverted && (
             <span
               className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded-full border",
@@ -622,12 +651,24 @@ function ActionCard({ action }: { action: MemoryToolEvent["actions"][number] }) 
           )}
         </div>
         {memoryText && (
-          <p className={cn(typography.caption.size, colors.text.secondary, "mt-1 leading-relaxed")}>
+          <p
+            className={cn(
+              typography.caption.size,
+              "mt-1 leading-relaxed",
+              isReverted ? "text-fg/35 line-through decoration-fg/20" : colors.text.secondary,
+            )}
+          >
             {memoryText}
           </p>
         )}
         {id && !memoryText && (
-          <p className={cn(typography.caption.size, colors.text.tertiary, "mt-1 font-mono")}>
+          <p
+            className={cn(
+              typography.caption.size,
+              "mt-1 font-mono",
+              isReverted ? "text-fg/30 line-through" : colors.text.tertiary,
+            )}
+          >
             #{id}
           </p>
         )}
@@ -660,16 +701,31 @@ function CycleCard({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const hasError = !!event.error;
+  const isReverted = !!event.revertedAt;
   const actionSummary = event.actions?.length ? summarizeActions(event.actions) : null;
 
   return (
-    <div className={cn(components.card.base, "overflow-hidden", hasError && "border-red-400/20")}>
+    <div
+      className={cn(
+        components.card.base,
+        "overflow-hidden",
+        hasError && "border-red-400/20",
+        isReverted && "border-fg/8 bg-fg/3",
+      )}
+    >
       {/* Collapsed header */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsOpen(!isOpen);
+          }
+        }}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-3 text-left",
+          "w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer",
           interactive.hover.brightness,
         )}
       >
@@ -677,19 +733,35 @@ function CycleCard({
         <div
           className={cn(
             "h-2 w-2 rounded-full shrink-0",
-            hasError ? "bg-red-400" : "bg-emerald-400",
+            isReverted ? "bg-fg/20" : hasError ? "bg-red-400" : "bg-emerald-400",
           )}
         />
 
         <div className="flex-1 min-w-0">
           {/* Top line: relative time + action counts */}
           <div className="flex items-center gap-2">
-            <span className={cn(typography.caption.size, colors.text.secondary, "font-medium")}>
+            <span
+              className={cn(
+                typography.caption.size,
+                "font-medium",
+                isReverted ? "text-fg/40" : colors.text.secondary,
+              )}
+            >
               {relativeTime(event.createdAt || 0)}
             </span>
             {actionSummary && (
-              <span className={cn(typography.caption.size, colors.text.tertiary)}>
+              <span
+                className={cn(
+                  typography.caption.size,
+                  isReverted ? "text-fg/30 line-through" : colors.text.tertiary,
+                )}
+              >
                 — {actionSummary}
+              </span>
+            )}
+            {isReverted && (
+              <span className="rounded-md border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
+                reverted
               </span>
             )}
             {hasError && <AlertTriangle size={12} className="text-red-400 shrink-0" />}
@@ -703,6 +775,27 @@ function CycleCard({
           )}
         </div>
 
+        {event.id && !isReverted && onRevert && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRevert(event);
+            }}
+            disabled={reverting}
+            title={reverting ? "Reverting..." : "Revert this cycle"}
+            aria-label="Revert this cycle"
+            className={cn(
+              "shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md",
+              "border border-fg/10 bg-fg/5 text-fg/60",
+              "transition hover:border-warning/30 hover:bg-warning/10 hover:text-warning",
+              "disabled:pointer-events-none disabled:opacity-50",
+            )}
+          >
+            <RotateCcw size={13} className={cn(reverting && "animate-spin")} />
+          </button>
+        )}
+
         <ChevronDown
           size={14}
           className={cn(
@@ -711,11 +804,28 @@ function CycleCard({
             isOpen && "rotate-180",
           )}
         />
-      </button>
+      </div>
 
       {/* Expanded content */}
       {isOpen && (
         <div className="px-4 pb-4 space-y-3">
+          {isReverted && event.revertedAt && (
+            <div
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border border-warning/15 bg-warning/5 px-3 py-1.5",
+                typography.caption.size,
+                "text-warning/80",
+              )}
+            >
+              <RefreshCw size={12} className="text-warning/70" />
+              <span>Reverted {relativeTime(event.revertedAt)}</span>
+              <span className="text-warning/40">·</span>
+              <span className="text-warning/50">
+                {new Date(event.revertedAt).toLocaleString()}
+              </span>
+            </div>
+          )}
+
           {/* Summary */}
           {event.summary && (
             <div className={cn(radius.md, "border border-blue-400/20 bg-blue-400/10 px-3 py-2.5")}>
@@ -739,29 +849,8 @@ function CycleCard({
               {event.actions
                 .filter((a) => a.name !== "done")
                 .map((action, idx) => (
-                  <ActionCard key={idx} action={action} />
+                  <ActionCard key={idx} action={action} isReverted={isReverted} />
                 ))}
-            </div>
-          )}
-
-          {event.id && !event.revertedAt && onRevert && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => onRevert(event)}
-                disabled={reverting}
-                className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-xs font-medium text-fg/80 transition hover:bg-fg/10 disabled:pointer-events-none disabled:opacity-50"
-              >
-                {reverting ? "Reverting..." : "Revert"}
-              </button>
-            </div>
-          )}
-
-          {event.revertedAt && (
-            <div className="flex justify-end">
-              <span className="rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning">
-                Reverted
-              </span>
             </div>
           )}
 
@@ -1242,6 +1331,15 @@ export function ChatMemoriesPage() {
   const handleRevertMemoryEvent = useCallback(
     async (event: MemoryToolEvent) => {
       if (!session?.id || !event.id || !session.memoryEmbeddings) return;
+
+      const confirmed = await confirmBottomMenu({
+        title: "Revert this cycle?",
+        message: summarizeRevertImpact(event),
+        confirmLabel: "Revert",
+        destructive: true,
+      });
+      if (!confirmed) return;
+
       setRevertingEventId(event.id);
       try {
         const nextEmbeddings = revertMemoryToolEvent(session.memoryEmbeddings, event);

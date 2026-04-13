@@ -105,6 +105,38 @@ export function revertMemoryToolEvent<T extends AnyMemory>(
   return next;
 }
 
+export function summarizeRevertImpact(event: AnyMemoryToolEvent): string {
+  const counts = { create: 0, delete: 0, pin: 0, unpin: 0 };
+  for (const action of event.actions ?? []) {
+    if (action.name === "create_memory") counts.create++;
+    else if (action.name === "delete_memory") counts.delete++;
+    else if (action.name === "pin_memory") counts.pin++;
+    else if (action.name === "unpin_memory") counts.unpin++;
+  }
+
+  const parts: string[] = [];
+  if (counts.create) {
+    parts.push(`remove ${counts.create} created ${counts.create === 1 ? "memory" : "memories"}`);
+  }
+  if (counts.delete) {
+    parts.push(`restore ${counts.delete} deleted ${counts.delete === 1 ? "memory" : "memories"}`);
+  }
+  if (counts.pin) {
+    parts.push(`unpin ${counts.pin} ${counts.pin === 1 ? "memory" : "memories"}`);
+  }
+  if (counts.unpin) {
+    parts.push(`re-pin ${counts.unpin} ${counts.unpin === 1 ? "memory" : "memories"}`);
+  }
+
+  if (!parts.length) return "This will mark the cycle as reverted with no memory changes.";
+
+  const joined =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `This will ${joined}.`;
+}
+
 export function markMemoryToolEventReverted<
   T extends { id?: string; revertedAt?: number } & Record<string, unknown>,
 >(events: T[], eventId: string, revertedAt: number): T[] {
