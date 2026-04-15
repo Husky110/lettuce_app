@@ -110,6 +110,7 @@ type LlamaCppContextInfo = {
   availableVramBytes?: number | null;
   modelSizeBytes?: number | null;
   layerCount?: number | null;
+  supportsGpuOffload?: boolean | null;
 };
 
 function formatRuntimeNumber(value?: number | null): string | null {
@@ -1232,8 +1233,13 @@ export function EditModelPage() {
   const availableRamGiB = formatGiB(llamaContextInfo?.availableMemoryBytes ?? null);
   const availableVramGiB = formatGiB(llamaContextInfo?.availableVramBytes ?? null);
   const modelSizeGiB = formatGiB(llamaContextInfo?.modelSizeBytes ?? null);
+  const supportsLlamaGpuOffload =
+    llamaContextInfo?.supportsGpuOffload ?? llamaRuntimeReport?.supportsGpuOffload ?? null;
+  const isCpuOnlyLlamaBackend = isLocalModel && supportsLlamaGpuOffload === false;
   const contextCacheLocationLabel =
-    modelAdvancedDraft.llamaOffloadKqv === true
+    isCpuOnlyLlamaBackend
+      ? "RAM"
+      : modelAdvancedDraft.llamaOffloadKqv === true
       ? "VRAM"
       : modelAdvancedDraft.llamaOffloadKqv === false
         ? "RAM"
@@ -1351,21 +1357,21 @@ export function EditModelPage() {
     if (preset === "balanced") {
       handleLlamaBatchSizeChange(512);
       handleLlamaKvTypeChange("q8_0");
-      handleLlamaOffloadKqvChange(true);
+      handleLlamaOffloadKqvChange(isCpuOnlyLlamaBackend ? false : true);
       handleLlamaFlashAttentionChange("auto");
       return;
     }
     if (preset === "throughput") {
       handleLlamaBatchSizeChange(1024);
       handleLlamaKvTypeChange("f16");
-      handleLlamaOffloadKqvChange(true);
+      handleLlamaOffloadKqvChange(isCpuOnlyLlamaBackend ? false : true);
       handleLlamaFlashAttentionChange("enabled");
       return;
     }
     if (preset === "vram") {
       handleLlamaBatchSizeChange(512);
       handleLlamaKvTypeChange("q4_k");
-      handleLlamaOffloadKqvChange(true);
+      handleLlamaOffloadKqvChange(isCpuOnlyLlamaBackend ? false : true);
       handleLlamaFlashAttentionChange("enabled");
       return;
     }
@@ -1483,6 +1489,23 @@ export function EditModelPage() {
     modelAdvancedDraft.llamaKvType,
     modelAdvancedDraft.llamaGpuLayers,
   ]);
+
+  useEffect(() => {
+    if (!isCpuOnlyLlamaBackend) {
+      return;
+    }
+    if (
+      modelAdvancedDraft.llamaGpuLayers === 0 &&
+      modelAdvancedDraft.llamaOffloadKqv === false
+    ) {
+      return;
+    }
+    setModelAdvancedDraft({
+      ...modelAdvancedDraft,
+      llamaGpuLayers: 0,
+      llamaOffloadKqv: false,
+    });
+  }, [isCpuOnlyLlamaBackend, modelAdvancedDraft, setModelAdvancedDraft]);
 
   // Fetch runability score for local models
   useEffect(() => {
@@ -3186,7 +3209,9 @@ export function EditModelPage() {
                                         Offload KQV
                                       </span>
                                       <span className="block text-[13px] text-fg/40">
-                                        KV cache &amp; KQV ops on GPU
+                                        {isCpuOnlyLlamaBackend
+                                          ? "Disabled on CPU-only backends"
+                                          : "KV cache & KQV ops on GPU"}
                                       </span>
                                     </div>
                                     <select
@@ -3204,7 +3229,11 @@ export function EditModelPage() {
                                           val === "auto" ? null : val === "on",
                                         );
                                       }}
-                                      className={selectInputClassName}
+                                      disabled={isCpuOnlyLlamaBackend}
+                                      className={cn(
+                                        selectInputClassName,
+                                        isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
+                                      )}
                                     >
                                       <option value="auto" className="bg-[#16171d]">
                                         Auto
@@ -3345,7 +3374,9 @@ export function EditModelPage() {
                                           GPU Layers
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Offload layers to GPU (0 = CPU only)
+                                          {isCpuOnlyLlamaBackend
+                                            ? "Disabled on CPU-only backends"
+                                            : "Offload layers to GPU (0 = CPU only)"}
                                         </span>
                                         {llamaLayerPlacementSummary ? (
                                           <span className="block text-[12px] text-fg/34">
@@ -3376,8 +3407,12 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
+                                      disabled={isCpuOnlyLlamaBackend}
                                       placeholder="Auto"
-                                      className={numberInputClassName}
+                                      className={cn(
+                                        numberInputClassName,
+                                        isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
+                                      )}
                                     />
                                   </div>
 

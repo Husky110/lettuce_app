@@ -109,6 +109,7 @@ import { getPlatform } from "./core/utils/platform";
 import { I18nProvider, useI18n } from "./core/i18n/context";
 import { hasSeenTooltip, setTooltipSeen } from "./core/storage/appState";
 import { checkForAppUpdate } from "./core/app-updates/checkForAppUpdate";
+import { detectUpdateChannel } from "./core/app-updates/checkForAppUpdate";
 import { presentAppUpdateToast } from "./core/app-updates/presentAppUpdateToast";
 import { readSettings, SETTINGS_UPDATED_EVENT } from "./core/storage/repo";
 import { recordChatDebugEvent } from "./core/debug/chatDebugStore";
@@ -633,7 +634,7 @@ function AppUpdateNotifier() {
 
       const currentVersion =
         detail?.currentVersion ?? (await invoke<string>("get_app_version").catch(() => "1.0.0"));
-      const channel = detail?.channel ?? (currentVersion.includes("-dev.") ? "dev" : "release");
+      const channel = detail?.channel ?? detectUpdateChannel(currentVersion);
       const latestVersion = detail?.latestVersion ?? "999.0.0";
       const releaseUrl = detail?.releaseUrl ?? "https://github.com/LettuceAI/app/releases";
       const downloadUrl =

@@ -49,8 +49,17 @@ type CandidateRelease = {
   version: ParsedVersionInfo;
 };
 
-function detectChannel(currentVersion: string): AppChannel {
-  return currentVersion.includes("-dev.") ? "dev" : "release";
+function isDevBuildVersion(currentVersion: string): boolean {
+  const normalized = currentVersion.trim().toLowerCase();
+  return (
+    normalized.includes("-dev.") ||
+    normalized.includes("-dev-") ||
+    /^0\.1\.\d+(?:[+-].*)?$/.test(normalized)
+  );
+}
+
+export function detectUpdateChannel(currentVersion: string): AppChannel {
+  return isDevBuildVersion(currentVersion) ? "dev" : "release";
 }
 
 function getTagPrefix(platform: AppPlatform, channel: AppChannel): string | null {
@@ -78,17 +87,21 @@ function parseReleaseVersion(input: string): NumericVersionInfo | null {
 }
 
 function parseCurrentDevVersion(input: string): DevVersionInfo | null {
-  const match = input.match(/0\.1\.(\d+)-dev(?:\.|-)([a-z0-9]+)/i);
-  if (!match) return null;
+  const normalized = input.trim();
+  const runMatch = normalized.match(/^0\.1\.(\d+)/i);
+  if (!runMatch) return null;
 
-  const runNumber = Number.parseInt(match[1], 10);
+  const runNumber = Number.parseInt(runMatch[1], 10);
   if (!Number.isFinite(runNumber)) return null;
+
+  const attemptMatch = normalized.match(/-dev(?:\.|-)(\d+)/i);
+  const buildAttempt = attemptMatch ? Number.parseInt(attemptMatch[1], 10) : 1;
 
   return {
     kind: "dev",
-    version: match[0],
+    version: normalized,
     runNumber,
-    buildAttempt: 1,
+    buildAttempt: Number.isFinite(buildAttempt) ? buildAttempt : 1,
   };
 }
 
@@ -237,7 +250,7 @@ export async function checkForAppUpdate(platform: AppPlatform): Promise<AppUpdat
   if (platform.os === "ios") return null;
 
   const currentVersion = await invoke<string>("get_app_version");
-  const channel = detectChannel(currentVersion);
+  const channel = detectUpdateChannel(currentVersion);
   const prefix = getTagPrefix(platform, channel);
   if (!prefix) return null;
 

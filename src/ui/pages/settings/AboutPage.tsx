@@ -4,7 +4,11 @@ import { ExternalLink, Globe, RefreshCw } from "lucide-react";
 
 import githubSvg from "../../../assets/github.svg";
 import logoSvg from "../../../assets/logo.svg";
-import { checkForAppUpdate, type AppUpdateInfo } from "../../../core/app-updates/checkForAppUpdate";
+import {
+  checkForAppUpdate,
+  detectUpdateChannel,
+  type AppUpdateInfo,
+} from "../../../core/app-updates/checkForAppUpdate";
 import { presentAppUpdateToast } from "../../../core/app-updates/presentAppUpdateToast";
 import { useI18n } from "../../../core/i18n/context";
 import { readSettings, saveAdvancedSettings } from "../../../core/storage/repo";
@@ -85,7 +89,7 @@ export function AboutPage() {
     };
   }, []);
 
-  const buildChannel = appVersion.includes("-dev.")
+  const buildChannel = detectUpdateChannel(appVersion) === "dev"
     ? t("about.buildChannel.dev")
     : t("about.buildChannel.release");
 

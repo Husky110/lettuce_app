@@ -2205,12 +2205,20 @@ pub async fn hf_compute_runability(
     let meta = fetch_gguf_meta(&app, &model_id, &files).await;
 
     let available_ram = crate::llama_cpp::available_memory_bytes();
-    let available_vram = crate::llama_cpp::available_vram_bytes();
+    let supports_gpu_offload = crate::llama_cpp::supports_gpu_offload();
+    let available_vram = if supports_gpu_offload {
+        crate::llama_cpp::available_vram_bytes()
+    } else {
+        Some(0)
+    };
 
     log_info(
         &app,
         "hf_browser",
-        format!("system: RAM={:?} VRAM={:?}", available_ram, available_vram),
+        format!(
+            "system: RAM={:?} VRAM={:?} supports_gpu_offload={}",
+            available_ram, available_vram, supports_gpu_offload
+        ),
     );
 
     Ok(compute_scores(
@@ -2257,7 +2265,12 @@ pub async fn hf_compute_local_runability(
     let meta = read_local_gguf_meta(&path);
 
     let available_ram = crate::llama_cpp::available_memory_bytes().unwrap_or(0);
-    let available_vram = crate::llama_cpp::available_vram_bytes().unwrap_or(0);
+    let supports_gpu_offload = crate::llama_cpp::supports_gpu_offload();
+    let available_vram = if supports_gpu_offload {
+        crate::llama_cpp::available_vram_bytes().unwrap_or(0)
+    } else {
+        0
+    };
     let unified = crate::llama_cpp::is_unified_memory();
     let total_available = resolve_total_available(available_ram, available_vram, unified);
 
@@ -2278,8 +2291,13 @@ pub async fn hf_compute_local_runability(
         &app,
         "hf_browser",
         format!(
-            "local runability: path={} size={} quant={} RAM={} VRAM={}",
-            file_path, file_size, quantization, available_ram, available_vram
+            "local runability: path={} size={} quant={} RAM={} VRAM={} supports_gpu_offload={}",
+            file_path,
+            file_size,
+            quantization,
+            available_ram,
+            available_vram,
+            supports_gpu_offload
         ),
     );
 
@@ -2342,7 +2360,11 @@ pub async fn hf_get_recommendation_data(
 
     let meta = fetch_gguf_meta(&app, &model_id, &files).await;
     let available_ram = crate::llama_cpp::available_memory_bytes().unwrap_or(0);
-    let available_vram = crate::llama_cpp::available_vram_bytes().unwrap_or(0);
+    let available_vram = if crate::llama_cpp::supports_gpu_offload() {
+        crate::llama_cpp::available_vram_bytes().unwrap_or(0)
+    } else {
+        0
+    };
 
     Ok(build_recommendation(
         &files,

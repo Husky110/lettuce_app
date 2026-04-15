@@ -582,6 +582,29 @@ function hasDynamicMemoryState(
   );
 }
 
+function sourceSessionHasDynamicMemoryState(sourceSession: Session): boolean {
+  return hasDynamicMemoryState({
+    memoryEmbeddings: sourceSession.memoryEmbeddings,
+    memorySummary: sourceSession.memorySummary,
+    memorySummaryTokenCount: sourceSession.memorySummaryTokenCount,
+    memoryToolEvents: sourceSession.memoryToolEvents,
+  });
+}
+
+function resolveBranchedVisibleMemories(
+  sourceSession: Session,
+  branchedDynamicMemoryState: Pick<
+    Session,
+    "memoryEmbeddings" | "memorySummary" | "memorySummaryTokenCount" | "memoryToolEvents"
+  >,
+): string[] {
+  if (sourceSessionHasDynamicMemoryState(sourceSession)) {
+    return (branchedDynamicMemoryState.memoryEmbeddings ?? []).map((memory) => memory.text);
+  }
+
+  return [...sourceSession.memories];
+}
+
 /**
  * Return the last successfully loaded settings snapshot, or null if none exists yet.
  * Use this to render immediately on page mount, then call readSettings() to refresh.
@@ -1314,6 +1337,10 @@ export async function createBranchedSession(
     messageIndex,
     messageIdMap,
   );
+  const branchedVisibleMemories = resolveBranchedVisibleMemories(
+    sourceSession,
+    branchedDynamicMemoryState,
+  );
 
   const s: Session = {
     id,
@@ -1324,7 +1351,7 @@ export async function createBranchedSession(
     promptTemplateId: sourceSession.promptTemplateId,
     personaId: sourceSession.personaId,
     personaDisabled: sourceSession.personaDisabled ?? false,
-    memories: [...sourceSession.memories],
+    memories: branchedVisibleMemories,
     memoryEmbeddings: branchedDynamicMemoryState.memoryEmbeddings,
     memorySummary: branchedDynamicMemoryState.memorySummary,
     memorySummaryTokenCount: branchedDynamicMemoryState.memorySummaryTokenCount,
@@ -1367,6 +1394,10 @@ export async function createBranchedSessionToCharacter(
     messageIndex,
     messageIdMap,
   );
+  const branchedVisibleMemories = resolveBranchedVisibleMemories(
+    sourceSession,
+    branchedDynamicMemoryState,
+  );
 
   const s: Session = {
     id,
@@ -1377,7 +1408,7 @@ export async function createBranchedSessionToCharacter(
     promptTemplateId: targetCharacter?.promptTemplateId ?? null,
     personaId: sourceSession.personaId,
     personaDisabled: sourceSession.personaDisabled ?? false,
-    memories: [...sourceSession.memories],
+    memories: branchedVisibleMemories,
     memoryEmbeddings: branchedDynamicMemoryState.memoryEmbeddings,
     memorySummary: branchedDynamicMemoryState.memorySummary,
     memorySummaryTokenCount: branchedDynamicMemoryState.memorySummaryTokenCount,
@@ -1450,12 +1481,16 @@ export async function createBranchedGroupSession(
     messageIndex,
     messageIdMap,
   );
+  const branchedVisibleMemories = resolveBranchedVisibleMemories(
+    sourceSession,
+    branchedDynamicMemoryState,
+  );
   const shouldUseDynamicMemory = hasDynamicMemoryState(branchedDynamicMemoryState);
 
   if (shouldUseDynamicMemory) {
     await storageBridge.groupSessionUpdateMemoryState(
       groupSession.id,
-      sourceSession.memories,
+      branchedVisibleMemories,
       (branchedDynamicMemoryState.memoryEmbeddings ?? []).map((memory) => ({
         ...memory,
         accessCount: 0,
@@ -1468,7 +1503,7 @@ export async function createBranchedGroupSession(
     );
     await storageBridge.groupSessionUpdateMemoryType(groupSession.id, "dynamic");
   } else {
-    await storageBridge.groupSessionUpdateManualMemories(groupSession.id, sourceSession.memories);
+    await storageBridge.groupSessionUpdateManualMemories(groupSession.id, branchedVisibleMemories);
   }
 
   const updatedGroupSession = await storageBridge.groupSessionGet(groupSession.id);

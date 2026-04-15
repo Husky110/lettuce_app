@@ -27,6 +27,7 @@ interface ParameterFieldProps {
   onChange: (value: number | null) => void;
   inputMode?: "decimal" | "numeric";
   rangeLabels?: [string, string];
+  disabled?: boolean;
 }
 
 function ParameterField({
@@ -40,6 +41,7 @@ function ParameterField({
   onChange,
   inputMode = "decimal",
   rangeLabels,
+  disabled = false,
 }: ParameterFieldProps) {
   return (
     <div className="space-y-2">
@@ -61,8 +63,12 @@ function ParameterField({
           const raw = e.target.value;
           onChange(raw === "" ? null : Number(raw));
         }}
+        disabled={disabled}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg placeholder-fg/30 transition focus:border-fg/20 focus:outline-none"
+        className={cn(
+          "w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg placeholder-fg/30 transition focus:border-fg/20 focus:outline-none",
+          disabled && "cursor-not-allowed opacity-60",
+        )}
       />
       {rangeLabels && (
         <div className="flex justify-between text-[10px] text-fg/30">
@@ -113,8 +119,10 @@ export function SessionAdvancedSettings({
     availableMemoryBytes?: number | null;
     availableVramBytes?: number | null;
     modelSizeBytes?: number | null;
+    supportsGpuOffload?: boolean | null;
   } | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const isCpuOnlyLlamaBackend = isLlama && contextInfo?.supportsGpuOffload === false;
 
   useEffect(() => {
     if (!isOpen || !isLlama || !modelPath) return;
@@ -148,6 +156,20 @@ export function SessionAdvancedSettings({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isCpuOnlyLlamaBackend) {
+      return;
+    }
+    if (draft.llamaGpuLayers === 0 && draft.llamaOffloadKqv === false) {
+      return;
+    }
+    onDraftChange({
+      ...draft,
+      llamaGpuLayers: 0,
+      llamaOffloadKqv: false,
+    });
+  }, [draft, isCpuOnlyLlamaBackend, onDraftChange]);
 
   const handleReset = () => {
     onOverrideEnabledChange(false);
@@ -387,7 +409,11 @@ export function SessionAdvancedSettings({
                             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                               <ParameterField
                                 label="GPU Layers"
-                                description="Layers offloaded to GPU. 0 = CPU only."
+                                description={
+                                  isCpuOnlyLlamaBackend
+                                    ? "Disabled on CPU-only backends."
+                                    : "Layers offloaded to GPU. 0 = CPU only."
+                                }
                                 value={draft.llamaGpuLayers}
                                 placeholder="Auto"
                                 min={0}
@@ -395,6 +421,7 @@ export function SessionAdvancedSettings({
                                 step={1}
                                 onChange={(v) => update({ llamaGpuLayers: v })}
                                 inputMode="numeric"
+                                disabled={isCpuOnlyLlamaBackend}
                               />
 
                               <ParameterField
@@ -560,7 +587,9 @@ export function SessionAdvancedSettings({
                                   Offload KQV
                                 </label>
                                 <p className="text-[11px] text-fg/40 leading-relaxed">
-                                  KV cache & KQV ops on GPU.
+                                  {isCpuOnlyLlamaBackend
+                                    ? "Disabled on CPU-only backends."
+                                    : "KV cache & KQV ops on GPU."}
                                 </p>
                                 <select
                                   value={
@@ -576,7 +605,11 @@ export function SessionAdvancedSettings({
                                       llamaOffloadKqv: val === "auto" ? null : val === "on",
                                     });
                                   }}
-                                  className="w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg transition focus:border-fg/20 focus:outline-none"
+                                  disabled={isCpuOnlyLlamaBackend}
+                                  className={cn(
+                                    "w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg transition focus:border-fg/20 focus:outline-none",
+                                    isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
+                                  )}
                                 >
                                   <option value="auto">Auto</option>
                                   <option value="on">On</option>

@@ -1324,16 +1324,34 @@ pub fn group_session_branch_to_character(
     let now = now_ms() as i64;
     let new_session_id = Uuid::new_v4().to_string();
     let name = new_name.unwrap_or_else(|| format!("{} - {}", source.name, character_name));
+    let memories_json = serde_json::to_string(&source.memories)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let memory_embeddings_json = serde_json::to_string(&source.memory_embeddings)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let memory_tool_events_json = serde_json::to_string(&source.memory_tool_events)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     // Create new single-character session
     conn.execute(
-        "INSERT INTO sessions (id, character_id, persona_id, title, created_at, updated_at, archived)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5, 0)",
+        "INSERT INTO sessions (
+            id, character_id, persona_id, title, memories, memory_embeddings, memory_summary,
+            memory_summary_token_count, memory_tool_events, memory_status, memory_error,
+            memory_progress_step, created_at, updated_at, archived
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, 0)",
         params![
             new_session_id,
             character_id,
             source.persona_id,
             name,
+            memories_json,
+            memory_embeddings_json,
+            source.memory_summary,
+            source.memory_summary_token_count,
+            memory_tool_events_json,
+            source.memory_status,
+            source.memory_error,
+            source.memory_progress_step,
             now
         ],
     )
