@@ -1514,6 +1514,7 @@ async fn send_dynamic_memory_request(
         return Err("Request was cancelled by user".to_string());
     }
     let extra_body_fields = sanitize_dynamic_memory_extra_body_fields(
+        &provider_cred.provider_id,
         extra_body_fields,
         overwrite_llama_sampler_config,
     );
@@ -1766,10 +1767,11 @@ async fn send_dynamic_memory_request(
 }
 
 fn sanitize_dynamic_memory_extra_body_fields(
+    provider_id: &str,
     extra_body_fields: Option<HashMap<String, Value>>,
     overwrite_llama_sampler_config: bool,
 ) -> Option<HashMap<String, Value>> {
-    if !overwrite_llama_sampler_config {
+    if !overwrite_llama_sampler_config || provider_id != "llamacpp" {
         return extra_body_fields;
     }
     let mut extra = extra_body_fields.unwrap_or_default();
