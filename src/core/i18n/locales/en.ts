@@ -711,6 +711,12 @@ export const enMessages = {
       },
       thoughtProcess: "Thought process",
       regenerateResponse: "Regenerate response",
+      guidedRegenerationTitle: "Guide regeneration",
+      guidedRegenerationLabel: "How should it change?",
+      guidedRegenerationDescription:
+        "Describe the tone, length, details to keep or remove, and anything the next reply should do differently.",
+      guidedRegenerationPlaceholder: "Make it shorter, warmer, more direct...",
+      guidedRegenerationSubmit: "Regenerate",
       cancelAudioGeneration: "Cancel audio generation",
       stopAudio: "Stop audio",
       playMessageAudio: "Play message audio",

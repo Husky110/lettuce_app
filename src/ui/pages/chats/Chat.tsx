@@ -1463,8 +1463,8 @@ export function ChatConversationPage() {
   }, []);
 
   const handleRegenerateMessage = useCallback(
-    async (message: StoredMessage) => {
-      await handleRegenerate(message, { swapPlaces });
+    async (message: StoredMessage, options?: { guidance?: string }) => {
+      await handleRegenerate(message, { swapPlaces, guidance: options?.guidance });
     },
     [handleRegenerate, swapPlaces],
   );

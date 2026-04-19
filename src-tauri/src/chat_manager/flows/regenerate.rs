@@ -56,10 +56,16 @@ impl RegenerateFlow {
             session_id,
             message_id,
             swap_places,
+            guidance,
             stream,
             request_id,
         } = args;
         let swap_places = role_swap_enabled(swap_places);
+        let guidance = guidance
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
 
         log_info(
             &app,
@@ -352,6 +358,15 @@ impl RegenerateFlow {
 
             insert_in_chat_prompt_entries(&mut chat_messages, &system_role, &in_chat_entries);
             out.extend(chat_messages);
+            if let Some(guidance) = &guidance {
+                out.push(json!({
+                    "role": "user",
+                    "content": format!(
+                        "[REGENERATE INSTRUCTION]\nRegenerate your previous response to the last message. Follow this additional user instruction for the new response:\n{}",
+                        guidance
+                    )
+                }));
+            }
             sanitize_placeholders_in_api_messages(&mut out, char_name, persona_name);
             out
         };

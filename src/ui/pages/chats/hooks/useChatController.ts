@@ -64,7 +64,10 @@ export interface ChatController {
     options?: { swapPlaces?: boolean },
   ) => Promise<void>;
   handleContinue: (options?: { swapPlaces?: boolean }) => Promise<void>;
-  handleRegenerate: (message: StoredMessage, options?: { swapPlaces?: boolean }) => Promise<void>;
+  handleRegenerate: (
+    message: StoredMessage,
+    options?: { swapPlaces?: boolean; guidance?: string },
+  ) => Promise<void>;
   handleAbort: () => Promise<void>;
   getVariantState: (message: StoredMessage) => VariantState;
   applyVariantSelection: (messageId: string, variantId: string) => Promise<void>;

@@ -131,10 +131,11 @@ export async function regenerateAssistantMessage(params: {
   sessionId: string;
   messageId: string;
   swapPlaces?: boolean;
+  guidance?: string;
   stream?: boolean;
   requestId?: string;
 }): Promise<ChatRegenerateResult> {
-  const { sessionId, messageId, swapPlaces = false, stream = true, requestId } = params;
+  const { sessionId, messageId, swapPlaces = false, guidance, stream = true, requestId } = params;
   if (requestId) beginAsyncAction(requestId, "chat_regenerate");
   try {
     return await invoke<ChatRegenerateResult>("chat_regenerate", {
@@ -142,6 +143,7 @@ export async function regenerateAssistantMessage(params: {
         sessionId,
         messageId,
         swapPlaces,
+        guidance: guidance?.trim() ? guidance.trim() : null,
         stream,
         requestId: requestId ?? null,
       },
