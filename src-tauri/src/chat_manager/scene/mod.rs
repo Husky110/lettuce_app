@@ -11,7 +11,7 @@ use crate::chat_manager::prompting::entry_conditions::{
 };
 use crate::chat_manager::prompts;
 use crate::chat_manager::provider_adapter::adapter_for;
-use crate::chat_manager::request::extract_text;
+use crate::chat_manager::request::{extract_text, message_text_for_api};
 use crate::chat_manager::service::{require_api_key, ChatContext};
 use crate::chat_manager::storage::{
     get_base_prompt_entries, resolve_credential_for_model, PromptType,
@@ -692,17 +692,21 @@ fn build_scene_prompt_context_messages(
 
     let context = context_slice
         .iter()
-        .filter(|message| {
-            matches!(message.role.as_str(), "user" | "assistant" | "scene")
-                && !message.content.trim().is_empty()
-        })
-        .map(|message| {
+        .filter_map(|message| {
+            if !matches!(message.role.as_str(), "user" | "assistant" | "scene") {
+                return None;
+            }
+            let content = message_text_for_api(message);
+            let content = content.trim();
+            if content.is_empty() {
+                return None;
+            }
             let role = match message.role.as_str() {
                 "assistant" => "Assistant",
                 "scene" => "Scene",
                 _ => "User",
             };
-            format!("{}: {}", role, message.content.trim())
+            Some(format!("{}: {}", role, content))
         })
         .collect::<Vec<_>>()
         .join("\n\n");
