@@ -163,6 +163,7 @@ export function ChatConversationPage() {
   const [showBackgroundLibraryMenu, setShowBackgroundLibraryMenu] = useState(false);
   const [generatedReply, setGeneratedReply] = useState<string | null>(null);
   const [generatingReply, setGeneratingReply] = useState(false);
+  const [helpMeReplyReasoning, setHelpMeReplyReasoning] = useState(false);
   const [helpMeReplyError, setHelpMeReplyError] = useState<string | null>(null);
   const [showScenePromptModeMenu, setShowScenePromptModeMenu] = useState(false);
   const [showScenePromptEditorMenu, setShowScenePromptEditorMenu] = useState(false);
@@ -1052,6 +1053,7 @@ export function ChatConversationPage() {
     const requestId = helpMeReplyRequestIdRef.current;
     clearHelpMeReplyRuntime();
     setGeneratingReply(false);
+    setHelpMeReplyReasoning(false);
     if (!requestId) return;
     try {
       await invoke("abort_request", { requestId });
@@ -1064,6 +1066,7 @@ export function ChatConversationPage() {
     setShowResultMenu(false);
     setGeneratedReply(null);
     setHelpMeReplyError(null);
+    setHelpMeReplyReasoning(false);
     void cancelHelpMeReplyGeneration();
   }, [cancelHelpMeReplyGeneration]);
 
@@ -1075,6 +1078,7 @@ export function ChatConversationPage() {
       setShowPlusMenu(false);
       setGeneratedReply(null);
       setHelpMeReplyError(null);
+      setHelpMeReplyReasoning(false);
       setGeneratingReply(true);
       setShowResultMenu(true);
 
@@ -1083,10 +1087,10 @@ export function ChatConversationPage() {
       let streamingText = "";
       let hasStartedStreaming = false;
 
-      // Timeout to clear loading state if streaming doesn't start within 5 seconds
+      // Some reasoning models can spend several seconds thinking before sending reply text.
       helpMeReplyLoadingTimeoutRef.current = window.setTimeout(() => {
         if (!hasStartedStreaming) {
-          setGeneratingReply(false);
+          setHelpMeReplyReasoning(true);
         }
       }, 5000);
 
@@ -1103,6 +1107,7 @@ export function ChatConversationPage() {
               if (!hasStartedStreaming) {
                 hasStartedStreaming = true;
                 setGeneratingReply(false);
+                setHelpMeReplyReasoning(false);
                 if (helpMeReplyLoadingTimeoutRef.current !== null) {
                   window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
                   helpMeReplyLoadingTimeoutRef.current = null;
@@ -1110,6 +1115,16 @@ export function ChatConversationPage() {
               }
               streamingText += String(payload.data.text);
               setGeneratedReply(streamingText);
+            } else if (payload && payload.type === "reasoning" && payload.data?.text) {
+              if (!hasStartedStreaming) {
+                hasStartedStreaming = true;
+                if (helpMeReplyLoadingTimeoutRef.current !== null) {
+                  window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
+                  helpMeReplyLoadingTimeoutRef.current = null;
+                }
+              }
+              setGeneratingReply(true);
+              setHelpMeReplyReasoning(true);
             } else if (payload && payload.type === "error") {
               const message =
                 payload.data?.message ||
@@ -1118,6 +1133,7 @@ export function ChatConversationPage() {
                 "Help Me Reply failed.";
               setHelpMeReplyError(String(message));
               setGeneratingReply(false);
+              setHelpMeReplyReasoning(false);
               if (helpMeReplyLoadingTimeoutRef.current !== null) {
                 window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
                 helpMeReplyLoadingTimeoutRef.current = null;
@@ -1141,21 +1157,22 @@ export function ChatConversationPage() {
           }
         }
 
-        // Clear loading state once API call completes (for non-streaming case)
-        if (!hasStartedStreaming) {
-          setGeneratingReply(false);
-          if (helpMeReplyLoadingTimeoutRef.current !== null) {
-            window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
-            helpMeReplyLoadingTimeoutRef.current = null;
-          }
+        setGeneratingReply(false);
+        setHelpMeReplyReasoning(false);
+        if (helpMeReplyLoadingTimeoutRef.current !== null) {
+          window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
+          helpMeReplyLoadingTimeoutRef.current = null;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setHelpMeReplyError(message);
+        setGeneratingReply(false);
+        setHelpMeReplyReasoning(false);
       } finally {
         // Only clear loading if streaming hasn't started yet
         if (!hasStartedStreaming) {
           setGeneratingReply(false);
+          setHelpMeReplyReasoning(false);
         }
         if (helpMeReplyRequestIdRef.current === requestId) {
           clearHelpMeReplyRuntime();
@@ -1172,6 +1189,7 @@ export function ChatConversationPage() {
     setShowResultMenu(false);
     setGeneratedReply(null);
     setHelpMeReplyError(null);
+    setHelpMeReplyReasoning(false);
   }, [generatedReply, setDraft]);
 
   const handlePlusMenuImageUpload = useCallback(() => {
@@ -2245,8 +2263,13 @@ export function ChatConversationPage() {
               <p className="text-red-400 text-sm">{helpMeReplyError}</p>
             </div>
           ) : generatingReply && !generatedReply ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex flex-col items-center justify-center gap-3 py-8" role="status">
               <LoadingSpinner />
+              <p className="text-center text-sm text-white/60">
+                {helpMeReplyReasoning
+                  ? "Reasoning before writing your reply..."
+                  : "Writing your reply..."}
+              </p>
             </div>
           ) : generatedReply ? (
             <div

@@ -80,6 +80,7 @@ export function GroupChatPage() {
   const [showResultMenu, setShowResultMenu] = useState(false);
   const [generatedReply, setGeneratedReply] = useState<string | null>(null);
   const [generatingReply, setGeneratingReply] = useState(false);
+  const [helpMeReplyReasoning, setHelpMeReplyReasoning] = useState(false);
   const [helpMeReplyError, setHelpMeReplyError] = useState<string | null>(null);
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([]);
@@ -993,6 +994,7 @@ export function GroupChatPage() {
     const requestId = helpMeReplyRequestIdRef.current;
     clearHelpMeReplyRuntime();
     setGeneratingReply(false);
+    setHelpMeReplyReasoning(false);
     if (!requestId) return;
     try {
       await storageBridge.abortRequest(requestId);
@@ -1005,6 +1007,7 @@ export function GroupChatPage() {
     setShowResultMenu(false);
     setGeneratedReply(null);
     setHelpMeReplyError(null);
+    setHelpMeReplyReasoning(false);
     void cancelHelpMeReplyGeneration();
   }, [cancelHelpMeReplyGeneration]);
 
@@ -1017,6 +1020,7 @@ export function GroupChatPage() {
       setShowPlusMenu(false);
       setGeneratedReply(null);
       setHelpMeReplyError(null);
+      setHelpMeReplyReasoning(false);
       setGeneratingReply(true);
       setShowResultMenu(true);
 
@@ -1025,10 +1029,10 @@ export function GroupChatPage() {
       let streamingText = "";
       let hasStartedStreaming = false;
 
-      // Timeout to clear loading state if streaming doesn't start within 5 seconds
+      // Some reasoning models can spend several seconds thinking before sending reply text.
       helpMeReplyLoadingTimeoutRef.current = window.setTimeout(() => {
         if (!hasStartedStreaming) {
-          setGeneratingReply(false);
+          setHelpMeReplyReasoning(true);
         }
       }, 5000);
 
@@ -1045,6 +1049,7 @@ export function GroupChatPage() {
               if (!hasStartedStreaming) {
                 hasStartedStreaming = true;
                 setGeneratingReply(false);
+                setHelpMeReplyReasoning(false);
                 if (helpMeReplyLoadingTimeoutRef.current !== null) {
                   window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
                   helpMeReplyLoadingTimeoutRef.current = null;
@@ -1052,6 +1057,16 @@ export function GroupChatPage() {
               }
               streamingText += String(payload.data.text);
               setGeneratedReply(streamingText);
+            } else if (payload && payload.type === "reasoning" && payload.data?.text) {
+              if (!hasStartedStreaming) {
+                hasStartedStreaming = true;
+                if (helpMeReplyLoadingTimeoutRef.current !== null) {
+                  window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
+                  helpMeReplyLoadingTimeoutRef.current = null;
+                }
+              }
+              setGeneratingReply(true);
+              setHelpMeReplyReasoning(true);
             } else if (payload && payload.type === "error") {
               const message =
                 payload.data?.message ||
@@ -1060,6 +1075,7 @@ export function GroupChatPage() {
                 "Help Me Reply failed.";
               setHelpMeReplyError(String(message));
               setGeneratingReply(false);
+              setHelpMeReplyReasoning(false);
               if (helpMeReplyLoadingTimeoutRef.current !== null) {
                 window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
                 helpMeReplyLoadingTimeoutRef.current = null;
@@ -1083,21 +1099,22 @@ export function GroupChatPage() {
           }
         }
 
-        // Clear loading state once API call completes (for non-streaming case)
-        if (!hasStartedStreaming) {
-          setGeneratingReply(false);
-          if (helpMeReplyLoadingTimeoutRef.current !== null) {
-            window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
-            helpMeReplyLoadingTimeoutRef.current = null;
-          }
+        setGeneratingReply(false);
+        setHelpMeReplyReasoning(false);
+        if (helpMeReplyLoadingTimeoutRef.current !== null) {
+          window.clearTimeout(helpMeReplyLoadingTimeoutRef.current);
+          helpMeReplyLoadingTimeoutRef.current = null;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setHelpMeReplyError(message);
+        setGeneratingReply(false);
+        setHelpMeReplyReasoning(false);
       } finally {
         // Only clear loading if streaming hasn't started yet
         if (!hasStartedStreaming) {
           setGeneratingReply(false);
+          setHelpMeReplyReasoning(false);
         }
         if (helpMeReplyRequestIdRef.current === requestId) {
           clearHelpMeReplyRuntime();
@@ -1114,6 +1131,7 @@ export function GroupChatPage() {
     setShowResultMenu(false);
     setGeneratedReply(null);
     setHelpMeReplyError(null);
+    setHelpMeReplyReasoning(false);
   }, [generatedReply]);
 
   const handlePlusMenuImageUpload = useCallback(() => {
@@ -1381,8 +1399,13 @@ export function GroupChatPage() {
               <p className="text-danger text-sm">{helpMeReplyError}</p>
             </div>
           ) : generatingReply && !generatedReply ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex flex-col items-center justify-center gap-3 py-8" role="status">
               <Loader2 className="h-8 w-8 animate-spin text-fg/50" />
+              <p className="text-center text-sm text-fg/60">
+                {helpMeReplyReasoning
+                  ? "Reasoning before writing your reply..."
+                  : "Writing your reply..."}
+              </p>
             </div>
           ) : generatedReply ? (
             <div
