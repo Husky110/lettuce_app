@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import {
@@ -35,21 +35,21 @@ import { confirmBottomMenu } from "../components/ConfirmBottomMenu";
 import { EntryEditorMenu } from "./characters/LorebookEditor";
 import { countTokensBatch } from "../../core/tokens";
 
-const RECENT_MESSAGE_LIMIT = 10;
-const LATEST_USER_LOAD = 30;
+export const RECENT_MESSAGE_LIMIT = 10;
+export const LATEST_USER_LOAD = 30;
 const INSPECTOR_MIN_WIDTH = 380;
 const INSPECTOR_MAX_WIDTH = 760;
 const MESSAGE_AREA_MIN_WIDTH = 520;
 
-type Mode = "session" | "compose";
+export type Mode = "session" | "compose";
 
-type PageContext =
+export type PageContext =
   | { kind: "character"; characterId: string; editorPath: string }
   | { kind: "library"; editorPath: string }
   | { kind: "group"; groupId: string; editorPath: string }
   | { kind: "groupSession"; groupSessionId: string; editorPath: string };
 
-interface EntryInspection {
+export interface EntryInspection {
   entry: LorebookEntry;
   active: boolean;
   matchedKeywords: string[];
@@ -57,7 +57,7 @@ interface EntryInspection {
   tokenEstimate: number;
 }
 
-interface MessageMatch {
+export interface MessageMatch {
   entryId: string;
   entryTitle: string;
   keyword: string;
@@ -198,7 +198,7 @@ function getEntryTitle(entry: LorebookEntry, fallback: string): string {
   return entry.title?.trim() || entry.keywords[0] || fallback;
 }
 
-function makeBlankEntry(lorebookId: string, displayOrder: number): LorebookEntry {
+export function makeBlankEntry(lorebookId: string, displayOrder: number): LorebookEntry {
   const timestamp = Date.now();
   return {
     id: crypto.randomUUID(),
@@ -216,7 +216,7 @@ function makeBlankEntry(lorebookId: string, displayOrder: number): LorebookEntry
   };
 }
 
-function buildInspections(
+export function buildInspections(
   entries: LorebookEntry[],
   context: string,
   tokenCounts: Map<string, number>,
@@ -248,7 +248,7 @@ function buildInspections(
     });
 }
 
-function resolveContext(
+export function resolveContext(
   params: { characterId?: string; groupId?: string; groupSessionId?: string; lorebookId?: string },
   lorebookIdSearch: string | null,
 ): { context: PageContext; lorebookId: string } | null {
@@ -296,7 +296,7 @@ function resolveContext(
   return null;
 }
 
-export function LorebookTriggerPreviewPage() {
+export function LorebookTriggerPreviewPageDesktop() {
   const { t } = useI18n();
   const location = useLocation();
   const { backOrReplace } = useNavigationManager();
@@ -771,7 +771,7 @@ interface ToolbarProps {
   totalTokens: number;
 }
 
-function Toolbar({
+export function Toolbar({
   mode,
   onModeChange,
   canUseSession,
@@ -895,7 +895,7 @@ interface SessionPanelProps {
   onKeywordContextMenu: (x: number, y: number, matches: MessageMatch[]) => void;
 }
 
-function SessionPanel({
+export function SessionPanel({
   sessions,
   selectedSession,
   onSelectSession,
@@ -1174,12 +1174,60 @@ function MessageRow({
           {role.label}
         </span>
         {hits.length > 0 && (
-          <span className="rounded-full bg-accent/15 px-1.5 py-px text-[10px] font-medium text-accent/90 ring-1 ring-accent/30">
+          <button
+            type="button"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const seen = new Set<string>();
+              const unique: MessageMatch[] = [];
+              for (const h of hits) {
+                const key = `${h.match.entryId}::${h.match.keyword}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                unique.push(h.match);
+              }
+              onKeywordContextMenu(e.clientX, e.clientY, unique);
+            }}
+            onTouchStart={(e) => {
+              const touch = e.touches[0];
+              if (!touch) return;
+              const startX = touch.clientX;
+              const startY = touch.clientY;
+              const target = e.currentTarget;
+              const timer = window.setTimeout(() => {
+                const seen = new Set<string>();
+                const unique: MessageMatch[] = [];
+                for (const h of hits) {
+                  const key = `${h.match.entryId}::${h.match.keyword}`;
+                  if (seen.has(key)) continue;
+                  seen.add(key);
+                  unique.push(h.match);
+                }
+                onKeywordContextMenu(startX, startY, unique);
+              }, 450);
+              const cancel = () => {
+                window.clearTimeout(timer);
+                target.removeEventListener("touchend", cancel);
+                target.removeEventListener("touchcancel", cancel);
+                target.removeEventListener("touchmove", onMove);
+              };
+              const onMove = (ev: TouchEvent) => {
+                const tt = ev.touches[0];
+                if (!tt) return;
+                if (Math.hypot(tt.clientX - startX, tt.clientY - startY) > 8) cancel();
+              };
+              target.addEventListener("touchend", cancel);
+              target.addEventListener("touchcancel", cancel);
+              target.addEventListener("touchmove", onMove);
+            }}
+            style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
+            className="cursor-context-menu rounded-full bg-accent/15 px-1.5 py-px text-[10px] font-medium text-accent/90 ring-1 ring-accent/30 transition hover:bg-accent/25"
+          >
             {t("characters.lorebook.preview.matchCount", {
               hits: hits.length,
               entries: matchedEntryIds.size,
             })}
-          </span>
+          </button>
         )}
         <span className="ml-auto font-mono text-[10px] text-fg/30">
           {formatRelative(message.createdAt)}
@@ -1199,6 +1247,31 @@ function MessageRow({
                   e.preventDefault();
                   onKeywordContextMenu(e.clientX, e.clientY, seg.matches);
                 }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  if (!touch) return;
+                  const startX = touch.clientX;
+                  const startY = touch.clientY;
+                  const target = e.currentTarget;
+                  const timer = window.setTimeout(() => {
+                    onKeywordContextMenu(startX, startY, seg.matches);
+                  }, 450);
+                  const cancel = () => {
+                    window.clearTimeout(timer);
+                    target.removeEventListener("touchend", cancel);
+                    target.removeEventListener("touchcancel", cancel);
+                    target.removeEventListener("touchmove", onMove);
+                  };
+                  const onMove = (ev: TouchEvent) => {
+                    const t = ev.touches[0];
+                    if (!t) return;
+                    if (Math.hypot(t.clientX - startX, t.clientY - startY) > 8) cancel();
+                  };
+                  target.addEventListener("touchend", cancel);
+                  target.addEventListener("touchcancel", cancel);
+                  target.addEventListener("touchmove", onMove);
+                }}
+                style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
                 className="cursor-context-menu rounded-[3px] bg-accent/20 px-0.5 text-accent/95 ring-1 ring-accent/30 transition hover:bg-accent/30"
                 title={seg.matches.map((m) => `${m.entryTitle} · ${m.keyword}`).join("\n")}
               >
@@ -1263,7 +1336,7 @@ interface ComposePanelProps {
   onKeywordContextMenu: (x: number, y: number, matches: MessageMatch[]) => void;
 }
 
-function ComposePanel({ text, onChange, inspections, onKeywordContextMenu }: ComposePanelProps) {
+export function ComposePanel({ text, onChange, inspections, onKeywordContextMenu }: ComposePanelProps) {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -1376,7 +1449,7 @@ interface InspectorPanelProps {
   onToggleExpand: (id: string) => void;
 }
 
-function InspectorPanel({
+export function InspectorPanel({
   inspections,
   isLoadingLorebook,
   isResizing,
@@ -1780,7 +1853,7 @@ function InjectionSection({
   );
 }
 
-function KeywordContextMenu({
+export function KeywordContextMenu({
   x,
   y,
   matches,
@@ -1855,7 +1928,14 @@ function KeywordContextMenu({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: -4 }}
         transition={{ duration: 0.12, ease: [0.4, 0, 0.2, 1] }}
-        style={{ left: pos.left, top: pos.top }}
+        style={{
+          left: pos.left,
+          top: pos.top,
+          WebkitTouchCallout: "none",
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        }}
+        onContextMenu={(e) => e.preventDefault()}
         className="fixed z-[61] min-w-[200px] origin-top-left overflow-hidden rounded-xl border border-fg/15 bg-surface shadow-2xl"
       >
         <div className="border-b border-fg/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg/45">
@@ -1882,7 +1962,37 @@ function KeywordContextMenu({
   );
 }
 
-function formatRelative(timestamp: number): string {
+const LorebookTriggerPreviewPageMobileLazy = lazy(() =>
+  import("./LorebookTriggerPreviewPage.mobile").then((m) => ({
+    default: m.LorebookTriggerPreviewPageMobile,
+  })),
+);
+
+export function LorebookTriggerPreviewPage() {
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 1023px)").matches : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  if (isMobileViewport) {
+    return (
+      <Suspense fallback={null}>
+        <LorebookTriggerPreviewPageMobileLazy />
+      </Suspense>
+    );
+  }
+  return <LorebookTriggerPreviewPageDesktop />;
+}
+
+export function formatRelative(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
   const sec = Math.round(diff / 1000);
