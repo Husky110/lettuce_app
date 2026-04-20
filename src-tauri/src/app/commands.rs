@@ -373,6 +373,7 @@ macro_rules! invoke_handler {
             crate::engine::commands::engine_chat,
             crate::engine::commands::engine_chat_history,
             crate::chat_appearance::compute_chat_theme,
+            crate::tokens::tokens_count_batch,
         ]
     };
 }
