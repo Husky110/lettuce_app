@@ -113,6 +113,10 @@ export async function resetSceneGenerationTemplate(): Promise<SystemPromptTempla
   return await invoke<SystemPromptTemplate>("reset_scene_generation_template");
 }
 
+export async function resetScenePromptWriterTemplate(): Promise<SystemPromptTemplate> {
+  return await invoke<SystemPromptTemplate>("reset_scene_prompt_writer_template");
+}
+
 export async function resetDesignReferenceTemplate(): Promise<SystemPromptTemplate> {
   return await invoke<SystemPromptTemplate>("reset_design_reference_template");
 }

@@ -371,6 +371,7 @@ pub fn prompt_type_label(prompt_type: PromptTemplateType) -> &'static str {
         PromptTemplateType::AvatarGeneration => "Avatar Generation",
         PromptTemplateType::AvatarEditRequest => "Avatar Edit Request",
         PromptTemplateType::SceneGeneration => "Scene Generation",
+        PromptTemplateType::ScenePromptWriter => "Scene Prompt Writer",
         PromptTemplateType::DesignReferenceWriter => "Design Reference Writer",
     }
 }
@@ -389,6 +390,7 @@ pub fn allowed_variables_for_prompt_type(
             avatar_generation_variables(),
             avatar_edit_request_variables(),
             scene_generation_variables(),
+            scene_generation_variables(),
             design_reference_writer_variables(),
         ]),
         PromptTemplateType::DirectChat => direct_chat_variables(),
@@ -401,6 +403,7 @@ pub fn allowed_variables_for_prompt_type(
         PromptTemplateType::AvatarGeneration => avatar_generation_variables(),
         PromptTemplateType::AvatarEditRequest => avatar_edit_request_variables(),
         PromptTemplateType::SceneGeneration => scene_generation_variables(),
+        PromptTemplateType::ScenePromptWriter => scene_generation_variables(),
         PromptTemplateType::DesignReferenceWriter => design_reference_writer_variables(),
     }
 }
@@ -452,7 +455,7 @@ pub fn required_variables_for_prompt_type(prompt_type: PromptTemplateType) -> Ve
             "{{current_avatar_prompt}}".to_string(),
             "{{edit_request}}".to_string(),
         ],
-        PromptTemplateType::SceneGeneration => vec![
+        PromptTemplateType::SceneGeneration | PromptTemplateType::ScenePromptWriter => vec![
             "{{recent_messages}}".to_string(),
             "{{scene_request}}".to_string(),
         ],
@@ -474,7 +477,7 @@ pub fn allowed_image_slots_for_prompt_type(
             PromptEntryImageSlot::Avatar,
             PromptEntryImageSlot::References,
         ],
-        PromptTemplateType::SceneGeneration => vec![
+        PromptTemplateType::SceneGeneration | PromptTemplateType::ScenePromptWriter => vec![
             PromptEntryImageSlot::Character,
             PromptEntryImageSlot::Persona,
             PromptEntryImageSlot::ChatBackground,
@@ -518,6 +521,7 @@ pub fn build_parameter_engine() -> PromptParameterEngine {
         PromptTemplateType::AvatarGeneration,
         PromptTemplateType::AvatarEditRequest,
         PromptTemplateType::SceneGeneration,
+        PromptTemplateType::ScenePromptWriter,
         PromptTemplateType::DesignReferenceWriter,
     ]
     .into_iter()

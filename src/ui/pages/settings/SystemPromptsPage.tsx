@@ -214,6 +214,7 @@ function normalizeImportedPromptTemplatePayload(input: {
     input.promptType === "avatarGeneration" ||
     input.promptType === "avatarEditRequest" ||
     input.promptType === "sceneGeneration" ||
+    input.promptType === "scenePromptWriter" ||
     input.promptType === "designReferenceWriter" ||
     input.promptType === "undefined"
       ? input.promptType

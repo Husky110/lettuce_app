@@ -91,6 +91,7 @@ export const PromptTemplateTypeSchema = z.enum([
   "avatarGeneration",
   "avatarEditRequest",
   "sceneGeneration",
+  "scenePromptWriter",
   "designReferenceWriter",
 ]);
 export type PromptTemplateType = z.infer<typeof PromptTemplateTypeSchema>;

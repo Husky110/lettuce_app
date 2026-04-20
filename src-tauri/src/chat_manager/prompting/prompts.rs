@@ -25,6 +25,7 @@ pub const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID: &str = "prompt_app_group_chat_rol
 pub const APP_AVATAR_GENERATION_TEMPLATE_ID: &str = "prompt_app_avatar_generation";
 pub const APP_AVATAR_EDIT_TEMPLATE_ID: &str = "prompt_app_avatar_edit";
 pub const APP_SCENE_GENERATION_TEMPLATE_ID: &str = "prompt_app_scene_generation";
+pub const APP_SCENE_PROMPT_WRITER_TEMPLATE_ID: &str = "prompt_app_scene_prompt_writer";
 pub const APP_DESIGN_REFERENCE_TEMPLATE_ID: &str = "prompt_app_design_reference";
 const APP_DEFAULT_TEMPLATE_NAME: &str = "App Default";
 const APP_LOCAL_ROLEPLAY_TEMPLATE_NAME: &str = "Local RP Default";
@@ -38,6 +39,7 @@ const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_NAME: &str = "Group Chat (Roleplay)";
 const APP_AVATAR_GENERATION_TEMPLATE_NAME: &str = "Avatar Generation";
 const APP_AVATAR_EDIT_TEMPLATE_NAME: &str = "Avatar Image Edit";
 const APP_SCENE_GENERATION_TEMPLATE_NAME: &str = "Scene Generation";
+const APP_SCENE_PROMPT_WRITER_TEMPLATE_NAME: &str = "Scene Prompt Writer";
 const APP_DESIGN_REFERENCE_TEMPLATE_NAME: &str = "Design Reference Writer";
 const LEGACY_AVATAR_GENERATION_PROMPT_V1: &str = "You write a single high-quality image generation prompt for a character avatar. Your job is to turn the request into a clear visual prompt that preserves identity and produces a strong profile image.\n\n# Avatar Subject\nName: {{avatar_subject_name}}\n{{avatar_subject_description}}\n\n# Avatar Request\n{{avatar_request}}\n\nWrite one polished prompt for an image model.\n- Prioritize face, hair, clothing, expression, pose, and overall vibe.\n- Keep the subject centered and suitable for an avatar or profile image.\n- Preserve identity-defining traits from the context.\n- Do not add text, logos, watermarks, frames, UI, or split panels unless explicitly requested.\n- Do not explain your reasoning.\n\nOutput only the final image prompt text.";
 const LEGACY_AVATAR_EDIT_PROMPT_V1: &str = "You revise an existing avatar image prompt. The source image will be provided to you separately. Use that image and the edit request to produce one updated prompt for the next generation.\n\n# Avatar Subject\nName: {{avatar_subject_name}}\n{{avatar_subject_description}}\n\n# Current Avatar Prompt\n{{current_avatar_prompt}}\n\n# Edit Request\n{{edit_request}}\n\nUse the actual source image as the truth for current appearance. Preserve everything that should stay the same and change only what the edit request asks for.\n- Keep the character recognizable.\n- If the old prompt conflicts with the source image, trust the source image.\n- Do not restate unchanged details more than needed.\n- Do not explain what you changed.\n\nOutput only the revised image prompt text.";
@@ -59,6 +61,7 @@ pub fn template_prompt_type_from_id(id: &str) -> PromptTemplateType {
         APP_AVATAR_GENERATION_TEMPLATE_ID => PromptTemplateType::AvatarGeneration,
         APP_AVATAR_EDIT_TEMPLATE_ID => PromptTemplateType::AvatarEditRequest,
         APP_SCENE_GENERATION_TEMPLATE_ID => PromptTemplateType::SceneGeneration,
+        APP_SCENE_PROMPT_WRITER_TEMPLATE_ID => PromptTemplateType::ScenePromptWriter,
         APP_DESIGN_REFERENCE_TEMPLATE_ID => PromptTemplateType::DesignReferenceWriter,
         _ => PromptTemplateType::Undefined,
     }
@@ -537,6 +540,7 @@ fn prompt_type_to_str(prompt_type: PromptTemplateType) -> &'static str {
         PromptTemplateType::AvatarGeneration => "avatarGeneration",
         PromptTemplateType::AvatarEditRequest => "avatarEditRequest",
         PromptTemplateType::SceneGeneration => "sceneGeneration",
+        PromptTemplateType::ScenePromptWriter => "scenePromptWriter",
         PromptTemplateType::DesignReferenceWriter => "designReferenceWriter",
     }
 }
@@ -554,6 +558,7 @@ fn str_to_prompt_type(s: &str) -> Result<PromptTemplateType, String> {
         "avatarGeneration" => Ok(PromptTemplateType::AvatarGeneration),
         "avatarEditRequest" => Ok(PromptTemplateType::AvatarEditRequest),
         "sceneGeneration" => Ok(PromptTemplateType::SceneGeneration),
+        "scenePromptWriter" => Ok(PromptTemplateType::ScenePromptWriter),
         "designReferenceWriter" => Ok(PromptTemplateType::DesignReferenceWriter),
         other => Err(crate::utils::err_msg(
             module_path!(),
@@ -1035,6 +1040,7 @@ pub fn is_app_default_template(id: &str) -> bool {
         || id == APP_AVATAR_GENERATION_TEMPLATE_ID
         || id == APP_AVATAR_EDIT_TEMPLATE_ID
         || id == APP_SCENE_GENERATION_TEMPLATE_ID
+        || id == APP_SCENE_PROMPT_WRITER_TEMPLATE_ID
         || id == APP_DESIGN_REFERENCE_TEMPLATE_ID
 }
 
@@ -1092,7 +1098,9 @@ pub fn reset_dynamic_memory_template(app: &AppHandle) -> Result<SystemPromptTemp
     )
 }
 
-pub fn reset_dynamic_memory_local_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+pub fn reset_dynamic_memory_local_template(
+    app: &AppHandle,
+) -> Result<SystemPromptTemplate, String> {
     let content = get_base_prompt(PromptType::DynamicMemoryLocalPrompt);
     let entries = get_base_prompt_entries(PromptType::DynamicMemoryLocalPrompt);
     update_template(
@@ -1363,6 +1371,41 @@ pub fn ensure_scene_generation_template(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn ensure_scene_prompt_writer_template(app: &AppHandle) -> Result<(), String> {
+    let conn = open_db(app)?;
+    let now = now();
+    let entries = get_base_prompt_entries(PromptType::ScenePromptWriterPrompt);
+
+    if get_template(app, APP_SCENE_PROMPT_WRITER_TEMPLATE_ID)?.is_none() {
+        let content = get_base_prompt(PromptType::ScenePromptWriterPrompt);
+        let entries_json = serde_json::to_string(&entries)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO prompt_templates (id, name, prompt_type, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![
+                APP_SCENE_PROMPT_WRITER_TEMPLATE_ID,
+                APP_SCENE_PROMPT_WRITER_TEMPLATE_NAME,
+                prompt_type_to_str(PromptTemplateType::ScenePromptWriter),
+                content,
+                entries_json,
+                now
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    } else {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_SCENE_PROMPT_WRITER_TEMPLATE_ID,
+            PromptType::ScenePromptWriterPrompt,
+            entries.clone(),
+        );
+        let _ =
+            backfill_missing_entry_conditions(app, APP_SCENE_PROMPT_WRITER_TEMPLATE_ID, &entries);
+    }
+
+    Ok(())
+}
+
 pub fn ensure_design_reference_template(app: &AppHandle) -> Result<(), String> {
     let conn = open_db(app)?;
     let now = now();
@@ -1475,6 +1518,20 @@ pub fn reset_scene_generation_template(app: &AppHandle) -> Result<SystemPromptTe
     update_template(
         app,
         APP_SCENE_GENERATION_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        Some(content.clone()),
+        Some(entries),
+        None,
+    )
+}
+
+pub fn reset_scene_prompt_writer_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::ScenePromptWriterPrompt);
+    let entries = get_base_prompt_entries(PromptType::ScenePromptWriterPrompt);
+    update_template(
+        app,
+        APP_SCENE_PROMPT_WRITER_TEMPLATE_ID.to_string(),
         None,
         None,
         Some(content.clone()),

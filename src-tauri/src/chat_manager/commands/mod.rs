@@ -847,6 +847,11 @@ pub fn reset_scene_generation_template(app: AppHandle) -> Result<SystemPromptTem
 }
 
 #[tauri::command]
+pub fn reset_scene_prompt_writer_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_scene_prompt_writer_template(&app)
+}
+
+#[tauri::command]
 pub fn reset_design_reference_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
     prompts::reset_design_reference_template(&app)
 }

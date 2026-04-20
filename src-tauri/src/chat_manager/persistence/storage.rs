@@ -32,6 +32,7 @@ pub enum PromptType {
     AvatarGenerationPrompt,
     AvatarEditPrompt,
     SceneGenerationPrompt,
+    ScenePromptWriterPrompt,
     DesignReferencePrompt,
 }
 
@@ -40,7 +41,9 @@ pub fn get_base_prompt(prompt_type: PromptType) -> String {
         PromptType::SystemPrompt => prompt_engine::default_system_prompt_template(),
         PromptType::LocalRoleplayPrompt => prompt_engine::default_local_roleplay_prompt(),
         PromptType::DynamicMemoryPrompt => prompt_engine::default_dynamic_memory_prompt(),
-        PromptType::DynamicMemoryLocalPrompt => prompt_engine::default_dynamic_memory_local_prompt(),
+        PromptType::DynamicMemoryLocalPrompt => {
+            prompt_engine::default_dynamic_memory_local_prompt()
+        }
         PromptType::DynamicSummaryPrompt => prompt_engine::default_dynamic_summary_prompt(),
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_prompt(),
         PromptType::HelpMeReplyConversationalPrompt => {
@@ -53,6 +56,7 @@ pub fn get_base_prompt(prompt_type: PromptType) -> String {
         PromptType::AvatarGenerationPrompt => prompt_engine::default_avatar_generation_prompt(),
         PromptType::AvatarEditPrompt => prompt_engine::default_avatar_edit_prompt(),
         PromptType::SceneGenerationPrompt => prompt_engine::default_scene_generation_prompt(),
+        PromptType::ScenePromptWriterPrompt => prompt_engine::default_scene_prompt_writer_prompt(),
         PromptType::DesignReferencePrompt => prompt_engine::default_design_reference_prompt(),
     }
 }
@@ -62,7 +66,9 @@ pub fn get_base_prompt_entries(prompt_type: PromptType) -> Vec<SystemPromptEntry
         PromptType::SystemPrompt => prompt_engine::default_modular_prompt_entries(),
         PromptType::LocalRoleplayPrompt => prompt_engine::default_local_roleplay_entries(),
         PromptType::DynamicMemoryPrompt => prompt_engine::default_dynamic_memory_entries(),
-        PromptType::DynamicMemoryLocalPrompt => prompt_engine::default_dynamic_memory_local_entries(),
+        PromptType::DynamicMemoryLocalPrompt => {
+            prompt_engine::default_dynamic_memory_local_entries()
+        }
         PromptType::DynamicSummaryPrompt => prompt_engine::default_dynamic_summary_entries(),
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_entries(),
         PromptType::HelpMeReplyConversationalPrompt => {
@@ -73,6 +79,7 @@ pub fn get_base_prompt_entries(prompt_type: PromptType) -> Vec<SystemPromptEntry
         PromptType::AvatarGenerationPrompt => prompt_engine::default_avatar_generation_entries(),
         PromptType::AvatarEditPrompt => prompt_engine::default_avatar_edit_entries(),
         PromptType::SceneGenerationPrompt => prompt_engine::default_scene_generation_entries(),
+        PromptType::ScenePromptWriterPrompt => prompt_engine::default_scene_prompt_writer_entries(),
         PromptType::DesignReferencePrompt => prompt_engine::default_design_reference_entries(),
     }
 }

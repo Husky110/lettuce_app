@@ -127,7 +127,11 @@ fn db_read_settings_json(app: &tauri::AppHandle) -> Result<Option<String>, Strin
         advanced_settings_json,
     )) = row
     else {
-        log_info(app, "settings", "settings row id=1 not found; returning None");
+        log_info(
+            app,
+            "settings",
+            "settings row id=1 not found; returning None",
+        );
         return Ok(None);
     };
 
@@ -183,7 +187,10 @@ fn db_read_settings_json(app: &tauri::AppHandle) -> Result<Option<String>, Strin
     log_info(
         app,
         "settings",
-        format!("loaded {} provider credentials from DB", provider_credentials.len()),
+        format!(
+            "loaded {} provider credentials from DB",
+            provider_credentials.len()
+        ),
     );
 
     // Models
@@ -318,10 +325,9 @@ fn db_read_settings_json(app: &tauri::AppHandle) -> Result<Option<String>, Strin
         ),
     );
 
-    Ok(Some(
-        serde_json::to_string(&root_value)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
-    ))
+    Ok(Some(serde_json::to_string(&root_value).map_err(|e| {
+        crate::utils::err_to_string(module_path!(), line!(), e)
+    })?))
 }
 
 fn db_write_settings_json(app: &tauri::AppHandle, data: String) -> Result<(), String> {
@@ -419,7 +425,8 @@ fn db_write_settings_json(app: &tauri::AppHandle, data: String) -> Result<(), St
         format!("settings table upsert affected {} row(s)", settings_rows),
     );
 
-    let deleted_provider_rows = tx.execute("DELETE FROM provider_credentials", [])
+    let deleted_provider_rows = tx
+        .execute("DELETE FROM provider_credentials", [])
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     log_info(
         app,
@@ -476,12 +483,16 @@ fn db_write_settings_json(app: &tauri::AppHandle, data: String) -> Result<(), St
         }
     }
 
-    let deleted_model_rows = tx.execute("DELETE FROM models", [])
+    let deleted_model_rows = tx
+        .execute("DELETE FROM models", [])
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     log_info(
         app,
         "settings",
-        format!("deleted {} existing model row(s) before rewrite", deleted_model_rows),
+        format!(
+            "deleted {} existing model row(s) before rewrite",
+            deleted_model_rows
+        ),
     );
     if let Some(models) = json.get("models").and_then(|v| v.as_array()) {
         log_info(
@@ -590,7 +601,11 @@ fn db_write_settings_json(app: &tauri::AppHandle, data: String) -> Result<(), St
     }
     tx.commit()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    log_info(app, "settings", "settings DB transaction committed successfully");
+    log_info(
+        app,
+        "settings",
+        "settings DB transaction committed successfully",
+    );
     Ok(())
 }
 

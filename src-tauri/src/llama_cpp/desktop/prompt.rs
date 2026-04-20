@@ -378,7 +378,8 @@ fn build_oaicompat_prompt(
             )
         })?;
 
-    let native_tool_parse_supported = oaicompat_result_supports_native_tool_calls(&chat_template_result);
+    let native_tool_parse_supported =
+        oaicompat_result_supports_native_tool_calls(&chat_template_result);
     if parse_tool_calls && !native_tool_parse_supported {
         let parser_diag = format!(
             "oaicompat template exposed no native tool parser metadata (parse_tool_calls={}, parser_present={}, grammar_present={})",

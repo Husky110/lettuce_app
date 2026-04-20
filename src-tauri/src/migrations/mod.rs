@@ -2948,6 +2948,7 @@ fn migrate_v50_to_v51(app: &AppHandle) -> Result<(), String> {
             WHEN id = 'prompt_app_avatar_generation' THEN 'avatarGeneration'
             WHEN id = 'prompt_app_avatar_edit' THEN 'avatarEditRequest'
             WHEN id = 'prompt_app_scene_generation' THEN 'sceneGeneration'
+            WHEN id = 'prompt_app_scene_prompt_writer' THEN 'scenePromptWriter'
             WHEN id = 'prompt_app_design_reference' THEN 'designReferenceWriter'
             ELSE 'undefined'
           END,

@@ -1120,8 +1120,8 @@ fn design_reference_prompt_entry_to_message(
     Some(json!({ "role": role, "content": trimmed }))
 }
 
-fn load_scene_generation_prompt_entries(app: &AppHandle) -> (Vec<SystemPromptEntry>, bool) {
-    match prompts::get_template(app, prompts::APP_SCENE_GENERATION_TEMPLATE_ID) {
+fn load_scene_prompt_writer_entries(app: &AppHandle) -> (Vec<SystemPromptEntry>, bool) {
+    match prompts::get_template(app, prompts::APP_SCENE_PROMPT_WRITER_TEMPLATE_ID) {
         Ok(Some(template)) => {
             if !template.entries.is_empty() {
                 (template.entries, template.condense_prompt_entries)
@@ -1145,13 +1145,13 @@ fn load_scene_generation_prompt_entries(app: &AppHandle) -> (Vec<SystemPromptEnt
                 )
             } else {
                 (
-                    get_base_prompt_entries(PromptType::SceneGenerationPrompt),
+                    get_base_prompt_entries(PromptType::ScenePromptWriterPrompt),
                     false,
                 )
             }
         }
         _ => (
-            get_base_prompt_entries(PromptType::SceneGenerationPrompt),
+            get_base_prompt_entries(PromptType::ScenePromptWriterPrompt),
             false,
         ),
     }
@@ -1167,7 +1167,7 @@ fn render_scene_generation_prompt_entries(
     recent_messages_text: &str,
     reference_images: &SceneReferenceImages,
 ) -> Vec<SystemPromptEntry> {
-    let (template_entries, condense_prompt_entries) = load_scene_generation_prompt_entries(app);
+    let (template_entries, condense_prompt_entries) = load_scene_prompt_writer_entries(app);
     let mut rendered_entries = Vec::new();
     let has_scene = session.selected_scene_id.is_some() || character.default_scene_id.is_some();
     let has_scene_direction = if let Some(scene_id) = session

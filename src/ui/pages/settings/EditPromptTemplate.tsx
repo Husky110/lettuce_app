@@ -52,6 +52,7 @@ import {
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
+  resetScenePromptWriterTemplate,
   resetDesignReferenceTemplate,
   renderPromptPreview,
   getPromptParameterEngine,
@@ -80,6 +81,7 @@ import {
   APP_AVATAR_GENERATION_TEMPLATE_ID,
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_SCENE_GENERATION_TEMPLATE_ID,
+  APP_SCENE_PROMPT_WRITER_TEMPLATE_ID,
   APP_DESIGN_REFERENCE_TEMPLATE_ID,
   isProtectedPromptTemplate,
 } from "../../../core/prompts/constants";
@@ -108,6 +110,7 @@ const IMAGE_ENTRY_SLOT_OPTIONS_BY_PROMPT_TYPE: Partial<Record<PromptType, Prompt
   {
     undefined: ["character", "persona", "chatBackground", "avatar", "references"],
     sceneGeneration: ["character", "persona", "chatBackground"],
+    scenePromptWriter: ["character", "persona", "chatBackground"],
     designReferenceWriter: ["avatar", "references"],
 };
 
@@ -2178,6 +2181,8 @@ function getPromptTypeName(type: PromptType): string {
       return "Avatar Edit Request";
     case "sceneGeneration":
       return "Scene Generation";
+    case "scenePromptWriter":
+      return "Scene Prompt Writer";
     case "designReferenceWriter":
       return "Design Reference Writer";
     default:
@@ -2744,6 +2749,8 @@ export function EditPromptTemplate() {
         updated = await resetAvatarEditTemplate();
       } else if (id === APP_SCENE_GENERATION_TEMPLATE_ID) {
         updated = await resetSceneGenerationTemplate();
+      } else if (id === APP_SCENE_PROMPT_WRITER_TEMPLATE_ID) {
+        updated = await resetScenePromptWriterTemplate();
       } else if (id === APP_DESIGN_REFERENCE_TEMPLATE_ID) {
         updated = await resetDesignReferenceTemplate();
       } else {

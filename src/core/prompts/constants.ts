@@ -11,6 +11,7 @@ export const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID = "prompt_app_group_chat_rolepl
 export const APP_AVATAR_GENERATION_TEMPLATE_ID = "prompt_app_avatar_generation";
 export const APP_AVATAR_EDIT_TEMPLATE_ID = "prompt_app_avatar_edit";
 export const APP_SCENE_GENERATION_TEMPLATE_ID = "prompt_app_scene_generation";
+export const APP_SCENE_PROMPT_WRITER_TEMPLATE_ID = "prompt_app_scene_prompt_writer";
 export const APP_DESIGN_REFERENCE_TEMPLATE_ID = "prompt_app_design_reference";
 
 const PROTECTED_TEMPLATE_IDS = new Set([
@@ -26,6 +27,7 @@ const PROTECTED_TEMPLATE_IDS = new Set([
   APP_AVATAR_GENERATION_TEMPLATE_ID,
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_SCENE_GENERATION_TEMPLATE_ID,
+  APP_SCENE_PROMPT_WRITER_TEMPLATE_ID,
   APP_DESIGN_REFERENCE_TEMPLATE_ID,
 ]);
 
@@ -40,6 +42,7 @@ const NON_SYSTEM_TEMPLATE_IDS = new Set([
   APP_AVATAR_GENERATION_TEMPLATE_ID,
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_SCENE_GENERATION_TEMPLATE_ID,
+  APP_SCENE_PROMPT_WRITER_TEMPLATE_ID,
   APP_DESIGN_REFERENCE_TEMPLATE_ID,
 ]);
 
@@ -75,6 +78,8 @@ export function getPromptTypeLabel(id: string): string {
       return "Avatar Image Edit";
     case APP_SCENE_GENERATION_TEMPLATE_ID:
       return "Scene Generation";
+    case APP_SCENE_PROMPT_WRITER_TEMPLATE_ID:
+      return "Scene Prompt Writer";
     case APP_DESIGN_REFERENCE_TEMPLATE_ID:
       return "Design Reference Writer";
     default:

@@ -1456,7 +1456,9 @@ fn requested_parallel_tool_calls(
     extra_body_fields: Option<&HashMap<String, Value>>,
 ) -> Option<bool> {
     if provider_cred.provider_id != "llamacpp"
-        || !tool_config.map(|cfg| !cfg.tools.is_empty()).unwrap_or(false)
+        || !tool_config
+            .map(|cfg| !cfg.tools.is_empty())
+            .unwrap_or(false)
     {
         return None;
     }
@@ -2344,7 +2346,11 @@ async fn process_group_dynamic_memory_cycle(
                 window_end,
                 &window_message_ids,
                 prior_summary.as_deref(),
-                if debug_capture_enabled { Some(&debug_steps) } else { None },
+                if debug_capture_enabled {
+                    Some(&debug_steps)
+                } else {
+                    None
+                },
             );
             return Ok(());
         }
@@ -2414,7 +2420,11 @@ async fn process_group_dynamic_memory_cycle(
                 window_end,
                 &window_message_ids,
                 prior_summary.as_deref(),
-                if debug_capture_enabled { Some(&debug_steps) } else { None },
+                if debug_capture_enabled {
+                    Some(&debug_steps)
+                } else {
+                    None
+                },
             );
             return Ok(());
         }
@@ -3018,7 +3028,8 @@ async fn run_group_memory_tool_update(
                 );
                 if !api_response.ok {
                     let fallback = format!("Provider returned status {}", api_response.status);
-                    let err_message = extract_error_message(api_response.data()).unwrap_or(fallback);
+                    let err_message =
+                        extract_error_message(api_response.data()).unwrap_or(fallback);
                     log_warn(
                         app,
                         "group_dynamic_memory",
@@ -3090,7 +3101,8 @@ async fn run_group_memory_tool_update(
                         "text_fallback_after_http_error",
                     )
                 } else {
-                    let tool_calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
+                    let tool_calls =
+                        parse_tool_calls(&provider_cred.provider_id, api_response.data());
                     if !tool_calls.is_empty() {
                         (tool_calls, "provider_tool_calls")
                     } else {
@@ -3145,9 +3157,10 @@ async fn run_group_memory_tool_update(
                         );
 
                         if !api_response.ok {
-                            let fallback = format!("Provider returned status {}", api_response.status);
-                            let err_message =
-                                extract_error_message(api_response.data()).unwrap_or(fallback.clone());
+                            let fallback =
+                                format!("Provider returned status {}", api_response.status);
+                            let err_message = extract_error_message(api_response.data())
+                                .unwrap_or(fallback.clone());
                             return Err(if err_message == fallback {
                                 err_message
                             } else {
@@ -3155,11 +3168,12 @@ async fn run_group_memory_tool_update(
                             });
                         }
 
-                        let text = extract_text(api_response.data(), Some(&provider_cred.provider_id))
-                            .ok_or_else(|| {
-                                "memory fallback returned neither tool calls nor text output"
-                                    .to_string()
-                            })?;
+                        let text =
+                            extract_text(api_response.data(), Some(&provider_cred.provider_id))
+                                .ok_or_else(|| {
+                                    "memory fallback returned neither tool calls nor text output"
+                                        .to_string()
+                                })?;
                         (
                             parse_memory_operations_from_text(&text, fallback_format)?,
                             "text_fallback_after_empty_tool_calls",
@@ -3288,244 +3302,248 @@ async fn run_group_memory_tool_update(
         let mut saw_done = false;
 
         for call in calls {
-        match call.name.as_str() {
-            "create_memory" => {
-                if let Some(raw_text) = extract_text_argument(&call) {
-                    let text = match validate_memory_text(&raw_text) {
-                        Ok(text) => text,
-                        Err(reason) => {
-                            log_warn(
-                                app,
-                                "group_dynamic_memory",
-                                format!("Skipping invalid memory text: {}", reason),
-                            );
-                            actions_log.push(json!({
-                                "name": "create_memory",
-                                "arguments": call.arguments,
-                                "skipped": true,
-                                "reason": reason,
-                                "timestamp": now_millis().unwrap_or_default(),
-                            }));
-                            tool_results.push(json!({
-                                "status": "skipped",
-                                "name": "create_memory",
-                                "reason": reason,
-                                "arguments": call.arguments,
-                            }));
-                            continue;
-                        }
-                    };
-                    let mem_id = generate_memory_id();
-                    let embedding =
-                        match embedding::compute_embedding(app.clone(), text.clone()).await {
-                            Ok(vec) => Some(vec),
-                            Err(err) => {
-                                log_error(
+            match call.name.as_str() {
+                "create_memory" => {
+                    if let Some(raw_text) = extract_text_argument(&call) {
+                        let text = match validate_memory_text(&raw_text) {
+                            Ok(text) => text,
+                            Err(reason) => {
+                                log_warn(
                                     app,
                                     "group_dynamic_memory",
-                                    format!("failed to embed memory: {}", err),
+                                    format!("Skipping invalid memory text: {}", reason),
                                 );
-                                None
+                                actions_log.push(json!({
+                                    "name": "create_memory",
+                                    "arguments": call.arguments,
+                                    "skipped": true,
+                                    "reason": reason,
+                                    "timestamp": now_millis().unwrap_or_default(),
+                                }));
+                                tool_results.push(json!({
+                                    "status": "skipped",
+                                    "name": "create_memory",
+                                    "reason": reason,
+                                    "arguments": call.arguments,
+                                }));
+                                continue;
                             }
                         };
-                    if let Some(reason) = find_duplicate_memory_reason(
-                        &text,
-                        embedding.as_deref(),
-                        &session.memory_embeddings,
-                    ) {
-                        log_info(
-                            app,
-                            "group_dynamic_memory",
-                            format!("Skipping duplicate memory ({}): {}", reason, &text),
-                        );
-                        actions_log.push(json!({
-                            "name": "create_memory",
-                            "arguments": call.arguments,
-                            "skipped": true,
-                            "reason": reason,
-                            "timestamp": now_millis().unwrap_or_default(),
-                        }));
-                        tool_results.push(json!({
-                            "status": "skipped",
-                            "name": "create_memory",
-                            "reason": reason,
-                            "arguments": call.arguments,
-                        }));
-                        continue;
-                    }
-                    let token_count =
-                        crate::embedding::tokenizer::count_tokens(app, &text).unwrap_or(0);
-                    let is_pinned = call
-                        .arguments
-                        .get("important")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    let category = match extract_required_memory_category(&call) {
-                        Ok(category) => category,
-                        Err(reason) => {
-                            log_warn(
-                                app,
-                                "group_dynamic_memory",
-                                format!("Skipping memory without required category: {}", reason),
-                            );
-                            actions_log.push(json!({
-                                "name": "create_memory",
-                                "arguments": call.arguments,
-                                "skipped": true,
-                                "reason": reason,
-                                "timestamp": now_millis().unwrap_or_default(),
-                            }));
+                        let mem_id = generate_memory_id();
+                        let embedding =
+                            match embedding::compute_embedding(app.clone(), text.clone()).await {
+                                Ok(vec) => Some(vec),
+                                Err(err) => {
+                                    log_error(
+                                        app,
+                                        "group_dynamic_memory",
+                                        format!("failed to embed memory: {}", err),
+                                    );
+                                    None
+                                }
+                            };
+                        if let Some(reason) = find_duplicate_memory_reason(
+                            &text,
+                            embedding.as_deref(),
+                            &session.memory_embeddings,
+                        ) {
                             log_info(
                                 app,
                                 "group_dynamic_memory",
-                                format!(
-                                    "Queued memory for category repair: text=\"{}\" pinned={}",
-                                    text, is_pinned
-                                ),
+                                format!("Skipping duplicate memory ({}): {}", reason, &text),
                             );
-                            untagged_candidates.push((text, is_pinned));
+                            actions_log.push(json!({
+                                "name": "create_memory",
+                                "arguments": call.arguments,
+                                "skipped": true,
+                                "reason": reason,
+                                "timestamp": now_millis().unwrap_or_default(),
+                            }));
                             tool_results.push(json!({
                                 "status": "skipped",
                                 "name": "create_memory",
                                 "reason": reason,
-                                "repairQueued": true,
                                 "arguments": call.arguments,
                             }));
                             continue;
                         }
-                    };
+                        let token_count =
+                            crate::embedding::tokenizer::count_tokens(app, &text).unwrap_or(0);
+                        let is_pinned = call
+                            .arguments
+                            .get("important")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let category = match extract_required_memory_category(&call) {
+                            Ok(category) => category,
+                            Err(reason) => {
+                                log_warn(
+                                    app,
+                                    "group_dynamic_memory",
+                                    format!(
+                                        "Skipping memory without required category: {}",
+                                        reason
+                                    ),
+                                );
+                                actions_log.push(json!({
+                                    "name": "create_memory",
+                                    "arguments": call.arguments,
+                                    "skipped": true,
+                                    "reason": reason,
+                                    "timestamp": now_millis().unwrap_or_default(),
+                                }));
+                                log_info(
+                                    app,
+                                    "group_dynamic_memory",
+                                    format!(
+                                        "Queued memory for category repair: text=\"{}\" pinned={}",
+                                        text, is_pinned
+                                    ),
+                                );
+                                untagged_candidates.push((text, is_pinned));
+                                tool_results.push(json!({
+                                    "status": "skipped",
+                                    "name": "create_memory",
+                                    "reason": reason,
+                                    "repairQueued": true,
+                                    "arguments": call.arguments,
+                                }));
+                                continue;
+                            }
+                        };
 
-                    session.memory_embeddings.push(MemoryEmbedding {
-                        id: mem_id.clone(),
-                        text,
-                        embedding: embedding.unwrap_or_default(),
-                        created_at: now_millis().unwrap_or_default() as i64,
-                        token_count: token_count as i32,
-                        is_cold: false,
-                        last_accessed_at: now_millis().unwrap_or_default() as i64,
-                        importance_score: 1.0,
-                        is_pinned,
-                        access_count: 0,
-                        category: Some(category),
-                    });
+                        session.memory_embeddings.push(MemoryEmbedding {
+                            id: mem_id.clone(),
+                            text,
+                            embedding: embedding.unwrap_or_default(),
+                            created_at: now_millis().unwrap_or_default() as i64,
+                            token_count: token_count as i32,
+                            is_cold: false,
+                            last_accessed_at: now_millis().unwrap_or_default() as i64,
+                            importance_score: 1.0,
+                            is_pinned,
+                            access_count: 0,
+                            category: Some(category),
+                        });
 
-                    let action = json!({
-                        "name": "create_memory",
-                        "arguments": call.arguments,
-                        "memoryId": mem_id,
-                        "timestamp": now_millis().unwrap_or_default(),
-                        "updatedMemories": format_memories_with_ids(session),
-                    });
-                    tool_results.push(json!({
+                        let action = json!({
+                            "name": "create_memory",
+                            "arguments": call.arguments,
+                            "memoryId": mem_id,
+                            "timestamp": now_millis().unwrap_or_default(),
+                            "updatedMemories": format_memories_with_ids(session),
+                        });
+                        tool_results.push(json!({
                         "status": "created",
                         "name": "create_memory",
                         "memoryId": action.get("memoryId").cloned().unwrap_or(Value::Null),
                         "updatedMemories": action.get("updatedMemories").cloned().unwrap_or(Value::Null),
                     }));
-                    actions_log.push(action);
+                        actions_log.push(action);
 
-                    log_info(
-                        app,
-                        "group_dynamic_memory",
-                        format!("Created memory {}", mem_id),
-                    );
+                        log_info(
+                            app,
+                            "group_dynamic_memory",
+                            format!("Created memory {}", mem_id),
+                        );
+                    }
                 }
-            }
-            "delete_memory" => {
-                if let Some(text) = call.arguments.get("text").and_then(|v| v.as_str()) {
-                    let sanitized = sanitize_memory_id(text);
-                    let target_idx =
-                        if sanitized.len() == 6 && sanitized.chars().all(char::is_numeric) {
-                            session
-                                .memory_embeddings
-                                .iter()
-                                .position(|m| m.id == sanitized)
-                        } else {
-                            session
-                                .memory_embeddings
-                                .iter()
-                                .position(|m| m.text == text)
-                        };
+                "delete_memory" => {
+                    if let Some(text) = call.arguments.get("text").and_then(|v| v.as_str()) {
+                        let sanitized = sanitize_memory_id(text);
+                        let target_idx =
+                            if sanitized.len() == 6 && sanitized.chars().all(char::is_numeric) {
+                                session
+                                    .memory_embeddings
+                                    .iter()
+                                    .position(|m| m.id == sanitized)
+                            } else {
+                                session
+                                    .memory_embeddings
+                                    .iter()
+                                    .position(|m| m.text == text)
+                            };
 
-                    if let Some(idx) = target_idx {
-                        let target_memory = session.memory_embeddings.get(idx).cloned();
-                        let confidence = call
-                            .arguments
-                            .get("confidence")
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(dynamic_settings.delete_confidence_default as f64)
-                            as f32;
-                        let confidence_defaulted = call
-                            .arguments
-                            .get("confidence")
-                            .and_then(|v| v.as_f64())
-                            .is_none();
-                        let force_soft_delete = confidence >= HARD_DELETE_CONFIDENCE_THRESHOLD
-                            && hard_delete_count >= max_hard_deletes;
-                        if confidence < HARD_DELETE_CONFIDENCE_THRESHOLD || force_soft_delete {
-                            // Soft-delete: move to cold storage instead of removing
-                            if idx < session.memory_embeddings.len() {
-                                let cold_threshold = dynamic_settings.cold_threshold;
-                                session.memory_embeddings[idx].is_cold = true;
-                                session.memory_embeddings[idx].importance_score = cold_threshold;
-                                log_info(
-                                    app,
-                                    "group_dynamic_memory",
-                                    if force_soft_delete {
-                                        format!(
+                        if let Some(idx) = target_idx {
+                            let target_memory = session.memory_embeddings.get(idx).cloned();
+                            let confidence = call
+                                .arguments
+                                .get("confidence")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(dynamic_settings.delete_confidence_default as f64)
+                                as f32;
+                            let confidence_defaulted = call
+                                .arguments
+                                .get("confidence")
+                                .and_then(|v| v.as_f64())
+                                .is_none();
+                            let force_soft_delete = confidence >= HARD_DELETE_CONFIDENCE_THRESHOLD
+                                && hard_delete_count >= max_hard_deletes;
+                            if confidence < HARD_DELETE_CONFIDENCE_THRESHOLD || force_soft_delete {
+                                // Soft-delete: move to cold storage instead of removing
+                                if idx < session.memory_embeddings.len() {
+                                    let cold_threshold = dynamic_settings.cold_threshold;
+                                    session.memory_embeddings[idx].is_cold = true;
+                                    session.memory_embeddings[idx].importance_score =
+                                        cold_threshold;
+                                    log_info(
+                                        app,
+                                        "group_dynamic_memory",
+                                        if force_soft_delete {
+                                            format!(
                                             "Soft-deleted memory due to hard-delete safeguard (hard_deletes={}/{}, confidence={:.2})",
                                             hard_delete_count,
                                             max_hard_deletes,
                                             confidence
                                         )
-                                    } else {
-                                        format!(
+                                        } else {
+                                            format!(
                                             "Soft-deleted memory (confidence={:.2}, defaulted={})",
                                             confidence, confidence_defaulted
                                         )
+                                        },
+                                    );
+                                }
+                                actions_log.push(json!({
+                                    "name": "delete_memory",
+                                    "arguments": call.arguments,
+                                    "deletedText": target_memory.as_ref().map(|m| m.text.clone()),
+                                    "deletedMemoryId": target_memory.as_ref().map(|m| m.id.clone()),
+                                    "memorySnapshot": target_memory,
+                                    "softDelete": true,
+                                    "reason": if force_soft_delete {
+                                        "hard_delete_limit_reached"
+                                    } else {
+                                        "low_confidence"
                                     },
-                                );
-                            }
-                            actions_log.push(json!({
-                                "name": "delete_memory",
-                                "arguments": call.arguments,
-                                "deletedText": target_memory.as_ref().map(|m| m.text.clone()),
-                                "deletedMemoryId": target_memory.as_ref().map(|m| m.id.clone()),
-                                "memorySnapshot": target_memory,
-                                "softDelete": true,
-                                "reason": if force_soft_delete {
-                                    "hard_delete_limit_reached"
-                                } else {
-                                    "low_confidence"
-                                },
-                                "confidence": confidence,
-                                "confidenceDefaulted": confidence_defaulted,
-                                "hardDeleteCount": hard_delete_count,
-                                "hardDeleteLimit": max_hard_deletes,
-                                "timestamp": now_millis().unwrap_or_default(),
-                                "updatedMemories": format_memories_with_ids(session),
-                            }));
-                            tool_results.push(json!({
-                                "status": "soft_deleted",
-                                "name": "delete_memory",
-                                "deletedMemoryId": target_memory.as_ref().map(|m| m.id.clone()),
-                                "deletedText": target_memory.as_ref().map(|m| m.text.clone()),
-                                "updatedMemories": format_memories_with_ids(session),
-                            }));
-                        } else {
-                            let removed_memory = if idx < session.memory_embeddings.len() {
-                                let removed = session.memory_embeddings.remove(idx);
-                                log_info(
-                                    app,
-                                    "group_dynamic_memory",
-                                    format!("Deleted memory {}", removed.id),
-                                );
-                                Some(removed)
+                                    "confidence": confidence,
+                                    "confidenceDefaulted": confidence_defaulted,
+                                    "hardDeleteCount": hard_delete_count,
+                                    "hardDeleteLimit": max_hard_deletes,
+                                    "timestamp": now_millis().unwrap_or_default(),
+                                    "updatedMemories": format_memories_with_ids(session),
+                                }));
+                                tool_results.push(json!({
+                                    "status": "soft_deleted",
+                                    "name": "delete_memory",
+                                    "deletedMemoryId": target_memory.as_ref().map(|m| m.id.clone()),
+                                    "deletedText": target_memory.as_ref().map(|m| m.text.clone()),
+                                    "updatedMemories": format_memories_with_ids(session),
+                                }));
                             } else {
-                                None
-                            };
-                            hard_delete_count += 1;
-                            actions_log.push(json!({
+                                let removed_memory = if idx < session.memory_embeddings.len() {
+                                    let removed = session.memory_embeddings.remove(idx);
+                                    log_info(
+                                        app,
+                                        "group_dynamic_memory",
+                                        format!("Deleted memory {}", removed.id),
+                                    );
+                                    Some(removed)
+                                } else {
+                                    None
+                                };
+                                hard_delete_count += 1;
+                                actions_log.push(json!({
                                 "name": "delete_memory",
                                 "arguments": call.arguments,
                                 "deletedText": removed_memory.as_ref().map(|m| m.text.clone()),
@@ -3538,91 +3556,93 @@ async fn run_group_memory_tool_update(
                                 "timestamp": now_millis().unwrap_or_default(),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));
-                            tool_results.push(json!({
+                                tool_results.push(json!({
                                 "status": "deleted",
                                 "name": "delete_memory",
                                 "deletedMemoryId": removed_memory.as_ref().map(|m| m.id.clone()),
                                 "deletedText": removed_memory.as_ref().map(|m| m.text.clone()),
                                 "updatedMemories": format_memories_with_ids(session),
                             }));
+                            }
+                        } else {
+                            log_warn(
+                                app,
+                                "group_dynamic_memory",
+                                format!("delete_memory could not find: {}", text),
+                            );
+                            tool_results.push(json!({
+                                "status": "skipped",
+                                "name": "delete_memory",
+                                "reason": "target_not_found",
+                                "arguments": call.arguments,
+                            }));
                         }
-                    } else {
-                        log_warn(
-                            app,
-                            "group_dynamic_memory",
-                            format!("delete_memory could not find: {}", text),
-                        );
-                        tool_results.push(json!({
-                            "status": "skipped",
-                            "name": "delete_memory",
-                            "reason": "target_not_found",
-                            "arguments": call.arguments,
-                        }));
                     }
                 }
-            }
-            "pin_memory" => {
-                if let Some(raw_id) = call.arguments.get("id").and_then(|v| v.as_str()) {
-                    let id = sanitize_memory_id(raw_id);
-                    if let Some(mem) = session.memory_embeddings.iter_mut().find(|m| m.id == id) {
-                        mem.is_pinned = true;
-                        mem.importance_score = 1.0;
-                        actions_log.push(json!({
-                            "name": "pin_memory",
-                            "arguments": call.arguments,
-                            "timestamp": now_millis().unwrap_or_default(),
-                        }));
-                        tool_results.push(json!({
-                            "status": "pinned",
-                            "name": "pin_memory",
-                            "memoryId": id,
-                        }));
-                        log_info(app, "group_dynamic_memory", format!("Pinned memory {}", id));
+                "pin_memory" => {
+                    if let Some(raw_id) = call.arguments.get("id").and_then(|v| v.as_str()) {
+                        let id = sanitize_memory_id(raw_id);
+                        if let Some(mem) = session.memory_embeddings.iter_mut().find(|m| m.id == id)
+                        {
+                            mem.is_pinned = true;
+                            mem.importance_score = 1.0;
+                            actions_log.push(json!({
+                                "name": "pin_memory",
+                                "arguments": call.arguments,
+                                "timestamp": now_millis().unwrap_or_default(),
+                            }));
+                            tool_results.push(json!({
+                                "status": "pinned",
+                                "name": "pin_memory",
+                                "memoryId": id,
+                            }));
+                            log_info(app, "group_dynamic_memory", format!("Pinned memory {}", id));
+                        }
                     }
                 }
-            }
-            "unpin_memory" => {
-                if let Some(raw_id) = call.arguments.get("id").and_then(|v| v.as_str()) {
-                    let id = sanitize_memory_id(raw_id);
-                    if let Some(mem) = session.memory_embeddings.iter_mut().find(|m| m.id == id) {
-                        mem.is_pinned = false;
-                        actions_log.push(json!({
-                            "name": "unpin_memory",
-                            "arguments": call.arguments,
-                            "timestamp": now_millis().unwrap_or_default(),
-                        }));
-                        tool_results.push(json!({
-                            "status": "unpinned",
-                            "name": "unpin_memory",
-                            "memoryId": id,
-                        }));
-                        log_info(
-                            app,
-                            "group_dynamic_memory",
-                            format!("Unpinned memory {}", id),
-                        );
+                "unpin_memory" => {
+                    if let Some(raw_id) = call.arguments.get("id").and_then(|v| v.as_str()) {
+                        let id = sanitize_memory_id(raw_id);
+                        if let Some(mem) = session.memory_embeddings.iter_mut().find(|m| m.id == id)
+                        {
+                            mem.is_pinned = false;
+                            actions_log.push(json!({
+                                "name": "unpin_memory",
+                                "arguments": call.arguments,
+                                "timestamp": now_millis().unwrap_or_default(),
+                            }));
+                            tool_results.push(json!({
+                                "status": "unpinned",
+                                "name": "unpin_memory",
+                                "memoryId": id,
+                            }));
+                            log_info(
+                                app,
+                                "group_dynamic_memory",
+                                format!("Unpinned memory {}", id),
+                            );
+                        }
                     }
                 }
-            }
-            "done" => {
-                actions_log.push(json!({
-                    "name": "done",
-                    "arguments": call.arguments,
-                    "timestamp": now_millis().unwrap_or_default(),
-                }));
-                saw_done = true;
-                break;
-            }
-            _ => {
-                tool_results.push(json!({
-                    "status": "skipped",
-                    "name": call.name,
-                    "reason": "unsupported_tool",
-                    "arguments": call.arguments,
-                }));
+                "done" => {
+                    actions_log.push(json!({
+                        "name": "done",
+                        "arguments": call.arguments,
+                        "timestamp": now_millis().unwrap_or_default(),
+                    }));
+                    saw_done = true;
+                    break;
+                }
+                _ => {
+                    tool_results.push(json!({
+                        "status": "skipped",
+                        "name": call.name,
+                        "reason": "unsupported_tool",
+                        "arguments": call.arguments,
+                    }));
+                }
             }
         }
-    }
 
         let skipped_results = tool_results
             .iter()

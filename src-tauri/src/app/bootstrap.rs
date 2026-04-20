@@ -261,6 +261,14 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
         );
     }
 
+    if let Err(err) = chat_manager::prompts::ensure_scene_prompt_writer_template(app) {
+        utils::log_error(
+            app,
+            "bootstrap",
+            format!("Failed to ensure scene prompt writer template: {}", err),
+        );
+    }
+
     if let Err(err) = chat_manager::prompts::ensure_design_reference_template(app) {
         utils::log_error(
             app,

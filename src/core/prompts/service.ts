@@ -23,6 +23,7 @@ export {
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
+  resetScenePromptWriterTemplate,
   resetDesignReferenceTemplate,
   getPromptParameterEngine,
   getRequiredTemplateVariables,

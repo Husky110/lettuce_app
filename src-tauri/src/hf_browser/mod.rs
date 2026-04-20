@@ -2292,12 +2292,7 @@ pub async fn hf_compute_local_runability(
         "hf_browser",
         format!(
             "local runability: path={} size={} quant={} RAM={} VRAM={} supports_gpu_offload={}",
-            file_path,
-            file_size,
-            quantization,
-            available_ram,
-            available_vram,
-            supports_gpu_offload
+            file_path, file_size, quantization, available_ram, available_vram, supports_gpu_offload
         ),
     );
 

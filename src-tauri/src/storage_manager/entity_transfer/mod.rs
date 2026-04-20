@@ -1795,7 +1795,12 @@ fn import_lorebooks_for_character_package(
         .character
         .active_lorebook_ids
         .iter()
-        .map(|id| lorebook_id_map.get(id).cloned().unwrap_or_else(|| id.clone()))
+        .map(|id| {
+            lorebook_id_map
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| id.clone())
+        })
         .collect())
 }
 
@@ -1995,13 +2000,14 @@ pub fn character_import(app: tauri::AppHandle, import_json: String) -> Result<St
 
     let active_lorebook_ids = import_lorebooks_for_character_package(&tx, &package, now)?;
     if !active_lorebook_ids.is_empty() {
-        let active_lorebook_ids_json = serde_json::to_string(&active_lorebook_ids).map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to serialize imported character lorebook ids: {}", e),
-            )
-        })?;
+        let active_lorebook_ids_json =
+            serde_json::to_string(&active_lorebook_ids).map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to serialize imported character lorebook ids: {}", e),
+                )
+            })?;
         tx.execute(
             "UPDATE characters SET active_lorebook_ids = ?1 WHERE id = ?2",
             params![active_lorebook_ids_json, &new_character_id],

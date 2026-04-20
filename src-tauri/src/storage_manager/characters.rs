@@ -220,8 +220,7 @@ fn read_character(conn: &rusqlite::Connection, id: &str) -> Result<JsonValue, St
             tmpl_prompt_template_id,
             tmpl_lorebook_ids_override,
             tmpl_created_at,
-        ) =
-            row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        ) = row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let mut msg_stmt = conn.prepare("SELECT id, role, content FROM chat_template_messages WHERE template_id = ? ORDER BY idx ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let msg_rows = msg_stmt
             .query_map(params![&tmpl_id], |r| {

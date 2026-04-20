@@ -19,6 +19,7 @@ pub enum PromptTemplateType {
     AvatarGeneration,
     AvatarEditRequest,
     SceneGeneration,
+    ScenePromptWriter,
     DesignReferenceWriter,
 }
 
