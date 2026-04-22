@@ -4661,7 +4661,7 @@ fn build_messages_for_api(
 ) -> Vec<serde_json::Value> {
     let mut messages = Vec::new();
     let _char_name = &selected_character.name;
-    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("User");
+    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
 
     for msg in group_messages {
         if msg.role == "user" {
@@ -5074,7 +5074,7 @@ fn build_group_system_prompt(
         .or(character.description.as_deref())
         .unwrap_or("");
 
-    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("User");
+    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
     let persona_desc = persona
         .map(|p| p.description.trim())
         .filter(|s| !s.is_empty())
@@ -5754,7 +5754,7 @@ async fn generate_character_response(
     }
     messages_for_api.extend(api_messages);
 
-    let persona_name = persona.as_ref().map(|p| p.title.as_str()).unwrap_or("User");
+    let persona_name = persona.as_ref().map(|p| p.title.as_str()).unwrap_or("user");
     messages_for_api.push(json!({
         "role": "user",
         "content": format!("[{}]: {}", persona_name, context.user_message)
@@ -6919,7 +6919,7 @@ pub async fn group_chat_generate_user_reply(
 
     let base_prompt = prompts::get_help_me_reply_prompt(&app, reply_style);
 
-    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("User");
+    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
     let persona_desc = persona.map(|p| p.description.as_str()).unwrap_or("");
 
     // Build character list for the prompt

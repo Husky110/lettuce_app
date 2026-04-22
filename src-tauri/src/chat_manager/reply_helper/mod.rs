@@ -29,7 +29,7 @@ fn help_me_reply_participant_names<'a>(
     prompt_character: &'a Character,
     prompt_persona: Option<&'a Persona>,
 ) -> (&'a str, &'a str) {
-    let effective_user_name = prompt_persona.map(|p| p.title.as_str()).unwrap_or("User");
+    let effective_user_name = prompt_persona.map(|p| p.title.as_str()).unwrap_or("user");
     let effective_assistant_name = prompt_character.name.as_str();
     (effective_user_name, effective_assistant_name)
 }
@@ -147,7 +147,7 @@ pub async fn chat_generate_user_reply(
     let persona_name = prompt_persona
         .as_ref()
         .map(|p| p.title.as_str())
-        .unwrap_or("User");
+        .unwrap_or("user");
     let persona_desc = prompt_persona
         .as_ref()
         .map(|p| p.description.as_str())

@@ -246,14 +246,14 @@ impl ContinueFlow {
         }
 
         let char_name = if swap_places {
-            persona.as_ref().map(|p| p.title.as_str()).unwrap_or("User")
+            persona.as_ref().map(|p| p.title.as_str()).unwrap_or("user")
         } else {
             character.name.as_str()
         };
         let persona_name = if swap_places {
             character.name.as_str()
         } else {
-            persona.as_ref().map(|p| p.title.as_str()).unwrap_or("")
+            persona.as_ref().map(|p| p.title.as_str()).unwrap_or("user")
         };
         let allow_image_input = model
             .input_scopes

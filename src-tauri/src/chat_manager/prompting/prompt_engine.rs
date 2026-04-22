@@ -2570,7 +2570,7 @@ fn render_with_context_internal(
         .unwrap_or("");
 
     // Get persona info
-    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("");
+    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
     let persona_desc = persona
         .map(|p| p.description.trim())
         .filter(|s| !s.is_empty())
@@ -2832,7 +2832,7 @@ fn build_debug_vars(
     _settings: &Settings,
 ) -> Value {
     let char_name = &character.name;
-    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("");
+    let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
     let raw_char_desc = character
         .definition
         .as_ref()

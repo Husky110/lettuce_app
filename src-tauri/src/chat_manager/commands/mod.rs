@@ -487,7 +487,7 @@ pub fn chat_message_debug_snapshot(
     let persona_name = persona
         .as_ref()
         .map(|item| item.title.as_str())
-        .unwrap_or("");
+        .unwrap_or("user");
     let allow_image_input = model
         .input_scopes
         .iter()

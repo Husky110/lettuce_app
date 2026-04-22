@@ -754,7 +754,7 @@ fn render_scene_generation_prompt_content(
         char_desc_parts.push(format!("Visual design notes: {}", value));
     }
     let char_desc = char_desc_parts.join("\n\n");
-    let persona_name = persona.map(|value| value.title.as_str()).unwrap_or("User");
+    let persona_name = persona.map(|value| value.title.as_str()).unwrap_or("user");
     let mut persona_desc_parts = Vec::new();
     if let Some(value) = persona
         .map(|value| value.description.as_str())
