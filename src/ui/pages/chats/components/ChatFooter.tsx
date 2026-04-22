@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ChevronsRight, Plus, SendHorizonal, Square, X } from "lucide-react";
 import type { Character, ImageAttachment } from "../../../../core/storage/schemas";
 import { radius, typography, interactive, shadows, cn } from "../../../design-tokens";
@@ -22,6 +22,7 @@ interface ChatFooterProps {
   triggerFileInput?: boolean;
   onFileInputTriggered?: () => void;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  topSlot?: ReactNode;
 }
 
 export function ChatFooter({
@@ -40,6 +41,7 @@ export function ChatFooter({
   triggerFileInput,
   onFileInputTriggered,
   textareaRef: externalTextareaRef,
+  topSlot,
 }: ChatFooterProps) {
   const { t } = useI18n();
   const hasDraft = draft.trim().length > 0;
@@ -188,12 +190,18 @@ export function ChatFooter({
 
       <div
         className={cn(
-          "relative flex items-end gap-2.5 p-2",
+          "relative",
           "rounded-4xl",
           "border border-fg/15 bg-surface-el/65 backdrop-blur-md",
           shadows.md,
         )}
       >
+        {topSlot && (
+          <div className="border-b border-fg/10">
+            {topSlot}
+          </div>
+        )}
+        <div className="relative flex items-end gap-2.5 p-2">
         {/* Plus button */}
         {(onOpenPlusMenu || onAddAttachment) && (
           <button
@@ -296,6 +304,7 @@ export function ChatFooter({
             <ChevronsRight size={18} />
           )}
         </button>
+        </div>
       </div>
     </footer>
   );

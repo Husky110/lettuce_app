@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Session } from "../../../../core/storage/schemas";
 import { updateSessionAuthorNote } from "../../../../core/storage/repo";
 import { BottomMenu } from "../../../components/BottomMenu";
+import { Switch } from "../../../components/Switch";
 import { cn, radius } from "../../../design-tokens";
+import {
+  useAuthorNoteInlineEditor,
+  setAuthorNoteInlineEditor,
+} from "./useAuthorNoteInlineEditor";
 
 interface AuthorNoteBottomMenuProps {
   isOpen: boolean;
@@ -20,6 +25,7 @@ export function AuthorNoteBottomMenu({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inlineEditorEnabled = useAuthorNoteInlineEditor();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -80,6 +86,26 @@ export function AuthorNoteBottomMenu({
       title="Author Note"
     >
       <div className="space-y-4">
+        <div
+          className={cn(
+            "flex items-center justify-between gap-3 px-3 py-2.5",
+            radius.md,
+            "border border-fg/10 bg-fg/[0.03]",
+          )}
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">Inline editor</p>
+            <p className="mt-0.5 text-xs text-fg/45">
+              Show the author note above the chat input for quick edits.
+            </p>
+          </div>
+          <Switch
+            checked={inlineEditorEnabled}
+            onChange={setAuthorNoteInlineEditor}
+            aria-label="Toggle inline author note editor"
+          />
+        </div>
+
         <textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

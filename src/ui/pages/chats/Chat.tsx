@@ -70,6 +70,8 @@ import {
   EmptyState,
   ChatSettingsDrawer,
   AuthorNoteBottomMenu,
+  InlineAuthorNoteBar,
+  useAuthorNoteInlineEditor,
 } from "./components";
 import { BottomMenu, GuidedTour, MenuButton, useGuidedTour } from "../../components";
 import { AvatarImage } from "../../components/AvatarImage";
@@ -251,6 +253,7 @@ export function ChatConversationPage() {
   const [showPersonaSelector, setShowPersonaSelector] = useState(false);
   const [showAuthorNoteMenu, setShowAuthorNoteMenu] = useState(false);
   const [showShortcutsMenu, setShowShortcutsMenu] = useState(false);
+  const inlineAuthorNoteEnabled = useAuthorNoteInlineEditor();
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false);
   const [showBackgroundLibraryMenu, setShowBackgroundLibraryMenu] = useState(false);
   const [generatedReply, setGeneratedReply] = useState<string | null>(null);
@@ -2121,6 +2124,14 @@ export function ChatConversationPage() {
       {/* Footer */}
       <div className="relative z-10" style={{ paddingBottom: footerBottomOffset }}>
         <ChatFooter
+          topSlot={
+            inlineAuthorNoteEnabled && (sessionForHeader?.id ?? chatController.session?.id) ? (
+              <InlineAuthorNoteBar
+                session={sessionForHeader ?? chatController.session}
+                onSaved={setSessionForHeader}
+              />
+            ) : undefined
+          }
           draft={draft}
           setDraft={setDraft}
           error={error}

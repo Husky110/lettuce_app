@@ -7,3 +7,5 @@ export { EmptyState } from "./EmptyState";
 export { MarkdownRenderer } from "./MarkdownRenderer";
 export { ChatSettingsDrawer } from "./ChatSettingsDrawer";
 export { AuthorNoteBottomMenu } from "./AuthorNoteBottomMenu";
+export { InlineAuthorNoteBar } from "./InlineAuthorNoteBar";
+export { useAuthorNoteInlineEditor } from "./useAuthorNoteInlineEditor";
