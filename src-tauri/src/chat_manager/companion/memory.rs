@@ -17,6 +17,7 @@ use crate::chat_manager::types::{
 use crate::embedding;
 use crate::embedding::emotion::{classify_text, EmotionClassification};
 use crate::embedding::ner::{extract_entities, NamedEntitySpan};
+use crate::embedding::router::{score_hypotheses, RouterHypothesisScore};
 use crate::utils::{log_info, log_warn, now_millis};
 
 const CATEGORY_PROFILE: &str = "profile";
@@ -27,6 +28,10 @@ const CATEGORY_ROUTINE: &str = "routine";
 const CATEGORY_EPISODIC: &str = "episodic";
 const CATEGORY_MILESTONE: &str = "milestone";
 const CATEGORY_EMOTIONAL_SNAPSHOT: &str = "emotional_snapshot";
+const ROUTER_REMEMBER_HYPOTHESIS: &str =
+    "This statement contains companion-relevant information that should be stored as memory for future conversations.";
+const ROUTER_TRANSIENT_HYPOTHESIS: &str =
+    "This statement is transient small talk and should not be stored as memory.";
 
 lazy_static::lazy_static! {
     static ref ROUTER_RUNTIME: Arc<TokioMutex<Option<Vec<PrototypeEmbedding>>>> =
@@ -89,6 +94,13 @@ struct SentenceChunk {
 enum CandidateDisposition {
     Create,
     SkipDuplicate,
+}
+
+#[derive(Debug, Clone)]
+struct RouterDecision {
+    remember_score: f32,
+    transient_score: f32,
+    category_scores: HashMap<&'static str, f32>,
 }
 
 fn config(character: &Character) -> super::CompanionMemoryConfig {
@@ -921,6 +933,39 @@ fn router_prototypes() -> Vec<SentencePrototype> {
     ]
 }
 
+fn router_category_hypotheses() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            CATEGORY_BOUNDARY,
+            "This statement expresses a personal boundary, refusal, consent limit, or request to stop something.",
+        ),
+        (
+            CATEGORY_PREFERENCE,
+            "This statement expresses a personal preference, dislike, favorite, or enjoyment.",
+        ),
+        (
+            CATEGORY_PROFILE,
+            "This statement shares a stable fact about identity, background, work, home, or life circumstances.",
+        ),
+        (
+            CATEGORY_ROUTINE,
+            "This statement describes a recurring routine, schedule, habit, or usual behavior.",
+        ),
+        (
+            CATEGORY_EPISODIC,
+            "This statement describes a plan, promise, upcoming event, or shared future action.",
+        ),
+        (
+            CATEGORY_RELATIONSHIP,
+            "This statement expresses affection, trust, gratitude, reassurance, apology, or emotional closeness toward the other person.",
+        ),
+        (
+            CATEGORY_MILESTONE,
+            "This statement describes a relationship turning point such as a confession, reconciliation, breakup, or major commitment.",
+        ),
+    ]
+}
+
 async fn prototype_embeddings(app: &AppHandle) -> Result<Vec<PrototypeEmbedding>, String> {
     let mut cache = ROUTER_RUNTIME.lock().await;
     if let Some(runtime) = cache.as_ref() {
@@ -962,6 +1007,78 @@ async fn classify_sentence_emotion(
     }
 }
 
+async fn classify_sentence_router(app: &AppHandle, sentence: &str) -> Option<RouterDecision> {
+    let remember_scores = match score_hypotheses(
+        app,
+        sentence,
+        &[ROUTER_REMEMBER_HYPOTHESIS, ROUTER_TRANSIENT_HYPOTHESIS],
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log_warn(
+                app,
+                "companion_memory",
+                format!(
+                    "sentence router rememberability classification failed: {}",
+                    err
+                ),
+            );
+            None
+        }
+    };
+
+    let category_pairs = router_category_hypotheses();
+    let category_hypotheses = category_pairs
+        .iter()
+        .map(|(_, hypothesis)| *hypothesis)
+        .collect::<Vec<_>>();
+    let category_scores = match score_hypotheses(app, sentence, &category_hypotheses).await {
+        Ok(result) => result,
+        Err(err) => {
+            log_warn(
+                app,
+                "companion_memory",
+                format!("sentence router category classification failed: {}", err),
+            );
+            None
+        }
+    };
+
+    if remember_scores.is_none() && category_scores.is_none() {
+        return None;
+    }
+
+    let mut categories = HashMap::new();
+    if let Some(scores) = category_scores {
+        for ((category, _), score) in category_pairs.into_iter().zip(scores.into_iter()) {
+            categories.insert(category, router_confidence(&score));
+        }
+    }
+
+    let mut remember_score = 0.0;
+    let mut transient_score = 0.0;
+    if let Some(scores) = remember_scores {
+        if let Some(score) = scores.first() {
+            remember_score = router_confidence(score);
+        }
+        if let Some(score) = scores.get(1) {
+            transient_score = router_confidence(score);
+        }
+    }
+
+    Some(RouterDecision {
+        remember_score,
+        transient_score,
+        category_scores: categories,
+    })
+}
+
+fn router_confidence(score: &RouterHypothesisScore) -> f32 {
+    (score.entailment - score.contradiction * 0.45 + score.neutral * 0.1).clamp(0.0, 1.0)
+}
+
 async fn route_sentence_candidate(
     app: &AppHandle,
     speaker: PrototypeSpeaker,
@@ -983,6 +1100,7 @@ async fn route_sentence_candidate(
         };
 
     let emotion = classify_sentence_emotion(app, sentence).await;
+    let router = classify_sentence_router(app, sentence).await;
     let prototypes = match prototype_embeddings(app).await {
         Ok(prototypes) => prototypes,
         Err(err) => {
@@ -995,6 +1113,39 @@ async fn route_sentence_candidate(
         }
     };
 
+    let router_best_category = router
+        .as_ref()
+        .map(|decision| {
+            decision
+                .category_scores
+                .values()
+                .copied()
+                .fold(0.0_f32, f32::max)
+        })
+        .unwrap_or(0.0);
+    let remember_score = router
+        .as_ref()
+        .map(|decision| decision.remember_score)
+        .unwrap_or(0.0);
+    let transient_score = router
+        .as_ref()
+        .map(|decision| decision.transient_score)
+        .unwrap_or(0.0);
+    let emotional_signal = relationship_emotion_strength(emotion.as_ref())
+        .max(apology_emotion_strength(emotion.as_ref()));
+    let has_structural_anchor =
+        features.has_any_entity_type(&["DATE", "PER", "ORG", "LOC"]) || features.has_first_person();
+
+    if router.is_some()
+        && remember_score < 0.36
+        && transient_score > 0.52
+        && router_best_category < 0.26
+        && emotional_signal < 0.48
+        && !has_structural_anchor
+    {
+        return None;
+    }
+
     let mut best: Option<(SentencePrototype, f32)> = None;
     for prototype in prototypes {
         if !prototype_matches_speaker(prototype.prototype.speaker, speaker) {
@@ -1004,7 +1155,15 @@ async fn route_sentence_candidate(
             continue;
         }
 
-        let mut score = cosine_similarity(&sentence_embedding, &prototype.embedding);
+        let semantic_score = cosine_similarity(&sentence_embedding, &prototype.embedding);
+        let router_score = router
+            .as_ref()
+            .and_then(|decision| decision.category_scores.get(prototype.prototype.category))
+            .copied()
+            .unwrap_or(0.0);
+        let mut score = semantic_score * 0.55 + router_score * 0.7;
+        score += remember_score * 0.18;
+        score -= transient_score * 0.12;
         if prototype.prototype.category == CATEGORY_RELATIONSHIP
             || prototype.prototype.category == CATEGORY_MILESTONE
         {
@@ -1012,6 +1171,14 @@ async fn route_sentence_candidate(
             score += apology_emotion_strength(emotion.as_ref()) * 0.12;
         }
         score += entity_signal_bonus(prototype.prototype.category, features, emotion.as_ref());
+
+        if router.is_some()
+            && router_score < 0.14
+            && semantic_score < (prototype.prototype.threshold + 0.04)
+            && remember_score < 0.42
+        {
+            continue;
+        }
 
         if score < prototype.prototype.threshold {
             continue;
@@ -1024,14 +1191,26 @@ async fn route_sentence_candidate(
     }
 
     let (prototype, score) = best?;
+    if !assistant_policy_allows(
+        speaker,
+        prototype.category,
+        sentence,
+        remember_score,
+        transient_score,
+        router_best_category,
+        emotional_signal,
+        entities,
+    ) {
+        return None;
+    }
     let pinned = prototype.pinned
         || ((prototype.category == CATEGORY_RELATIONSHIP
             || prototype.category == CATEGORY_MILESTONE)
             && relationship_emotion_strength(emotion.as_ref()) >= 0.75);
-    let importance = if score > 0.72 {
-        (prototype.importance + 0.04).min(1.0)
+    let importance = if score > 0.72 || remember_score >= 0.72 {
+        (prototype.importance + 0.05).min(1.0)
     } else {
-        prototype.importance
+        (prototype.importance + remember_score * 0.06).min(1.0)
     };
 
     Some(candidate(
@@ -1044,6 +1223,38 @@ async fn route_sentence_candidate(
         derive_fact_polarity(prototype.category, sentence),
         speaker.as_role_name().to_string(),
     ))
+}
+
+fn assistant_policy_allows(
+    speaker: PrototypeSpeaker,
+    category: &str,
+    sentence: &str,
+    remember_score: f32,
+    transient_score: f32,
+    router_best_category: f32,
+    emotional_signal: f32,
+    entities: &[MemoryEntityAnchor],
+) -> bool {
+    if speaker != PrototypeSpeaker::Assistant {
+        return true;
+    }
+
+    match category {
+        CATEGORY_EPISODIC => {
+            remember_score >= 0.54 && router_best_category >= 0.32 && transient_score <= 0.52
+        }
+        CATEGORY_RELATIONSHIP => {
+            let has_anchor = !entities.is_empty() || sentence.len() >= 48;
+            has_anchor
+                && (emotional_signal >= 0.56 || remember_score >= 0.62)
+                && router_best_category >= 0.34
+                && transient_score <= 0.5
+        }
+        CATEGORY_MILESTONE => {
+            (remember_score >= 0.62 || router_best_category >= 0.42) && transient_score <= 0.48
+        }
+        _ => false,
+    }
 }
 
 fn prototype_matches_speaker(expected: PrototypeSpeaker, actual: PrototypeSpeaker) -> bool {

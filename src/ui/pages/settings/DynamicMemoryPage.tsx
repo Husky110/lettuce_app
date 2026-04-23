@@ -227,6 +227,7 @@ export function DynamicMemoryPage() {
   const [availableEmbeddingVersions, setAvailableEmbeddingVersions] = useState<string[]>([]);
   const [companionEmotionInstalled, setCompanionEmotionInstalled] = useState(false);
   const [companionNerInstalled, setCompanionNerInstalled] = useState(false);
+  const [companionRouterInstalled, setCompanionRouterInstalled] = useState(false);
   const [installBundleComplete, setInstallBundleComplete] = useState(false);
   const [selectedEmbeddingVersion, setSelectedEmbeddingVersion] = useState<string | null>(null);
   const [showDownloadModelMenu, setShowDownloadModelMenu] = useState(false);
@@ -278,6 +279,7 @@ export function DynamicMemoryPage() {
         setModels(settings.models);
         setCompanionEmotionInstalled(modelInfo.companionEmotionInstalled ?? false);
         setCompanionNerInstalled(modelInfo.companionNerInstalled ?? false);
+        setCompanionRouterInstalled(modelInfo.companionRouterInstalled ?? false);
         setInstallBundleComplete(modelInfo.installBundleComplete ?? modelInfo.installed);
 
         if (modelInfo.installed) {
@@ -468,6 +470,7 @@ export function DynamicMemoryPage() {
       setSelectedEmbeddingVersion(sourceVersion);
       setCompanionEmotionInstalled(modelInfo.companionEmotionInstalled ?? false);
       setCompanionNerInstalled(modelInfo.companionNerInstalled ?? false);
+      setCompanionRouterInstalled(modelInfo.companionRouterInstalled ?? false);
       setInstallBundleComplete(modelInfo.installBundleComplete ?? modelInfo.installed);
     } catch (err) {
       console.error("Failed to delete model version:", err);
@@ -1335,11 +1338,11 @@ export function DynamicMemoryPage() {
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] leading-relaxed text-fg/50">
-                          Local ONNX analysis models used for companion emotion regulation and named
-                          entity extraction. They are downloaded with the Dynamic Memory model
-                          bundle.
+                          Local ONNX analysis models used for companion emotion regulation, entity
+                          extraction, and memory routing. They are downloaded with the Dynamic
+                          Memory model bundle.
                         </p>
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                           <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[11px] font-medium text-fg/75">
@@ -1365,6 +1368,21 @@ export function DynamicMemoryPage() {
                                 )}
                               >
                                 {companionNerInstalled ? "Installed" : "Missing"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-fg/75">
+                                Memory router
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[10px] font-medium",
+                                  companionRouterInstalled ? "text-accent" : "text-warning",
+                                )}
+                              >
+                                {companionRouterInstalled ? "Installed" : "Missing"}
                               </span>
                             </div>
                           </div>

@@ -97,6 +97,7 @@ export const storageBridge = {
       maxTokens: number;
       companionEmotionInstalled?: boolean;
       companionNerInstalled?: boolean;
+      companionRouterInstalled?: boolean;
       installBundleComplete?: boolean;
     }>("get_embedding_model_info"),
   startEmbeddingDownload: (version?: string) =>

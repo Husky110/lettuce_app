@@ -1739,6 +1739,7 @@ export async function getEmbeddingModelInfo(): Promise<{
   maxTokens: number;
   companionEmotionInstalled?: boolean;
   companionNerInstalled?: boolean;
+  companionRouterInstalled?: boolean;
   installBundleComplete?: boolean;
 }> {
   return storageBridge.getEmbeddingModelInfo();

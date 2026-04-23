@@ -11,6 +11,7 @@ mod inference;
 mod layout;
 pub(crate) mod ner;
 mod ort_runtime;
+pub(crate) mod router;
 mod settings;
 mod specs;
 mod tests;
@@ -63,6 +64,7 @@ pub struct EmbeddingModelInfo {
     pub max_tokens: u32,
     pub companion_emotion_installed: bool,
     pub companion_ner_installed: bool,
+    pub companion_router_installed: bool,
     pub install_bundle_complete: bool,
 }
 
@@ -272,7 +274,10 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
             companion_ner_installed: installed.has_companion_ner,
-            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
+            companion_router_installed: installed.has_companion_router,
+            install_bundle_complete: installed.has_companion_emotion
+                && installed.has_companion_ner
+                && installed.has_companion_router,
         }),
         Some(EmbeddingModelVersion::V3) => Ok(EmbeddingModelInfo {
             installed: true,
@@ -283,7 +288,10 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
             companion_ner_installed: installed.has_companion_ner,
-            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
+            companion_router_installed: installed.has_companion_router,
+            install_bundle_complete: installed.has_companion_emotion
+                && installed.has_companion_ner
+                && installed.has_companion_router,
         }),
         Some(EmbeddingModelVersion::V1) => Ok(EmbeddingModelInfo {
             installed: true,
@@ -294,7 +302,10 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
             companion_ner_installed: installed.has_companion_ner,
-            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
+            companion_router_installed: installed.has_companion_router,
+            install_bundle_complete: installed.has_companion_emotion
+                && installed.has_companion_ner
+                && installed.has_companion_router,
         }),
         None => Ok(EmbeddingModelInfo {
             installed: false,
@@ -305,6 +316,7 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             max_tokens: 0,
             companion_emotion_installed: installed.has_companion_emotion,
             companion_ner_installed: installed.has_companion_ner,
+            companion_router_installed: installed.has_companion_router,
             install_bundle_complete: false,
         }),
     }
@@ -355,6 +367,7 @@ pub async fn clear_embedding_runtime_cache() -> Result<(), String> {
     inference::clear_loaded_runtime_cache().await;
     emotion::clear_loaded_runtime_cache().await;
     ner::clear_loaded_runtime_cache().await;
+    router::clear_loaded_runtime_cache().await;
     Ok(())
 }
 

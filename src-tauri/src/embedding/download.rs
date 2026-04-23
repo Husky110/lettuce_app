@@ -32,6 +32,7 @@ fn cleanup_partial_files(
             let mut v = MODEL_FILES_V1.to_vec();
             v.extend(COMPANION_EMOTION_MODEL_FILES_LOCAL.iter().copied());
             v.extend(COMPANION_NER_MODEL_FILES_LOCAL.iter().copied());
+            v.extend(COMPANION_ROUTER_MODEL_FILES_LOCAL.iter().copied());
             v
         }
         Some(EmbeddingModelVersion::V2) => {
@@ -39,12 +40,14 @@ fn cleanup_partial_files(
             v.extend(MODEL_FILES_V2_LOCAL_LEGACY.iter().copied());
             v.extend(COMPANION_EMOTION_MODEL_FILES_LOCAL.iter().copied());
             v.extend(COMPANION_NER_MODEL_FILES_LOCAL.iter().copied());
+            v.extend(COMPANION_ROUTER_MODEL_FILES_LOCAL.iter().copied());
             v
         }
         Some(EmbeddingModelVersion::V3) => {
             let mut v = MODEL_FILES_V3_LOCAL.to_vec();
             v.extend(COMPANION_EMOTION_MODEL_FILES_LOCAL.iter().copied());
             v.extend(COMPANION_NER_MODEL_FILES_LOCAL.iter().copied());
+            v.extend(COMPANION_ROUTER_MODEL_FILES_LOCAL.iter().copied());
             v
         }
         None => {
@@ -54,6 +57,7 @@ fn cleanup_partial_files(
             all_files.extend(MODEL_FILES_V3_LOCAL.iter().copied());
             all_files.extend(COMPANION_EMOTION_MODEL_FILES_LOCAL.iter().copied());
             all_files.extend(COMPANION_NER_MODEL_FILES_LOCAL.iter().copied());
+            all_files.extend(COMPANION_ROUTER_MODEL_FILES_LOCAL.iter().copied());
             all_files
         }
     };
@@ -132,6 +136,19 @@ fn log_model_file_status(app: &AppHandle, component: &str, model_dir: &PathBuf) 
             component,
             format!(
                 "model file companion-ner {}: {}",
+                filename,
+                describe_path(&path)
+            ),
+        );
+    }
+
+    for filename in COMPANION_ROUTER_MODEL_FILES_LOCAL.iter() {
+        let path = model_dir.join(filename);
+        log_info(
+            app,
+            component,
+            format!(
+                "model file companion-router {}: {}",
                 filename,
                 describe_path(&path)
             ),
@@ -294,6 +311,7 @@ pub async fn start_embedding_download(
     super::inference::clear_loaded_runtime_cache().await;
     super::emotion::clear_loaded_runtime_cache().await;
     super::ner::clear_loaded_runtime_cache().await;
+    super::router::clear_loaded_runtime_cache().await;
 
     let source_spec = download_source_spec(version.as_deref());
     let target_version = source_spec.target_version;
@@ -432,6 +450,7 @@ pub async fn cancel_embedding_download(app: AppHandle) -> Result<(), String> {
     super::inference::clear_loaded_runtime_cache().await;
     super::emotion::clear_loaded_runtime_cache().await;
     super::ner::clear_loaded_runtime_cache().await;
+    super::router::clear_loaded_runtime_cache().await;
 
     {
         let mut state = DOWNLOAD_STATE.lock().await;
@@ -469,6 +488,7 @@ pub async fn delete_embedding_model(app: AppHandle) -> Result<(), String> {
     super::inference::clear_loaded_runtime_cache().await;
     super::emotion::clear_loaded_runtime_cache().await;
     super::ner::clear_loaded_runtime_cache().await;
+    super::router::clear_loaded_runtime_cache().await;
     reset_download_state().await;
 
     let model_dir = embedding_model_dir(&app)?;
@@ -486,6 +506,7 @@ pub async fn delete_embedding_model_version(app: AppHandle, version: String) -> 
     super::inference::clear_loaded_runtime_cache().await;
     super::emotion::clear_loaded_runtime_cache().await;
     super::ner::clear_loaded_runtime_cache().await;
+    super::router::clear_loaded_runtime_cache().await;
     reset_download_state().await;
 
     let model_dir = embedding_model_dir(&app)?;
