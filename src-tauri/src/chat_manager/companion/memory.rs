@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use tauri::AppHandle;
+use tokio::sync::Mutex as TokioMutex;
 
 use super::{companion_config, current_state, is_companion_mode};
 use crate::chat_manager::memory::dynamic::{
@@ -23,12 +25,40 @@ const CATEGORY_EPISODIC: &str = "episodic";
 const CATEGORY_MILESTONE: &str = "milestone";
 const CATEGORY_EMOTIONAL_SNAPSHOT: &str = "emotional_snapshot";
 
+lazy_static::lazy_static! {
+    static ref ROUTER_RUNTIME: Arc<TokioMutex<Option<Vec<PrototypeEmbedding>>>> =
+        Arc::new(TokioMutex::new(None));
+}
+
 #[derive(Debug, Clone)]
 struct CompanionMemoryCandidate {
     text: String,
     category: &'static str,
     pinned: bool,
     importance: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrototypeSpeaker {
+    User,
+    Assistant,
+    Any,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SentencePrototype {
+    category: &'static str,
+    speaker: PrototypeSpeaker,
+    description: &'static str,
+    threshold: f32,
+    importance: f32,
+    pinned: bool,
+}
+
+#[derive(Debug, Clone)]
+struct PrototypeEmbedding {
+    prototype: SentencePrototype,
+    embedding: Vec<f32>,
 }
 
 fn config(character: &Character) -> super::CompanionMemoryConfig {
@@ -472,13 +502,20 @@ async fn build_candidates(
     let mut candidates = Vec::new();
 
     for message in recent_messages {
+        let speaker = if message.role.eq_ignore_ascii_case("user") {
+            PrototypeSpeaker::User
+        } else if message.role.eq_ignore_ascii_case("assistant") {
+            PrototypeSpeaker::Assistant
+        } else {
+            continue;
+        };
+
         for sentence in split_sentences(&message.content) {
             let features = SentenceFeatures::new(&sentence);
-            let emotion = classify_sentence_emotion(app, &sentence).await;
-            if message.role.eq_ignore_ascii_case("user") {
-                push_user_candidates(&mut candidates, &sentence, &features, emotion.as_ref());
-            } else if message.role.eq_ignore_ascii_case("assistant") {
-                push_assistant_candidates(&mut candidates, &sentence, &features, emotion.as_ref());
+            if let Some(candidate) =
+                route_sentence_candidate(app, speaker, &sentence, &features).await
+            {
+                candidates.push(candidate);
             }
         }
     }
@@ -535,24 +572,107 @@ impl SentenceFeatures {
         }
     }
 
-    fn contains_token(&self, token: &str) -> bool {
-        self.tokens.iter().any(|existing| existing == token)
-    }
-
     fn contains_any_token(&self, tokens: &[&str]) -> bool {
-        tokens.iter().any(|token| self.contains_token(token))
+        tokens
+            .iter()
+            .any(|token| self.tokens.iter().any(|existing| existing == token))
     }
 
-    fn starts_with_first_person(&self) -> bool {
-        self.tokens
-            .first()
-            .map(|token| matches!(token.as_str(), "i" | "im" | "ive" | "my"))
-            .unwrap_or(false)
+    fn has_first_person(&self) -> bool {
+        self.contains_any_token(&["i", "me", "my", "mine", "im", "ive", "ill"])
     }
 
-    fn references_other_person(&self) -> bool {
+    fn has_second_or_shared_reference(&self) -> bool {
         self.contains_any_token(&["you", "your", "yours", "we", "us", "our"])
     }
+}
+
+fn router_prototypes() -> Vec<SentencePrototype> {
+    vec![
+        SentencePrototype {
+            category: CATEGORY_BOUNDARY,
+            speaker: PrototypeSpeaker::User,
+            description:
+                "a person sets a personal limit, refusal, comfort boundary, or asks the other person to stop something",
+            threshold: 0.34,
+            importance: 1.0,
+            pinned: true,
+        },
+        SentencePrototype {
+            category: CATEGORY_PREFERENCE,
+            speaker: PrototypeSpeaker::User,
+            description:
+                "a person states a personal preference, liking, dislike, favorite, or what they enjoy",
+            threshold: 0.33,
+            importance: 0.94,
+            pinned: false,
+        },
+        SentencePrototype {
+            category: CATEGORY_PROFILE,
+            speaker: PrototypeSpeaker::User,
+            description:
+                "a person states a stable fact about their identity, background, work, home, history, or life circumstances",
+            threshold: 0.31,
+            importance: 0.9,
+            pinned: false,
+        },
+        SentencePrototype {
+            category: CATEGORY_ROUTINE,
+            speaker: PrototypeSpeaker::User,
+            description:
+                "a person describes a recurring habit, routine, schedule, or usual behavior",
+            threshold: 0.34,
+            importance: 0.82,
+            pinned: false,
+        },
+        SentencePrototype {
+            category: CATEGORY_EPISODIC,
+            speaker: PrototypeSpeaker::Any,
+            description:
+                "people make a plan, promise, future commitment, or discuss an upcoming shared action",
+            threshold: 0.34,
+            importance: 0.9,
+            pinned: false,
+        },
+        SentencePrototype {
+            category: CATEGORY_RELATIONSHIP,
+            speaker: PrototypeSpeaker::Any,
+            description:
+                "a person expresses affection, trust, gratitude, apology, reassurance, emotional closeness, or care toward the other person",
+            threshold: 0.33,
+            importance: 0.92,
+            pinned: false,
+        },
+        SentencePrototype {
+            category: CATEGORY_MILESTONE,
+            speaker: PrototypeSpeaker::Any,
+            description:
+                "a major turning point in the relationship such as reconciliation, breakup, confession, deep promise, or changed relationship status",
+            threshold: 0.35,
+            importance: 0.96,
+            pinned: true,
+        },
+    ]
+}
+
+async fn prototype_embeddings(app: &AppHandle) -> Result<Vec<PrototypeEmbedding>, String> {
+    let mut cache = ROUTER_RUNTIME.lock().await;
+    if let Some(runtime) = cache.as_ref() {
+        return Ok(runtime.clone());
+    }
+
+    let mut embedded = Vec::new();
+    for prototype in router_prototypes() {
+        let embedding =
+            embedding::compute_embedding(app.clone(), prototype.description.to_string()).await?;
+        embedded.push(PrototypeEmbedding {
+            prototype,
+            embedding,
+        });
+    }
+
+    *cache = Some(embedded.clone());
+    Ok(embedded)
 }
 
 async fn classify_sentence_emotion(
@@ -576,200 +696,154 @@ async fn classify_sentence_emotion(
     }
 }
 
-fn push_user_candidates(
-    candidates: &mut Vec<CompanionMemoryCandidate>,
+async fn route_sentence_candidate(
+    app: &AppHandle,
+    speaker: PrototypeSpeaker,
     sentence: &str,
     features: &SentenceFeatures,
-    emotion: Option<&EmotionClassification>,
-) {
-    if looks_like_boundary(features) {
-        candidates.push(candidate(
-            CATEGORY_BOUNDARY,
-            format!("User boundary: {}.", trim_trailing_punctuation(sentence)),
-            true,
-            1.0,
-        ));
+) -> Option<CompanionMemoryCandidate> {
+    let sentence_embedding =
+        match embedding::compute_embedding(app.clone(), sentence.to_string()).await {
+            Ok(embedding) => embedding,
+            Err(err) => {
+                log_warn(
+                    app,
+                    "companion_memory",
+                    format!("sentence embedding failed: {}", err),
+                );
+                return None;
+            }
+        };
+
+    let emotion = classify_sentence_emotion(app, sentence).await;
+    let prototypes = match prototype_embeddings(app).await {
+        Ok(prototypes) => prototypes,
+        Err(err) => {
+            log_warn(
+                app,
+                "companion_memory",
+                format!("prototype embedding initialization failed: {}", err),
+            );
+            return None;
+        }
+    };
+
+    let mut best: Option<(SentencePrototype, f32)> = None;
+    for prototype in prototypes {
+        if !prototype_matches_speaker(prototype.prototype.speaker, speaker) {
+            continue;
+        }
+        if !prototype_matches_structure(prototype.prototype.category, features, speaker) {
+            continue;
+        }
+
+        let mut score = cosine_similarity(&sentence_embedding, &prototype.embedding);
+        if prototype.prototype.category == CATEGORY_RELATIONSHIP
+            || prototype.prototype.category == CATEGORY_MILESTONE
+        {
+            score += relationship_emotion_strength(emotion.as_ref()) * 0.22;
+            score += apology_emotion_strength(emotion.as_ref()) * 0.12;
+        }
+
+        if score < prototype.prototype.threshold {
+            continue;
+        }
+
+        match best {
+            Some((_, best_score)) if score <= best_score => {}
+            _ => best = Some((prototype.prototype, score)),
+        }
     }
 
-    if looks_like_preference(features) {
-        candidates.push(candidate(
-            CATEGORY_PREFERENCE,
-            format!("User preference: {}.", trim_trailing_punctuation(sentence)),
-            false,
-            0.94,
-        ));
-    }
+    let (prototype, score) = best?;
+    let pinned = prototype.pinned
+        || ((prototype.category == CATEGORY_RELATIONSHIP
+            || prototype.category == CATEGORY_MILESTONE)
+            && relationship_emotion_strength(emotion.as_ref()) >= 0.75);
+    let importance = if score > 0.72 {
+        (prototype.importance + 0.04).min(1.0)
+    } else {
+        prototype.importance
+    };
 
-    if looks_like_profile_fact(features) {
-        candidates.push(candidate(
-            CATEGORY_PROFILE,
-            format!("User fact: {}.", trim_trailing_punctuation(sentence)),
-            false,
-            0.9,
-        ));
-    }
-
-    if looks_like_routine(features) {
-        candidates.push(candidate(
-            CATEGORY_ROUTINE,
-            format!("User routine: {}.", trim_trailing_punctuation(sentence)),
-            false,
-            0.82,
-        ));
-    }
-
-    if looks_like_commitment_or_plan(features) {
-        candidates.push(candidate(
-            CATEGORY_EPISODIC,
-            format!(
-                "Shared plan or promise: {}.",
-                trim_trailing_punctuation(sentence)
-            ),
-            false,
-            0.9,
-        ));
-    }
-
-    if looks_like_relationship_signal(features, emotion) {
-        let pinned = relationship_pin_strength(emotion) >= 0.75;
-        candidates.push(candidate(
-            CATEGORY_RELATIONSHIP,
-            format!(
-                "Relationship signal: {}.",
-                trim_trailing_punctuation(sentence)
-            ),
-            pinned,
-            if pinned { 0.98 } else { 0.9 },
-        ));
-    }
+    Some(candidate(
+        prototype.category,
+        format_memory_text(prototype.category, speaker, sentence),
+        pinned,
+        importance,
+    ))
 }
 
-fn push_assistant_candidates(
-    candidates: &mut Vec<CompanionMemoryCandidate>,
-    sentence: &str,
+fn prototype_matches_speaker(expected: PrototypeSpeaker, actual: PrototypeSpeaker) -> bool {
+    expected == PrototypeSpeaker::Any || expected == actual
+}
+
+fn prototype_matches_structure(
+    category: &str,
     features: &SentenceFeatures,
-    emotion: Option<&EmotionClassification>,
-) {
-    if looks_like_commitment_or_plan(features) {
-        candidates.push(candidate(
-            CATEGORY_EPISODIC,
-            format!(
-                "Companion commitment: {}.",
-                trim_trailing_punctuation(sentence)
-            ),
-            false,
-            0.88,
-        ));
-    }
-
-    if looks_like_relationship_signal(features, emotion) {
-        candidates.push(candidate(
-            CATEGORY_RELATIONSHIP,
-            format!(
-                "Companion relationship signal: {}.",
-                trim_trailing_punctuation(sentence)
-            ),
-            relationship_pin_strength(emotion) >= 0.75,
-            0.92,
-        ));
-    }
-}
-
-fn looks_like_boundary(features: &SentenceFeatures) -> bool {
-    let negative = features.contains_any_token(&["not", "dont", "stop", "never", "no"]);
-    let boundary_shape = features.contains_any_token(&[
-        "want",
-        "comfortable",
-        "okay",
-        "ok",
-        "call",
-        "bring",
-        "mention",
-        "say",
-        "need",
-    ]);
-    (features.starts_with_first_person() && negative && boundary_shape)
-        || (features.references_other_person() && negative && boundary_shape)
-}
-
-fn looks_like_preference(features: &SentenceFeatures) -> bool {
-    features.starts_with_first_person()
-        && features.contains_any_token(&[
-            "like",
-            "love",
-            "enjoy",
-            "prefer",
-            "favorite",
-            "favourite",
-            "dislike",
-            "hate",
-        ])
-}
-
-fn looks_like_profile_fact(features: &SentenceFeatures) -> bool {
-    (features.starts_with_first_person()
-        && features.contains_any_token(&[
-            "am", "have", "work", "live", "grew", "study", "from", "name",
-        ]))
-        || (features.contains_token("my")
-            && features.contains_any_token(&["name", "family", "job", "home"]))
-}
-
-fn looks_like_routine(features: &SentenceFeatures) -> bool {
-    features.contains_any_token(&[
-        "usually", "always", "often", "daily", "every", "morning", "night", "nights", "weekends",
-        "tend", "normally",
-    ]) && (features.starts_with_first_person() || features.contains_token("my"))
-}
-
-fn looks_like_commitment_or_plan(features: &SentenceFeatures) -> bool {
-    features.contains_any_token(&[
-        "will", "promise", "tomorrow", "later", "next", "soon", "remember", "plan", "should", "can",
-    ]) && (features.starts_with_first_person() || features.references_other_person())
-}
-
-fn looks_like_relationship_signal(
-    features: &SentenceFeatures,
-    emotion: Option<&EmotionClassification>,
+    speaker: PrototypeSpeaker,
 ) -> bool {
-    if !features.references_other_person() {
-        return false;
+    match category {
+        CATEGORY_BOUNDARY | CATEGORY_PREFERENCE | CATEGORY_PROFILE | CATEGORY_ROUTINE => {
+            speaker == PrototypeSpeaker::User && features.has_first_person()
+        }
+        CATEGORY_EPISODIC => {
+            features.has_first_person() || features.has_second_or_shared_reference()
+        }
+        CATEGORY_RELATIONSHIP | CATEGORY_MILESTONE => {
+            features.has_first_person() && features.has_second_or_shared_reference()
+        }
+        _ => true,
     }
+}
 
+fn relationship_emotion_strength(emotion: Option<&EmotionClassification>) -> f32 {
     emotion
         .map(|emotion| {
-            relationship_emotion_strength(emotion) >= 0.22
-                || apology_emotion_strength(emotion) >= 0.28
+            emotion
+                .labels
+                .iter()
+                .filter_map(|label| match label.label.as_str() {
+                    "love" | "caring" | "gratitude" | "admiration" | "approval" | "desire" => {
+                        Some(label.score)
+                    }
+                    _ => None,
+                })
+                .fold(0.0_f32, f32::max)
         })
-        .unwrap_or(false)
+        .unwrap_or(0.0)
 }
 
-fn relationship_emotion_strength(emotion: &EmotionClassification) -> f32 {
+fn apology_emotion_strength(emotion: Option<&EmotionClassification>) -> f32 {
     emotion
-        .labels
-        .iter()
-        .filter_map(|label| match label.label.as_str() {
-            "love" | "caring" | "gratitude" | "admiration" | "approval" | "desire" => {
-                Some(label.score)
-            }
-            _ => None,
+        .map(|emotion| {
+            emotion
+                .labels
+                .iter()
+                .filter_map(|label| match label.label.as_str() {
+                    "remorse" | "sadness" | "grief" => Some(label.score),
+                    _ => None,
+                })
+                .fold(0.0_f32, f32::max)
         })
-        .fold(0.0_f32, f32::max)
+        .unwrap_or(0.0)
 }
 
-fn apology_emotion_strength(emotion: &EmotionClassification) -> f32 {
-    emotion
-        .labels
-        .iter()
-        .filter_map(|label| match label.label.as_str() {
-            "remorse" | "sadness" | "grief" => Some(label.score),
-            _ => None,
-        })
-        .fold(0.0_f32, f32::max)
-}
+fn format_memory_text(category: &str, speaker: PrototypeSpeaker, sentence: &str) -> String {
+    let label = match (category, speaker) {
+        (CATEGORY_BOUNDARY, _) => "User boundary",
+        (CATEGORY_PREFERENCE, _) => "User preference",
+        (CATEGORY_PROFILE, _) => "User fact",
+        (CATEGORY_ROUTINE, _) => "User routine",
+        (CATEGORY_EPISODIC, PrototypeSpeaker::Assistant) => "Companion commitment",
+        (CATEGORY_EPISODIC, _) => "Shared plan or promise",
+        (CATEGORY_RELATIONSHIP, PrototypeSpeaker::Assistant) => "Companion relationship signal",
+        (CATEGORY_RELATIONSHIP, _) => "Relationship signal",
+        (CATEGORY_MILESTONE, _) => "Relationship milestone",
+        _ => "Companion memory",
+    };
 
-fn relationship_pin_strength(emotion: Option<&EmotionClassification>) -> f32 {
-    emotion.map(relationship_emotion_strength).unwrap_or(0.0)
+    format!("{}: {}.", label, trim_trailing_punctuation(sentence))
 }
 
 fn emotional_snapshot_candidate(
@@ -925,19 +999,13 @@ mod tests {
 
     #[test]
     fn user_boundary_sentence_creates_boundary_candidate() {
-        let mut candidates = Vec::new();
         let features =
             SentenceFeatures::new("Please don't call me by my full name when I'm stressed");
-        push_user_candidates(
-            &mut candidates,
-            "Please don't call me by my full name when I'm stressed",
+        assert!(prototype_matches_structure(
+            CATEGORY_BOUNDARY,
             &features,
-            None,
-        );
-
-        assert!(candidates
-            .iter()
-            .any(|candidate| candidate.category == CATEGORY_BOUNDARY));
+            PrototypeSpeaker::User
+        ));
     }
 
     #[test]
