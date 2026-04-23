@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use super::specs::{
-    COMPANION_EMOTION_MODEL_FILES_LOCAL, MODEL_FILES_V1, MODEL_FILES_V2_LOCAL,
-    MODEL_FILES_V2_LOCAL_LEGACY, MODEL_FILES_V3_LOCAL,
+    COMPANION_EMOTION_MODEL_FILES_LOCAL, COMPANION_NER_MODEL_FILES_LOCAL, MODEL_FILES_V1,
+    MODEL_FILES_V2_LOCAL, MODEL_FILES_V2_LOCAL_LEGACY, MODEL_FILES_V3_LOCAL,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -12,6 +12,7 @@ pub(crate) struct InstalledSources {
     pub(crate) has_v2: bool,
     pub(crate) has_v3: bool,
     pub(crate) has_companion_emotion: bool,
+    pub(crate) has_companion_ner: bool,
 }
 
 pub(crate) fn detect_installed_sources(model_dir: &Path) -> InstalledSources {
@@ -32,12 +33,16 @@ pub(crate) fn detect_installed_sources(model_dir: &Path) -> InstalledSources {
     let has_companion_emotion = COMPANION_EMOTION_MODEL_FILES_LOCAL
         .iter()
         .all(|filename| model_dir.join(filename).exists());
+    let has_companion_ner = COMPANION_NER_MODEL_FILES_LOCAL
+        .iter()
+        .all(|filename| model_dir.join(filename).exists());
 
     InstalledSources {
         has_v1,
         has_v2,
         has_v3,
         has_companion_emotion,
+        has_companion_ner,
     }
 }
 

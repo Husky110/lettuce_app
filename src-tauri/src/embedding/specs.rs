@@ -26,6 +26,13 @@ pub(crate) const COMPANION_EMOTION_MODEL_FILES_LOCAL: [&str; 3] = [
     "companion-emotion/tokenizer.json",
     "companion-emotion/config.json",
 ];
+pub(crate) const COMPANION_NER_MODEL_FILES_REMOTE: [&str; 3] =
+    ["onnx/model_quantized.onnx", "tokenizer.json", "config.json"];
+pub(crate) const COMPANION_NER_MODEL_FILES_LOCAL: [&str; 3] = [
+    "companion-ner/model.int8.onnx",
+    "companion-ner/tokenizer.json",
+    "companion-ner/config.json",
+];
 
 pub(crate) const HUGGINGFACE_BASE_V1: &str =
     "https://huggingface.co/Zeolit/lettuce-emb-512d-v1/resolve/main";
@@ -35,6 +42,8 @@ pub(crate) const HUGGINGFACE_BASE_V3: &str =
     "https://huggingface.co/Zeolit/lettuce-emb-512d-v3/resolve/main";
 pub(crate) const HUGGINGFACE_BASE_COMPANION_EMOTION: &str =
     "https://huggingface.co/SamLowe/roberta-base-go_emotions-onnx/resolve/main";
+pub(crate) const HUGGINGFACE_BASE_COMPANION_NER: &str =
+    "https://huggingface.co/Xenova/distilbert-base-multilingual-cased-ner-hrl/resolve/main";
 
 pub(crate) struct DownloadFileSpec {
     pub(crate) base_url: &'static str,
@@ -106,6 +115,18 @@ pub(crate) fn install_download_plan(requested: Option<&str>) -> Vec<DownloadFile
             .zip(COMPANION_EMOTION_MODEL_FILES_LOCAL.iter())
             .map(|(remote_path, local_path)| DownloadFileSpec {
                 base_url: HUGGINGFACE_BASE_COMPANION_EMOTION,
+                remote_path,
+                local_path,
+                progress_name: local_path,
+            }),
+    );
+
+    plan.extend(
+        COMPANION_NER_MODEL_FILES_REMOTE
+            .iter()
+            .zip(COMPANION_NER_MODEL_FILES_LOCAL.iter())
+            .map(|(remote_path, local_path)| DownloadFileSpec {
+                base_url: HUGGINGFACE_BASE_COMPANION_NER,
                 remote_path,
                 local_path,
                 progress_name: local_path,

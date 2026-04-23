@@ -1738,6 +1738,7 @@ export async function getEmbeddingModelInfo(): Promise<{
   availableVersions?: string[];
   maxTokens: number;
   companionEmotionInstalled?: boolean;
+  companionNerInstalled?: boolean;
   installBundleComplete?: boolean;
 }> {
   return storageBridge.getEmbeddingModelInfo();

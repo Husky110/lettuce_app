@@ -226,6 +226,7 @@ export function DynamicMemoryPage() {
   const [modelSourceVersion, setModelSourceVersion] = useState<string | null>(null);
   const [availableEmbeddingVersions, setAvailableEmbeddingVersions] = useState<string[]>([]);
   const [companionEmotionInstalled, setCompanionEmotionInstalled] = useState(false);
+  const [companionNerInstalled, setCompanionNerInstalled] = useState(false);
   const [installBundleComplete, setInstallBundleComplete] = useState(false);
   const [selectedEmbeddingVersion, setSelectedEmbeddingVersion] = useState<string | null>(null);
   const [showDownloadModelMenu, setShowDownloadModelMenu] = useState(false);
@@ -276,6 +277,7 @@ export function DynamicMemoryPage() {
         setEmbeddingKeepModelLoaded(settings.advancedSettings?.embeddingKeepModelLoaded ?? false);
         setModels(settings.models);
         setCompanionEmotionInstalled(modelInfo.companionEmotionInstalled ?? false);
+        setCompanionNerInstalled(modelInfo.companionNerInstalled ?? false);
         setInstallBundleComplete(modelInfo.installBundleComplete ?? modelInfo.installed);
 
         if (modelInfo.installed) {
@@ -465,6 +467,7 @@ export function DynamicMemoryPage() {
       setAvailableEmbeddingVersions(available);
       setSelectedEmbeddingVersion(sourceVersion);
       setCompanionEmotionInstalled(modelInfo.companionEmotionInstalled ?? false);
+      setCompanionNerInstalled(modelInfo.companionNerInstalled ?? false);
       setInstallBundleComplete(modelInfo.installBundleComplete ?? modelInfo.installed);
     } catch (err) {
       console.error("Failed to delete model version:", err);
@@ -1296,7 +1299,7 @@ export function DynamicMemoryPage() {
                   <div
                     className={cn(
                       "rounded-xl border px-4 py-3",
-                      companionEmotionInstalled
+                      installBundleComplete
                         ? "border-accent/20 bg-accent/5"
                         : "border-warning/20 bg-warning/5",
                     )}
@@ -1305,7 +1308,7 @@ export function DynamicMemoryPage() {
                       <div
                         className={cn(
                           "rounded-lg border p-1.5",
-                          companionEmotionInstalled
+                          installBundleComplete
                             ? "border-accent/30 bg-accent/10"
                             : "border-warning/30 bg-warning/10",
                         )}
@@ -1313,28 +1316,59 @@ export function DynamicMemoryPage() {
                         <Brain
                           className={cn(
                             "h-4 w-4",
-                            companionEmotionInstalled ? "text-accent" : "text-warning",
+                            installBundleComplete ? "text-accent" : "text-warning",
                           )}
                         />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-fg">Companion analysis model</p>
+                          <p className="text-sm font-medium text-fg">Companion analysis bundle</p>
                           <span
                             className={cn(
                               "rounded-md border px-2 py-0.5 text-[10px] font-medium",
-                              companionEmotionInstalled
+                              installBundleComplete
                                 ? "border-accent/25 bg-accent/10 text-accent"
                                 : "border-warning/25 bg-warning/10 text-warning",
                             )}
                           >
-                            {companionEmotionInstalled ? "Installed" : "Missing"}
+                            {installBundleComplete ? "Installed" : "Incomplete"}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] leading-relaxed text-fg/50">
-                          Local GoEmotions classifier used for companion emotion regulation. It is
-                          downloaded with the Dynamic Memory model bundle.
+                          Local ONNX analysis models used for companion emotion regulation and named
+                          entity extraction. They are downloaded with the Dynamic Memory model
+                          bundle.
                         </p>
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-fg/75">
+                                Emotion classifier
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[10px] font-medium",
+                                  companionEmotionInstalled ? "text-accent" : "text-warning",
+                                )}
+                              >
+                                {companionEmotionInstalled ? "Installed" : "Missing"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-fg/75">NER model</span>
+                              <span
+                                className={cn(
+                                  "text-[10px] font-medium",
+                                  companionNerInstalled ? "text-accent" : "text-warning",
+                                )}
+                              >
+                                {companionNerInstalled ? "Installed" : "Missing"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                         {!installBundleComplete && (
                           <button
                             type="button"

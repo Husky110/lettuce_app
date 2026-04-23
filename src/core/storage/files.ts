@@ -96,6 +96,7 @@ export const storageBridge = {
       availableVersions?: string[];
       maxTokens: number;
       companionEmotionInstalled?: boolean;
+      companionNerInstalled?: boolean;
       installBundleComplete?: boolean;
     }>("get_embedding_model_info"),
   startEmbeddingDownload: (version?: string) =>

@@ -14,6 +14,7 @@ use crate::chat_manager::storage::save_session;
 use crate::chat_manager::types::{Character, MemoryEmbedding, Session, Settings, StoredMessage};
 use crate::embedding;
 use crate::embedding::emotion::{classify_text, EmotionClassification};
+use crate::embedding::ner::{extract_entities, NamedEntitySpan};
 use crate::utils::{log_info, log_warn, now_millis};
 
 const CATEGORY_PROFILE: &str = "profile";
@@ -59,6 +60,13 @@ struct SentencePrototype {
 struct PrototypeEmbedding {
     prototype: SentencePrototype,
     embedding: Vec<f32>,
+}
+
+#[derive(Debug, Clone)]
+struct SentenceChunk {
+    text: String,
+    start: usize,
+    end: usize,
 }
 
 fn config(character: &Character) -> super::CompanionMemoryConfig {
@@ -510,10 +518,19 @@ async fn build_candidates(
             continue;
         };
 
+        let message_entities = extract_message_entities(app, &message.content).await;
         for sentence in split_sentences(&message.content) {
-            let features = SentenceFeatures::new(&sentence);
-            if let Some(candidate) =
-                route_sentence_candidate(app, speaker, &sentence, &features).await
+            let sentence_entities =
+                entities_for_sentence(&message_entities, sentence.start, sentence.end);
+            let features = SentenceFeatures::new(&sentence.text, &sentence_entities);
+            if let Some(candidate) = route_sentence_candidate(
+                app,
+                speaker,
+                &sentence.text,
+                &features,
+                &sentence_entities,
+            )
+            .await
             {
                 candidates.push(candidate);
             }
@@ -545,11 +562,75 @@ fn recent_conversation_messages(session: &Session, limit: usize) -> Vec<&StoredM
         .collect()
 }
 
-fn split_sentences(text: &str) -> Vec<String> {
-    text.split(['\n', '.', '!', '?', ';'])
-        .map(collapse_whitespace)
-        .filter(|sentence| sentence.len() >= 12)
-        .filter(|sentence| sentence.len() <= 220)
+fn split_sentences(text: &str) -> Vec<SentenceChunk> {
+    let mut chunks = Vec::new();
+    let mut sentence_start: Option<usize> = None;
+
+    for (index, ch) in text.char_indices() {
+        if sentence_start.is_none() && !ch.is_whitespace() {
+            sentence_start = Some(index);
+        }
+
+        if matches!(ch, '\n' | '.' | '!' | '?' | ';') {
+            if let Some(start) = sentence_start.take() {
+                if let Some(chunk) = build_sentence_chunk(text, start, index) {
+                    chunks.push(chunk);
+                }
+            }
+        }
+    }
+
+    if let Some(start) = sentence_start {
+        if let Some(chunk) = build_sentence_chunk(text, start, text.len()) {
+            chunks.push(chunk);
+        }
+    }
+
+    chunks
+}
+
+fn build_sentence_chunk(text: &str, start: usize, end: usize) -> Option<SentenceChunk> {
+    let raw = text.get(start..end)?;
+    let trimmed_start = raw.len().saturating_sub(raw.trim_start().len());
+    let trimmed_end = raw.len().saturating_sub(raw.trim_end().len());
+    let normalized_start = start + trimmed_start;
+    let normalized_end = end.saturating_sub(trimmed_end);
+    let normalized = collapse_whitespace(text.get(normalized_start..normalized_end)?);
+    if normalized.len() < 12 || normalized.len() > 220 {
+        return None;
+    }
+
+    Some(SentenceChunk {
+        text: normalized,
+        start: normalized_start,
+        end: normalized_end,
+    })
+}
+
+async fn extract_message_entities(app: &AppHandle, text: &str) -> Vec<NamedEntitySpan> {
+    match extract_entities(app, text).await {
+        Ok(Some(entities)) => entities,
+        Ok(None) => Vec::new(),
+        Err(err) => {
+            log_warn(
+                app,
+                "companion_memory",
+                format!("message NER extraction failed: {}", err),
+            );
+            Vec::new()
+        }
+    }
+}
+
+fn entities_for_sentence(
+    entities: &[NamedEntitySpan],
+    start: usize,
+    end: usize,
+) -> Vec<NamedEntitySpan> {
+    entities
+        .iter()
+        .filter(|entity| entity.start < end && entity.end > start)
+        .cloned()
         .collect()
 }
 
@@ -560,14 +641,19 @@ fn collapse_whitespace(text: &str) -> String {
 #[derive(Debug, Clone)]
 struct SentenceFeatures {
     tokens: Vec<String>,
+    entity_labels: HashSet<String>,
 }
 
 impl SentenceFeatures {
-    fn new(sentence: &str) -> Self {
+    fn new(sentence: &str, entities: &[NamedEntitySpan]) -> Self {
         Self {
             tokens: normalize_query_text(sentence)
                 .split_whitespace()
                 .map(|token| token.to_string())
+                .collect(),
+            entity_labels: entities
+                .iter()
+                .map(|entity| entity.label.to_uppercase())
                 .collect(),
         }
     }
@@ -584,6 +670,18 @@ impl SentenceFeatures {
 
     fn has_second_or_shared_reference(&self) -> bool {
         self.contains_any_token(&["you", "your", "yours", "we", "us", "our"])
+    }
+
+    fn has_entity_type(&self, label: &str) -> bool {
+        self.entity_labels.contains(label)
+    }
+
+    fn has_any_entity_type(&self, labels: &[&str]) -> bool {
+        labels.iter().any(|label| self.has_entity_type(label))
+    }
+
+    fn entity_type_count(&self) -> usize {
+        self.entity_labels.len()
     }
 }
 
@@ -701,6 +799,7 @@ async fn route_sentence_candidate(
     speaker: PrototypeSpeaker,
     sentence: &str,
     features: &SentenceFeatures,
+    entities: &[NamedEntitySpan],
 ) -> Option<CompanionMemoryCandidate> {
     let sentence_embedding =
         match embedding::compute_embedding(app.clone(), sentence.to_string()).await {
@@ -744,6 +843,7 @@ async fn route_sentence_candidate(
             score += relationship_emotion_strength(emotion.as_ref()) * 0.22;
             score += apology_emotion_strength(emotion.as_ref()) * 0.12;
         }
+        score += entity_signal_bonus(prototype.prototype.category, features, emotion.as_ref());
 
         if score < prototype.prototype.threshold {
             continue;
@@ -768,7 +868,7 @@ async fn route_sentence_candidate(
 
     Some(candidate(
         prototype.category,
-        format_memory_text(prototype.category, speaker, sentence),
+        format_memory_text(prototype.category, speaker, sentence, entities),
         pinned,
         importance,
     ))
@@ -794,6 +894,48 @@ fn prototype_matches_structure(
             features.has_first_person() && features.has_second_or_shared_reference()
         }
         _ => true,
+    }
+}
+
+fn entity_signal_bonus(
+    category: &str,
+    features: &SentenceFeatures,
+    emotion: Option<&EmotionClassification>,
+) -> f32 {
+    let distinct_entity_types = features.entity_type_count().min(3) as f32;
+    match category {
+        CATEGORY_PROFILE => {
+            if features.has_any_entity_type(&["PER", "ORG", "LOC", "DATE"]) {
+                0.05 + distinct_entity_types * 0.025
+            } else {
+                0.0
+            }
+        }
+        CATEGORY_ROUTINE => {
+            if features.has_any_entity_type(&["DATE", "LOC", "ORG"]) {
+                0.04 + distinct_entity_types * 0.02
+            } else {
+                0.0
+            }
+        }
+        CATEGORY_EPISODIC => {
+            if features.has_any_entity_type(&["DATE", "LOC", "PER", "ORG"]) {
+                0.06 + distinct_entity_types * 0.03
+            } else {
+                0.0
+            }
+        }
+        CATEGORY_MILESTONE => {
+            let mut bonus = 0.0;
+            if features.has_any_entity_type(&["DATE", "LOC"]) {
+                bonus += 0.05;
+            }
+            if relationship_emotion_strength(emotion) >= 0.55 {
+                bonus += 0.03;
+            }
+            bonus
+        }
+        _ => 0.0,
     }
 }
 
@@ -829,7 +971,12 @@ fn apology_emotion_strength(emotion: Option<&EmotionClassification>) -> f32 {
         .unwrap_or(0.0)
 }
 
-fn format_memory_text(category: &str, speaker: PrototypeSpeaker, sentence: &str) -> String {
+fn format_memory_text(
+    category: &str,
+    speaker: PrototypeSpeaker,
+    sentence: &str,
+    entities: &[NamedEntitySpan],
+) -> String {
     let label = match (category, speaker) {
         (CATEGORY_BOUNDARY, _) => "User boundary",
         (CATEGORY_PREFERENCE, _) => "User preference",
@@ -843,7 +990,45 @@ fn format_memory_text(category: &str, speaker: PrototypeSpeaker, sentence: &str)
         _ => "Companion memory",
     };
 
-    format!("{}: {}.", label, trim_trailing_punctuation(sentence))
+    let mut text = format!("{}: {}.", label, trim_trailing_punctuation(sentence));
+    if let Some(summary) = summarize_entities(entities) {
+        text.push_str(" Key entities: ");
+        text.push_str(&summary);
+        text.push('.');
+    }
+    text
+}
+
+fn summarize_entities(entities: &[NamedEntitySpan]) -> Option<String> {
+    let mut seen = HashSet::new();
+    let mut ranked = entities
+        .iter()
+        .filter_map(|entity| {
+            let normalized = collapse_whitespace(entity.text.trim());
+            if normalized.is_empty() {
+                return None;
+            }
+            let dedupe = format!("{}::{}", entity.label, normalized.to_lowercase());
+            if !seen.insert(dedupe) {
+                return None;
+            }
+            Some((entity.score, entity.label.as_str(), normalized))
+        })
+        .collect::<Vec<_>>();
+
+    if ranked.is_empty() {
+        return None;
+    }
+
+    ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    Some(
+        ranked
+            .into_iter()
+            .take(3)
+            .map(|(_, label, text)| format!("{} [{}]", text, label))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 fn emotional_snapshot_candidate(

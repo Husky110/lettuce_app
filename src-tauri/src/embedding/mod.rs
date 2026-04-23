@@ -9,6 +9,7 @@ mod download;
 pub(crate) mod emotion;
 mod inference;
 mod layout;
+pub(crate) mod ner;
 mod ort_runtime;
 mod settings;
 mod specs;
@@ -61,6 +62,7 @@ pub struct EmbeddingModelInfo {
     pub available_versions: Vec<String>,
     pub max_tokens: u32,
     pub companion_emotion_installed: bool,
+    pub companion_ner_installed: bool,
     pub install_bundle_complete: bool,
 }
 
@@ -269,7 +271,8 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             available_versions,
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
-            install_bundle_complete: installed.has_companion_emotion,
+            companion_ner_installed: installed.has_companion_ner,
+            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
         }),
         Some(EmbeddingModelVersion::V3) => Ok(EmbeddingModelInfo {
             installed: true,
@@ -279,7 +282,8 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             available_versions,
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
-            install_bundle_complete: installed.has_companion_emotion,
+            companion_ner_installed: installed.has_companion_ner,
+            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
         }),
         Some(EmbeddingModelVersion::V1) => Ok(EmbeddingModelInfo {
             installed: true,
@@ -289,7 +293,8 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             available_versions,
             max_tokens,
             companion_emotion_installed: installed.has_companion_emotion,
-            install_bundle_complete: installed.has_companion_emotion,
+            companion_ner_installed: installed.has_companion_ner,
+            install_bundle_complete: installed.has_companion_emotion && installed.has_companion_ner,
         }),
         None => Ok(EmbeddingModelInfo {
             installed: false,
@@ -299,6 +304,7 @@ pub fn get_embedding_model_info(app: AppHandle) -> Result<EmbeddingModelInfo, St
             available_versions: vec![],
             max_tokens: 0,
             companion_emotion_installed: installed.has_companion_emotion,
+            companion_ner_installed: installed.has_companion_ner,
             install_bundle_complete: false,
         }),
     }
@@ -348,6 +354,7 @@ pub async fn initialize_embedding_model(app: AppHandle) -> Result<(), String> {
 pub async fn clear_embedding_runtime_cache() -> Result<(), String> {
     inference::clear_loaded_runtime_cache().await;
     emotion::clear_loaded_runtime_cache().await;
+    ner::clear_loaded_runtime_cache().await;
     Ok(())
 }
 
