@@ -172,31 +172,10 @@ impl RegenerateFlow {
         );
 
         let dynamic_memory_enabled = is_dynamic_memory_active(settings, &character);
-        let companion_memory_enabled =
-            companion::memory::is_enabled(settings, &session, &character);
+        let companion_mode_enabled = companion::is_companion_mode(&session, &character);
         let dynamic_window = dynamic_window_size(settings);
 
-        let relevant_memories = if companion_memory_enabled && !session.memory_embeddings.is_empty()
-        {
-            let messages_up_to: Vec<StoredMessage> = session
-                .messages
-                .iter()
-                .take(target_index + 1)
-                .cloned()
-                .collect();
-            let search_query = if context_enrichment_enabled(&context.settings) {
-                build_enriched_query(&messages_up_to)
-            } else {
-                messages_up_to
-                    .iter()
-                    .rev()
-                    .find(|m| m.role == "user")
-                    .map(|m| m.content.clone())
-                    .unwrap_or_default()
-            };
-            companion::memory::select_relevant_memories(&app, &session, &character, &search_query)
-                .await
-        } else if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
+        let relevant_memories = if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
             let fixed = ensure_pinned_hot(&mut session.memory_embeddings);
             if fixed > 0 {
                 log_info(
@@ -222,6 +201,19 @@ impl RegenerateFlow {
                     .map(|m| m.content.clone())
                     .unwrap_or_default()
             };
+            log_info(
+                &app,
+                if companion_mode_enabled {
+                    "companion_memory"
+                } else {
+                    "memory_retrieval"
+                },
+                format!(
+                    "Search query ({} chars, enriched={})",
+                    search_query.len(),
+                    context_enrichment_enabled(&context.settings)
+                ),
+            );
             select_relevant_memories(
                 &app,
                 &session,

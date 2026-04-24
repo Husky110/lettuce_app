@@ -1,5 +1,3 @@
-pub mod memory;
-
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -342,54 +340,11 @@ impl Default for SoulConfig {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct CompanionMemoryConfig {
-    #[serde(default = "default_memory_enabled")]
-    enabled: bool,
-    #[serde(default = "default_memory_retrieval_limit")]
-    retrieval_limit: u32,
-    #[serde(default = "default_memory_max_entries")]
-    max_entries: u32,
-    #[serde(default = "default_memory_prioritize_relationship")]
-    prioritize_relationship: bool,
-    #[serde(default = "default_memory_prioritize_episodic")]
-    prioritize_episodic: bool,
-    #[serde(default = "default_memory_use_emotional_snapshots")]
-    use_emotional_snapshots: bool,
-}
-
-fn default_memory_enabled() -> bool {
-    true
-}
-
-fn default_memory_retrieval_limit() -> u32 {
-    8
-}
-
-fn default_memory_max_entries() -> u32 {
-    120
-}
-
-fn default_memory_prioritize_relationship() -> bool {
-    true
-}
-
-fn default_memory_prioritize_episodic() -> bool {
-    true
-}
-
-fn default_memory_use_emotional_snapshots() -> bool {
-    true
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 struct CompanionConfig {
     #[serde(default)]
     soul: SoulConfig,
     #[serde(default)]
     relationship_defaults: RelationshipDefaults,
-    #[serde(default)]
-    memory: CompanionMemoryConfig,
     #[serde(default)]
     prompting: CompanionPromptingConfig,
 }

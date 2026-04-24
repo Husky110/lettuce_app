@@ -110,10 +110,9 @@ impl CompletionFlow {
         );
 
         let dynamic_memory_enabled = is_dynamic_memory_active(settings, &character);
-        let companion_memory_enabled =
-            companion::memory::is_enabled(settings, &session, &character);
+        let companion_mode_enabled = companion::is_companion_mode(&session, &character);
         let dynamic_window = dynamic_window_size(settings);
-        if dynamic_memory_enabled && !companion_memory_enabled {
+        if dynamic_memory_enabled {
             let _ = prompts::ensure_dynamic_memory_templates(&app);
         }
 
@@ -238,27 +237,7 @@ impl CompletionFlow {
             )
         };
 
-        let relevant_memories = if companion_memory_enabled && !session.memory_embeddings.is_empty()
-        {
-            let search_query = if context_enrichment_enabled(settings) {
-                build_enriched_query(&session.messages)
-            } else {
-                user_message.clone()
-            };
-
-            log_info(
-                &app,
-                "companion_memory",
-                format!(
-                    "Search query ({} chars, enriched={})",
-                    search_query.len(),
-                    context_enrichment_enabled(settings)
-                ),
-            );
-
-            companion::memory::select_relevant_memories(&app, &session, &character, &search_query)
-                .await
-        } else if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
+        let relevant_memories = if dynamic_memory_enabled && !session.memory_embeddings.is_empty() {
             let fixed = ensure_pinned_hot(&mut session.memory_embeddings);
             if fixed > 0 {
                 log_info(
@@ -276,7 +255,11 @@ impl CompletionFlow {
 
             log_info(
                 &app,
-                "memory_retrieval",
+                if companion_mode_enabled {
+                    "companion_memory"
+                } else {
+                    "memory_retrieval"
+                },
                 format!(
                     "Search query ({} chars, enriched={})",
                     search_query.len(),
@@ -848,7 +831,7 @@ impl CompletionFlow {
                 session.id.clone(),
                 Some(user_msg.id.clone()),
                 assistant_message.id.clone(),
-                companion_memory_enabled.then(Default::default),
+                companion_mode_enabled.then(Default::default),
             );
         }
 

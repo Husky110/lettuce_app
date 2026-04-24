@@ -32,7 +32,6 @@ use super::structured_fallback::{
     parse_memory_operations_from_text, parse_memory_tag_repairs_from_text,
     structured_fallback_format_label,
 };
-use crate::chat_manager::companion;
 use crate::chat_manager::execution::{
     find_model_with_credential, prepare_default_sampling_request,
 };
@@ -1159,34 +1158,9 @@ pub fn enqueue_post_turn_dynamic_memory(
                 ),
             );
 
-            let source_message_ids = jobs
-                .iter()
-                .filter(|job| job.track_effect)
-                .flat_map(|job| {
-                    [
-                        job.user_message_id.clone(),
-                        Some(job.assistant_message_id.clone()),
-                    ]
-                })
-                .flatten()
-                .collect::<HashSet<_>>();
-
             let memory_result =
-                if companion::memory::is_enabled(&context.settings, &session, &character)
-                    && !source_message_ids.is_empty()
-                {
-                    companion::memory::process_turn_for_source_messages(
-                        &app,
-                        &mut session,
-                        &context.settings,
-                        &character,
-                        Some(&source_message_ids),
-                    )
-                    .await
-                } else {
-                    process_dynamic_memory_cycle(&app, &mut session, &context.settings, &character)
-                        .await
-                };
+                process_dynamic_memory_cycle(&app, &mut session, &context.settings, &character)
+                    .await;
 
             if let Err(err) = memory_result {
                 log_error(
@@ -1520,18 +1494,6 @@ async fn process_dynamic_memory_cycle_with_model(
             ),
         );
         return Ok(());
-    }
-
-    if companion::memory::is_enabled(settings, session, character) {
-        log_info(
-            app,
-            "companion_memory",
-            format!(
-                "redirecting session {} to companion memory pipeline",
-                session.id
-            ),
-        );
-        return companion::memory::process_turn(app, session, settings, character).await;
     }
 
     let window_size = dynamic.summary_message_interval.max(1) as usize;

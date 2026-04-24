@@ -2299,14 +2299,10 @@ pub fn build_system_prompt_entries(
         .unwrap_or(false);
     let has_author_note = author_note_text.is_some();
     let has_key_memories = if dynamic_memory_active {
-        if companion::memory::is_enabled(settings, session, character) {
-            !companion::memory::prompt_memory_lines(session, character).is_empty()
-        } else {
-            session
-                .memory_embeddings
-                .iter()
-                .any(|memory| !memory.is_cold || memory.is_pinned)
-        }
+        session
+            .memory_embeddings
+            .iter()
+            .any(|memory| !memory.is_cold || memory.is_pinned)
     } else {
         has_manual_memories(&session.memories)
     };
@@ -2394,16 +2390,12 @@ pub fn build_system_prompt_entries(
     }
 
     let rendered_key_memories = if dynamic_memory_active {
-        if companion::memory::is_enabled(settings, session, character) {
-            companion::memory::prompt_memory_lines(session, character)
-        } else {
-            session
-                .memory_embeddings
-                .iter()
-                .filter(|mem| !mem.is_cold || mem.is_pinned)
-                .map(|mem| format!("- {}", mem.text))
-                .collect::<Vec<_>>()
-        }
+        session
+            .memory_embeddings
+            .iter()
+            .filter(|mem| !mem.is_cold || mem.is_pinned)
+            .map(|mem| format!("- {}", mem.text))
+            .collect::<Vec<_>>()
     } else if has_manual_memories(&session.memories) {
         render_manual_memory_lines(&session.memories)
             .lines()
@@ -2964,17 +2956,13 @@ fn render_with_context_internal(
     }
 
     let key_memories_text = if dynamic_memory_active && !session.memory_embeddings.is_empty() {
-        if companion::memory::is_enabled(settings, session, character) {
-            companion::memory::prompt_memory_lines(session, character).join("\n")
-        } else {
-            session
-                .memory_embeddings
-                .iter()
-                .filter(|memory| !memory.is_cold || memory.is_pinned)
-                .map(|memory| format!("- {}", memory.text))
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
+        session
+            .memory_embeddings
+            .iter()
+            .filter(|memory| !memory.is_cold || memory.is_pinned)
+            .map(|memory| format!("- {}", memory.text))
+            .collect::<Vec<_>>()
+            .join("\n")
     } else if !has_manual_memories(&session.memories) {
         String::new()
     } else {

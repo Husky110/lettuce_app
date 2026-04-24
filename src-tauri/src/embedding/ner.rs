@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::{embedding_model_dir, ort_runtime, specs::COMPANION_NER_MODEL_FILES_LOCAL};
 use crate::utils::{log_info, log_warn};
 use ort::{

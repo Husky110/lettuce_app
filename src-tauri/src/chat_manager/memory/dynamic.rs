@@ -6,7 +6,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::chat_manager::types::{
-    DynamicMemorySettings, DynamicMemoryStructuredFallbackFormat, MemoryRetrievalStrategy, Settings,
+    DynamicMemorySettings, DynamicMemoryStructuredFallbackFormat, MemoryRetrievalStrategy,
+    Settings,
 };
 
 // ============================================================================
@@ -135,7 +136,6 @@ pub const FALLBACK_COLD_THRESHOLD: f32 = 0.3;
 pub const FALLBACK_STRUCTURED_FALLBACK_FORMAT: DynamicMemoryStructuredFallbackFormat =
     DynamicMemoryStructuredFallbackFormat::Xml;
 pub const MEMORY_ID_SPACE: u64 = 1_000_000;
-
 // ============================================================================
 // Settings Helper Functions
 // ============================================================================
