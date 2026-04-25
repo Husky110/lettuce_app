@@ -148,7 +148,10 @@ export const enMessages = {
       models: { title: "Models", subtitle: "Configure AI models" },
       imageGeneration: { title: "Image Generation", subtitle: "Generate and test images" },
       voices: { title: "Voices", subtitle: "Text-to-speech voices" },
-      accessibility: { title: "Accessibility", subtitle: "Sound cues & haptics" },
+      accessibility: {
+        title: "Accessibility",
+        subtitle: "Language, sound cues, haptics, and appearance",
+      },
       prompts: { title: "System Prompts", subtitle: "Shape AI personality" },
       security: { title: "Security", subtitle: "Encryption & privacy" },
       backup: { title: "Backup & Restore", subtitle: "Export or import data" },
