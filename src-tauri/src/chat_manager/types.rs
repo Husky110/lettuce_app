@@ -1126,6 +1126,7 @@ pub struct ChatGenerateCompanionSoulArgs {
     pub model_id: Option<String>,
     #[serde(alias = "requestId")]
     pub request_id: Option<String>,
+    #[allow(dead_code)]
     #[serde(default)]
     pub stream: Option<bool>,
 }
