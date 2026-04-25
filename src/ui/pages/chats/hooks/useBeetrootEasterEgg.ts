@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import type { StoredMessage } from "../../../../core/storage/schemas";
 
 const BEET_REGEX = /\b(beet|beets|beetroot|beetroots)\b/i;
 const STORAGE_KEY = "lettuce.easterEggs.beetroot";
 const EVENT_NAME = "lettuce:easterEggs:beetroot";
 
+interface BeetrootMessage {
+  id: string;
+  content: string;
+}
+
 interface UseBeetrootEasterEggOptions {
-  messages: StoredMessage[];
+  messages: ReadonlyArray<BeetrootMessage>;
   fire: () => void;
 }
 

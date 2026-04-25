@@ -26,6 +26,8 @@ import { useGroupChatLayoutContext } from "./GroupChatLayout";
 import { splitThinkTags } from "../../../core/utils/thinkTags";
 
 import { Routes } from "../../navigation";
+import { useBeetrootRain } from "../chats/components/BeetrootRain";
+import { useBeetrootEasterEgg } from "../chats/hooks/useBeetrootEasterEgg";
 import { BottomMenu, MenuButton } from "../../components/BottomMenu";
 import {
   GroupChatFooter,
@@ -60,6 +62,8 @@ export function GroupChatPage() {
 
   // State variables
   const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const beetrootRain = useBeetrootRain();
+  useBeetrootEasterEgg({ messages, fire: beetrootRain.fire });
   const [_participationStats, setParticipationStats] = useState<GroupParticipation[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -1209,6 +1213,7 @@ export function GroupChatPage() {
         !backgroundImageData && "bg-surface",
       )}
     >
+      {beetrootRain.overlay}
       {/* Content layer - on top of background */}
       <div
         className="relative z-10 flex h-full flex-col"
