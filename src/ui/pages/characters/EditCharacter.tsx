@@ -204,20 +204,28 @@ export function EditCharacterPage() {
       template.promptType === "companionChat" && template.id !== APP_COMPANION_TEMPLATE_ID,
   );
   const tabItems = React.useMemo(
-    () => [
-      { id: "character" as const, icon: User, label: "Character", disabled: false, hint: undefined as string | undefined },
-      {
-        id: "soul" as const,
-        icon: Heart,
-        label: "Soul",
-        disabled: mode !== "companion",
-        hint:
-          mode !== "companion"
-            ? "Switch to Companion mode in Settings to enable the Soul tab."
-            : undefined,
-      },
-      { id: "settings" as const, icon: Settings, label: "Settings", disabled: false, hint: undefined },
-    ],
+    () =>
+      [
+        { id: "character" as const, icon: User, label: "Character", disabled: false, hint: undefined as string | undefined },
+        mode === "companion"
+          ? {
+              id: "soul" as const,
+              icon: Heart,
+              label: "Soul",
+              disabled: false,
+              hint: undefined as string | undefined,
+            }
+          : null,
+        { id: "settings" as const, icon: Settings, label: "Settings", disabled: false, hint: undefined as string | undefined },
+      ].filter(
+        (item): item is {
+          id: EditCharacterTab;
+          icon: typeof User;
+          label: string;
+          disabled: boolean;
+          hint: string | undefined;
+        } => Boolean(item),
+      ),
     [mode],
   );
   const activeTabId =
@@ -1838,7 +1846,7 @@ export function EditCharacterPage() {
           className={cn(
             radius.lg,
             "grid gap-2 p-1",
-            "grid-cols-3",
+            tabItems.length === 3 ? "grid-cols-3" : "grid-cols-2",
             colors.surface.elevated,
           )}
         >
