@@ -68,7 +68,6 @@ const FILTER_DEBUG_ENABLED = import.meta.env.DEV;
 export function SecurityPage() {
   const { t } = useI18n();
   const [pureModeLevel, setPureModeLevelState] = useState<PureModeLevel>("standard");
-  const [isGlitchEnabled, setIsGlitchEnabled] = useState(true);
   const [autoDownloadCharacterCardAvatars, setAutoDownloadCharacterCardAvatarsState] =
     useState(true);
   const [isAnalyticsEnabled, setIsAnalyticsEnabled] = useState(true);
@@ -142,15 +141,6 @@ export function SecurityPage() {
         if (!available) {
           setIsAnalyticsEnabled(false);
         }
-        try {
-          const stored = localStorage.getItem("lettuce.easterEggs.glitch");
-          if (stored !== null) {
-            setIsGlitchEnabled(stored === "true");
-          }
-        } catch (err) {
-          console.error("Failed to read glitch setting:", err);
-          setIsGlitchEnabled(true);
-        }
       } catch (err) {
         console.error("Failed to load settings:", err);
       } finally {
@@ -168,18 +158,6 @@ export function SecurityPage() {
     } catch (err) {
       console.error("Failed to save pure mode level:", err);
       setPureModeLevelState(prev);
-    }
-  };
-
-  const handleGlitchToggle = () => {
-    const newValue = !isGlitchEnabled;
-    setIsGlitchEnabled(newValue);
-    try {
-      localStorage.setItem("lettuce.easterEggs.glitch", String(newValue));
-      window.dispatchEvent(new CustomEvent("lettuce:easterEggs:glitch", { detail: newValue }));
-    } catch (err) {
-      console.error("Failed to save glitch setting:", err);
-      setIsGlitchEnabled(!newValue);
     }
   };
 
@@ -288,49 +266,6 @@ export function SecurityPage() {
 
                 <div className="mt-2 text-[11px] text-fg/45 leading-relaxed">
                   Restrict adult content in AI responses
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section: App Integrity */}
-        <div>
-          <h2 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
-            App Integrity
-          </h2>
-          <div className="rounded-xl border border-fg/10 bg-fg/5 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-fg/10 bg-fg/10">
-                <Shield className="h-4 w-4 text-fg/70" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-fg">Glitch Effects</span>
-                      <span
-                        className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none uppercase tracking-[0.25em] ${
-                          isGlitchEnabled
-                            ? "border-info/40 bg-info/15 text-info"
-                            : "border-fg/10 bg-fg/10 text-fg/60"
-                        }`}
-                      >
-                        {isGlitchEnabled ? "On" : "Off"}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-fg/50">
-                      Disable the shake-triggered visuals
-                    </div>
-                  </div>
-                  <Switch
-                    id="glitch-effects"
-                    checked={isGlitchEnabled}
-                    onChange={() => handleGlitchToggle()}
-                  />
-                </div>
-                <div className="mt-2 text-[11px] text-fg/45 leading-relaxed">
-                  Keeps the app stable on shake
                 </div>
               </div>
             </div>
