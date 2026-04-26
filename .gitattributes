@@ -1,0 +1,36 @@
+* text=auto eol=lf
+
+src-tauri/crates/** -text
+
+*.ts    text diff
+*.tsx   text diff
+*.js    text diff
+*.jsx   text diff
+*.mjs   text diff
+*.cjs   text diff
+*.json  text diff
+*.md    text diff
+*.css   text diff
+*.html  text diff
+*.rs    text diff
+*.toml  text diff
+*.yml   text diff
+*.yaml  text diff
+*.sh    text diff
+*.fish  text diff
+
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.mp3   binary
+*.mp4   binary
+*.wav   binary
+*.onnx  binary
