@@ -14,6 +14,7 @@ import {
   Brain,
   Boxes,
   Rocket,
+  Code2,
 } from "lucide-react";
 import {
   readSettings,
@@ -36,6 +37,7 @@ import { ModelSelectionBottomMenu } from "../../components/ModelSelectionBottomM
 import { getProviderIcon } from "../../../core/utils/providerIcons";
 import { useI18n } from "../../../core/i18n/context";
 import { Switch } from "../../components/Switch";
+import { getPlatform } from "../../../core/utils/platform";
 
 const DYNAMIC_MEMORY_LLAMA_OVERWRITE_ORDER = [
   "penalties",
@@ -483,7 +485,9 @@ export function DynamicMemoryPage() {
     : null;
   const effectiveSummarisationModel =
     selectedSummarisationModel ?? models.find((model) => model.id === defaultModelId) ?? null;
-  const isLocalLlamaSummaryModel = effectiveSummarisationModel?.providerId === "llamacpp";
+  const isLocalLlamaSummaryModel =
+    effectiveSummarisationModel?.providerId === "llamacpp"
+    && getPlatform().type !== "mobile";
   const hasV2Installed = availableEmbeddingVersions.includes("v2");
   const hasV3Installed = availableEmbeddingVersions.includes("v3");
   const hasBothMajorEmbeddingVersionsInstalled = hasV2Installed && hasV3Installed;
@@ -1066,33 +1070,69 @@ export function DynamicMemoryPage() {
                     {t("dynamicMemory.page.summarisationModelDescription")}
                   </p>
 
-                  <div className="rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 space-y-3">
-                    <div>
-                      <div className="text-sm font-medium text-fg">Structured Fallback Format</div>
-                      <div className="mt-1 text-[11px] leading-relaxed text-fg/45">
-                        Used when tool calling fails during dynamic memory updates and the model is
-                        asked to return structured output directly.
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg border border-info/30 bg-info/10 p-1.5">
+                        <Code2 className="h-4 w-4 text-info" />
                       </div>
+                      <h3 className="text-sm font-semibold text-fg">Structured Fallback</h3>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["xml", "json"] as const).map((format) => (
-                        <button
-                          key={format}
-                          onClick={() => handleStructuredFallbackFormatChange(format)}
-                          className={cn(
-                            "rounded-lg border px-3 py-2 text-xs font-medium uppercase transition-colors",
-                            structuredFallbackFormat === format
-                              ? "border-info/50 bg-info/20 text-info"
-                              : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                          )}
-                        >
-                          {format}
-                        </button>
-                      ))}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {(
+                        [
+                          {
+                            value: "json" as const,
+                            title: "JSON",
+                            description:
+                              "Compact structured output when tool calling is unavailable.",
+                          },
+                          {
+                            value: "xml" as const,
+                            title: "XML",
+                            description: "Use when the model formats XML more reliably than JSON.",
+                          },
+                        ]
+                      ).map((option) => {
+                        const active = structuredFallbackFormat === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() =>
+                              void handleStructuredFallbackFormatChange(option.value)
+                            }
+                            className={cn(
+                              "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition",
+                              active
+                                ? "border-info/40 bg-info/10"
+                                : "border-fg/10 bg-fg/5 hover:border-fg/20",
+                            )}
+                          >
+                            <div className="flex w-full items-center justify-between">
+                              <span
+                                className={cn(
+                                  "text-sm font-semibold",
+                                  active ? "text-info" : "text-fg/80",
+                                )}
+                              >
+                                {option.title}
+                              </span>
+                              {active && (
+                                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-info">
+                                  <Check className="h-3 w-3 text-fg" />
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[11px] leading-relaxed text-fg/50">
+                              {option.description}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <p className="text-[11px] text-fg/45">
-                      XML is the default. JSON can be useful for models that follow JSON-only
-                      instructions more reliably than XML.
+                    <p className="px-1 text-xs text-fg/50">
+                      Used only when the model can&apos;t call tools directly.
                     </p>
                   </div>
 
