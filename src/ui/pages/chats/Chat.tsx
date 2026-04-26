@@ -105,8 +105,14 @@ export function ChatConversationPage() {
   } = useGuidedTour("postFirstMessage");
   const sessionId = searchParams.get("sessionId") || undefined;
   const jumpToMessageId = searchParams.get("jumpToMessage");
-  const { backgroundImageData, isBackgroundLight, theme, chatAppearance, chatController } =
-    useChatLayoutContext();
+  const {
+    backgroundImageData,
+    backgroundImageLoading,
+    isBackgroundLight,
+    theme,
+    chatAppearance,
+    chatController,
+  } = useChatLayoutContext();
 
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const pressStartPosition = useRef<{ x: number; y: number } | null>(null);
@@ -1701,6 +1707,10 @@ export function ChatConversationPage() {
     return <LoadingSpinner />;
   }
 
+  if (backgroundImageLoading && !backgroundImageData) {
+    return <LoadingSpinner />;
+  }
+
   if (!character || !session) {
     return <EmptyState title={t("chats.characterNotFound")} />;
   }
@@ -1710,7 +1720,10 @@ export function ChatConversationPage() {
 
   return (
     <div
-      className={cn("flex h-screen flex-col overflow-hidden", !backgroundImageData && "bg-surface")}
+      className={cn(
+        "flex h-screen flex-col overflow-hidden",
+        !backgroundImageData && !backgroundImageLoading && "bg-surface",
+      )}
     >
       {beetrootRain.overlay}
       <AnimatePresence>

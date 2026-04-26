@@ -7,7 +7,7 @@ import {
 } from "../../../core/storage/schemas";
 import { listCharacters, readSettings } from "../../../core/storage/repo";
 import { SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
-import { useImageData } from "../../hooks/useImageData";
+import { preloadImageUrls, useImageDataState } from "../../hooks/useImageData";
 import { useChatController, type ChatController } from "./hooks/useChatController";
 import {
   analyzeImageBrightness,
@@ -20,6 +20,7 @@ export interface ChatLayoutContext {
   character: Character | null;
   characterLoading: boolean;
   backgroundImageData: string | undefined;
+  backgroundImageLoading: boolean;
   isBackgroundLight: boolean;
   theme: ThemeColors;
   chatAppearance: ChatAppearanceSettings;
@@ -89,20 +90,39 @@ export function ChatLayout() {
     setLoadCount((c) => c + 1);
   }, []);
 
-  const effectiveSceneId =
-    chatController.session?.selectedSceneId ?? character?.defaultSceneId ?? null;
-  const effectiveSceneBackgroundImagePath =
-    character?.scenes.find((scene) => scene.id === effectiveSceneId)?.backgroundImagePath;
+  const backgroundCharacter = chatController.character;
+  const effectiveSceneId = chatController.session
+    ? (chatController.session.selectedSceneId ?? backgroundCharacter?.defaultSceneId ?? null)
+    : null;
+  const effectiveSceneBackgroundImagePath = backgroundCharacter?.scenes.find(
+    (scene) => scene.id === effectiveSceneId,
+  )?.backgroundImagePath;
   const effectiveBackgroundImagePath =
     chatController.session?.backgroundImagePath ??
     effectiveSceneBackgroundImagePath ??
-    character?.backgroundImagePath;
-  const backgroundImageData = useImageData(effectiveBackgroundImagePath);
+    (chatController.session ? backgroundCharacter?.backgroundImagePath : undefined);
+  const {
+    imageUrl: resolvedBackgroundImageData,
+    loading: resolvedBackgroundImageLoading,
+  } = useImageDataState(effectiveBackgroundImagePath);
+  const activeBackgroundImageData = effectiveBackgroundImagePath
+    ? resolvedBackgroundImageData
+    : undefined;
+  const backgroundImageLoading =
+    !!effectiveBackgroundImagePath && !activeBackgroundImageData && resolvedBackgroundImageLoading;
+
+  useEffect(() => {
+    void preloadImageUrls([
+      chatController.session?.backgroundImagePath,
+      backgroundCharacter?.backgroundImagePath,
+      ...(backgroundCharacter?.scenes.map((scene) => scene.backgroundImagePath) ?? []),
+    ]);
+  }, [backgroundCharacter, chatController.session?.backgroundImagePath]);
 
   useEffect(() => {
     let mounted = true;
 
-    if (!backgroundImageData) {
+    if (!activeBackgroundImageData) {
       setBgBrightness(null);
       computeChatTheme(chatAppearance, null).then((t) => {
         if (mounted) setTheme(t);
@@ -112,7 +132,7 @@ export function ChatLayout() {
       };
     }
 
-    analyzeImageBrightness(backgroundImageData).then((brightness) => {
+    analyzeImageBrightness(activeBackgroundImageData).then((brightness) => {
       if (!mounted) return;
       setBgBrightness(brightness);
       computeChatTheme(chatAppearance, brightness).then((t) => {
@@ -123,14 +143,15 @@ export function ChatLayout() {
     return () => {
       mounted = false;
     };
-  }, [backgroundImageData, chatAppearance]);
+  }, [activeBackgroundImageData, chatAppearance]);
 
   const isBackgroundLight = bgBrightness !== null && bgBrightness > 127.5;
 
   const ctx: ChatLayoutContext = {
     character,
     characterLoading: loading,
-    backgroundImageData,
+    backgroundImageData: activeBackgroundImageData,
+    backgroundImageLoading,
     isBackgroundLight,
     theme,
     chatAppearance,
@@ -140,18 +161,18 @@ export function ChatLayout() {
 
   return (
     <>
-      {backgroundImageData && (
+      {activeBackgroundImageData && (
         <div
           className="pointer-events-none fixed inset-0 z-0"
           style={{
-            backgroundImage: `url(${backgroundImageData})`,
+            backgroundImage: `url(${activeBackgroundImageData})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
           }}
         />
       )}
-      {backgroundImageData && chatAppearance.backgroundBlur > 0 && (
+      {activeBackgroundImageData && chatAppearance.backgroundBlur > 0 && (
         <div
           className="pointer-events-none fixed inset-0 z-0 transform-gpu backdrop-blur-md will-change-opacity"
           style={{
@@ -160,7 +181,7 @@ export function ChatLayout() {
           }}
         />
       )}
-      {backgroundImageData && chatAppearance.backgroundDim > 0 && (
+      {activeBackgroundImageData && chatAppearance.backgroundDim > 0 && (
         <div
           className="pointer-events-none fixed inset-0 z-0"
           style={{
