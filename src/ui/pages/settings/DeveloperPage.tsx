@@ -8,6 +8,7 @@ import {
   FlaskConical,
   AlertTriangle,
   RotateCcw,
+  Volume2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { typography, radius, interactive, cn } from "../../design-tokens";
@@ -1077,6 +1078,14 @@ export function DeveloperPage() {
             title="Create seeded benchmark group chat"
             description="Creates a dynamic-memory group chat with three benchmark characters and 30 seeded messages, then opens it."
             onClick={generateSeededBenchmarkGroupSession}
+            variant="primary"
+          />
+
+          <ActionButton
+            icon={<Volume2 />}
+            title="Open Kokoro test bench"
+            description="Temporary page for validating Kokoro assets, checking installed voices, and previewing local synthesis."
+            onClick={() => navigate("/settings/developer/kokoro-test")}
             variant="primary"
           />
         </section>

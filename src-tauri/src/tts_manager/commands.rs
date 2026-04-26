@@ -1,15 +1,24 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use rusqlite::params;
+use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tauri::AppHandle;
 
 use super::types::{
     AudioModel, AudioProvider, AudioProviderType, CachedVoice, CreatedVoiceResult,
     TtsPreviewResponse, UserVoice, VoiceDesignPreview,
 };
-use super::{elevenlabs, gemini, openai_compatible};
+use super::{elevenlabs, gemini, kokoro, openai_compatible};
 use crate::abort_manager::AbortRegistry;
 use crate::storage_manager::db::{now_ms, open_db};
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KokoroVoiceBlendInput {
+    pub voice_id: String,
+    pub weight: f32,
+}
 
 /// List all audio providers
 #[tauri::command]
@@ -138,6 +147,163 @@ pub fn audio_voice_design_models_list(provider_type: String) -> Vec<AudioModel> 
         Some(AudioProviderType::OpenAiTts) => openai_compatible::default_models(),
         None => vec![],
     }
+}
+
+#[tauri::command]
+pub fn kokoro_supported_variants() -> Vec<kokoro::KokoroModelVariantInfo> {
+    kokoro::kokoro_supported_model_variants()
+}
+
+#[tauri::command]
+pub fn kokoro_default_asset_root(app: AppHandle) -> Result<String, String> {
+    kokoro::default_asset_root(&app)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub fn kokoro_validate_assets(
+    asset_root: String,
+    variant: String,
+    selected_voice_id: Option<String>,
+) -> Result<kokoro::KokoroAssetStatus, String> {
+    let variant = kokoro::KokoroModelVariant::from_str(&variant)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    kokoro::validate_assets(
+        &PathBuf::from(asset_root),
+        variant,
+        selected_voice_id.as_deref(),
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub fn kokoro_list_installed_voices(
+    asset_root: String,
+) -> Result<Vec<kokoro::KokoroInstalledVoice>, String> {
+    let status = kokoro::validate_assets(
+        &PathBuf::from(asset_root),
+        kokoro::KokoroModelVariant::Int8,
+        None,
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(status.installed_voices)
+}
+
+#[tauri::command]
+pub async fn kokoro_list_available_voices(
+    asset_root: String,
+) -> Result<Vec<kokoro::KokoroAvailableVoice>, String> {
+    kokoro::list_available_voices(&PathBuf::from(asset_root))
+        .await
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub async fn kokoro_install_model(
+    app: AppHandle,
+    asset_root: String,
+    variant: String,
+) -> Result<(), String> {
+    let variant = kokoro::KokoroModelVariant::from_str(&variant)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    kokoro::install_model(app, PathBuf::from(asset_root), variant)
+        .await
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub async fn kokoro_install_voice(
+    app: AppHandle,
+    asset_root: String,
+    voice_id: String,
+) -> Result<(), String> {
+    kokoro::install_voice(app, PathBuf::from(asset_root), voice_id)
+        .await
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub async fn kokoro_get_download_progress() -> Result<kokoro::KokoroDownloadProgress, String> {
+    kokoro::get_download_progress()
+        .await
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub async fn kokoro_cancel_download(app: AppHandle) -> Result<(), String> {
+    kokoro::cancel_download(&app)
+        .await
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub fn kokoro_tokenize_preview(
+    asset_root: String,
+    voice_blend: Vec<KokoroVoiceBlendInput>,
+    text: String,
+    espeak_bin_path: Option<String>,
+    espeak_data_path: Option<String>,
+) -> Result<kokoro::KokoroTokenizePreview, String> {
+    kokoro::preview_tokenization(
+        &PathBuf::from(asset_root),
+        &voice_blend
+            .into_iter()
+            .map(|voice| kokoro::KokoroVoiceBlendSpec {
+                voice_id: voice.voice_id,
+                weight: voice.weight,
+            })
+            .collect::<Vec<_>>(),
+        &text,
+        espeak_bin_path.map(PathBuf::from),
+        espeak_data_path.map(PathBuf::from),
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub async fn kokoro_preview(
+    asset_root: String,
+    variant: String,
+    voice_blend: Vec<KokoroVoiceBlendInput>,
+    text: String,
+    speed: Option<f32>,
+    espeak_bin_path: Option<String>,
+    espeak_data_path: Option<String>,
+) -> Result<TtsPreviewResponse, String> {
+    let variant = kokoro::KokoroModelVariant::from_str(&variant)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let request = kokoro::KokoroSynthesisRequest {
+        asset_root: PathBuf::from(asset_root),
+        variant,
+        voice_blend: voice_blend
+            .into_iter()
+            .map(|voice| kokoro::KokoroVoiceBlendSpec {
+                voice_id: voice.voice_id,
+                weight: voice.weight,
+            })
+            .collect(),
+        text,
+        speed: speed.unwrap_or(1.0),
+        espeak_bin_path: espeak_bin_path.map(PathBuf::from),
+        espeak_data_path: espeak_data_path.map(PathBuf::from),
+    };
+
+    let audio_bytes = tokio::task::spawn_blocking(move || kokoro::engine::synthesize_to_wav(request))
+        .await
+        .map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Kokoro preview task failed: {}", e),
+            )
+        })?
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    Ok(TtsPreviewResponse {
+        audio_base64: STANDARD.encode(audio_bytes),
+        format: "audio/wav".to_string(),
+    })
 }
 
 /// Get cached voices for a provider

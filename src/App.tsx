@@ -48,6 +48,7 @@ import { CompanionsPage } from "./ui/pages/settings/CompanionsPage";
 import { EmbeddingDownloadPage } from "./ui/pages/settings/EmbeddingDownloadPage";
 import { CompanionDownloadPage } from "./ui/pages/settings/CompanionDownloadPage";
 import { EmbeddingTestPage } from "./ui/pages/settings/EmbeddingTestPage";
+import { KokoroTestPage } from "./ui/pages/settings/KokoroTestPage";
 import {
   ChatPage,
   ChatConversationPage,
@@ -1022,6 +1023,7 @@ function AppContent() {
                 element={<CompanionDownloadQueuePage />}
               />
               <Route path="/settings/embedding-test" element={<EmbeddingTestPage />} />
+              <Route path="/settings/developer/kokoro-test" element={<KokoroTestPage />} />
               <Route path="/settings/changelog" element={<ChangelogPage />} />
               <Route path="/settings/developer" element={<DeveloperPage />} />
               <Route path="/settings/reset" element={<ResetPage />} />
