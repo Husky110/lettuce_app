@@ -28,6 +28,7 @@ import {
   type ModelEditorState,
 } from "./modelEditorReducer";
 import { Routes, useNavigationManager } from "../../../navigation";
+import { getPlatform } from "../../../../core/utils/platform";
 
 type ControllerReturn = {
   state: ModelEditorState;
@@ -126,6 +127,7 @@ export function useModelEditorController(): ControllerReturn {
   const { toModelsList, backOrReplace } = useNavigationManager();
   const { modelId } = useParams<{ modelId: string }>();
   const [searchParams] = useSearchParams();
+  const isMobile = getPlatform().type === "mobile";
   const isNew = !modelId || modelId === "new";
   const [state, dispatch] = useModelEditorState();
   const initialStateRef = useRef<{
@@ -148,11 +150,22 @@ export function useModelEditorController(): ControllerReturn {
 
   const ensureLocalProvider = useCallback(
     (providers: ProviderCredential[]) => {
+      if (isMobile) {
+        return providers.filter((provider) => provider.providerId !== localProvider.providerId);
+      }
       const hasLocal = providers.some((p) => p.providerId === localProvider.providerId);
       if (hasLocal) return providers;
       return providers.length === 0 ? [localProvider] : [...providers, localProvider];
     },
-    [localProvider],
+    [isMobile, localProvider],
+  );
+
+  const visibleCapabilities = useMemo(
+    () =>
+      isMobile
+        ? capabilities.filter((capability) => capability.id !== "llamacpp")
+        : capabilities,
+    [capabilities, isMobile],
   );
 
   useEffect(() => {
@@ -205,7 +218,7 @@ export function useModelEditorController(): ControllerReturn {
             selectedProvider = providers[0];
           }
 
-          const firstCap = capabilities[0];
+          const firstCap = visibleCapabilities[0];
           nextEditorModel = {
             id: crypto.randomUUID(),
             name: isFromHfBrowser ? hfModelPath! : "",
@@ -313,7 +326,7 @@ export function useModelEditorController(): ControllerReturn {
     return () => {
       cancelled = true;
     };
-  }, [capabilities, ensureLocalProvider, isNew, modelId, searchParams, toModelsList]);
+  }, [ensureLocalProvider, isNew, modelId, searchParams, toModelsList, visibleCapabilities]);
 
   const syncRuntimeReportFromStore = useCallback(async () => {
     const currentModelId = state.editorModel?.id;
