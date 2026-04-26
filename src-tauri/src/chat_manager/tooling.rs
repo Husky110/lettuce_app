@@ -358,7 +358,6 @@ pub fn parse_tool_calls(provider_id: &str, payload: &Value) -> Vec<ToolCall> {
     calls
 }
 
-#[cfg(any(test, not(mobile)))]
 pub fn parse_tool_calls_from_text(raw: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
     let normalized = raw.trim();
