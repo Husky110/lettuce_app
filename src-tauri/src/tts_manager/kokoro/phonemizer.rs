@@ -20,10 +20,6 @@ pub struct EspeakConfig {
 }
 
 pub fn voice_lang(voice: &str) -> &'static str {
-    // Canonical eSpeak NG voice names. Use the casing stored in
-    // espeak-ng-data/lang/** because the native Android API
-    // (espeak_SetVoiceByName) performs case-sensitive lookups, even though
-    // the desktop CLI accepts mixed case.
     let prefix = &voice[..voice.len().min(2)];
     match prefix {
         "af" | "am" => "en-US",
