@@ -176,6 +176,7 @@ There are three supported ways to provide the bundle:
    ```text
    jniLibs/arm64-v8a/libttsespeak.so
    jniLibs/armeabi-v7a/libttsespeak.so
+   jniLibs/x86/libttsespeak.so
    jniLibs/x86_64/libttsespeak.so
    espeak-ng-data/...
    ```

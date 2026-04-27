@@ -204,7 +204,7 @@ fn setup_android_libs() -> anyhow::Result<()> {
 }
 
 fn validate_android_espeak_bundle() -> anyhow::Result<()> {
-    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86_64"];
+    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
     let jni_libs_path = PathBuf::from("gen/android/app/src/main/jniLibs");
     let mut missing = Vec::new();
 
@@ -292,13 +292,14 @@ fn setup_android_espeak_bundle() -> anyhow::Result<()> {
 Set KOKORO_ESPEAK_ANDROID_BUNDLE_URL or KOKORO_ESPEAK_ANDROID_BUNDLE_PATH to a .zip/.tar.gz containing:\n\
 - jniLibs/arm64-v8a/libttsespeak.so\n\
 - jniLibs/armeabi-v7a/libttsespeak.so\n\
+- jniLibs/x86/libttsespeak.so\n\
 - jniLibs/x86_64/libttsespeak.so\n\
 - assets/kokoro/espeak-ng-data/phontab and the rest of espeak-ng-data"
     )
 }
 
 fn android_espeak_bundle_complete() -> bool {
-    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86_64"];
+    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
     let jni_libs_path = PathBuf::from("gen/android/app/src/main/jniLibs");
     let data_dir = PathBuf::from("gen/android/app/src/main/assets/kokoro/espeak-ng-data");
 

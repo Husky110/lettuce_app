@@ -112,7 +112,7 @@ log "Extracting APK"
 unzip -q "${APK_PATH}" -d "${APK_EXTRACT_DIR}"
 
 log "Collecting libttsespeak.so for each ABI"
-for abi in arm64-v8a armeabi-v7a x86_64; do
+for abi in arm64-v8a armeabi-v7a x86 x86_64; do
   src="${APK_EXTRACT_DIR}/lib/${abi}/libttsespeak.so"
   if [[ ! -f "${src}" ]]; then
     echo "error: missing ${src} (release APK did not contain ${abi})" >&2
