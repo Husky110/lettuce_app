@@ -3007,6 +3007,7 @@ dependencies = [
  "hound",
  "if-addrs",
  "image",
+ "jni",
  "keyring",
  "lazy_static",
  "libc",

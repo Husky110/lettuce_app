@@ -23,10 +23,8 @@ pub enum KokoroError {
     Io(#[from] std::io::Error),
     #[error("Array shape error: {0}")]
     Shape(#[from] ndarray::ShapeError),
-    #[error(
-        "espeak-ng not found. Install it or provide a bundled binary path for Kokoro phonemization."
-    )]
-    EspeakNotFound,
+    #[error("eSpeak NG is unavailable: {0}")]
+    EspeakUnavailable(String),
     #[error("Phonemization failed: {0}")]
     PhonemizerFailed(String),
     #[error("Invalid Kokoro config: {0}")]

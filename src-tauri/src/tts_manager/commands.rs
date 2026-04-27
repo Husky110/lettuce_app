@@ -322,12 +322,20 @@ pub fn kokoro_uninstall_voice(asset_root: String, voice_id: String) -> Result<bo
 
 #[tauri::command]
 pub fn kokoro_tokenize_preview(
+    app: AppHandle,
     asset_root: String,
     voice_blend: Vec<KokoroVoiceBlendInput>,
     text: String,
     espeak_bin_path: Option<String>,
     espeak_data_path: Option<String>,
 ) -> Result<kokoro::KokoroTokenizePreview, String> {
+    let espeak = kokoro::runtime::resolve_espeak_config(
+        &app,
+        espeak_bin_path.map(PathBuf::from),
+        espeak_data_path.map(PathBuf::from),
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
     kokoro::preview_tokenization(
         &PathBuf::from(asset_root),
         &voice_blend
@@ -338,14 +346,15 @@ pub fn kokoro_tokenize_preview(
             })
             .collect::<Vec<_>>(),
         &text,
-        espeak_bin_path.map(PathBuf::from),
-        espeak_data_path.map(PathBuf::from),
+        espeak.bin_path,
+        espeak.data_path,
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
 #[tauri::command]
 pub async fn kokoro_preview(
+    app: AppHandle,
     asset_root: String,
     variant: String,
     voice_blend: Vec<KokoroVoiceBlendInput>,
@@ -356,6 +365,12 @@ pub async fn kokoro_preview(
 ) -> Result<TtsPreviewResponse, String> {
     let variant = kokoro::KokoroModelVariant::from_str(&variant)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let espeak = kokoro::runtime::resolve_espeak_config(
+        &app,
+        espeak_bin_path.map(PathBuf::from),
+        espeak_data_path.map(PathBuf::from),
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let request = kokoro::KokoroSynthesisRequest {
         asset_root: PathBuf::from(asset_root),
         variant,
@@ -368,8 +383,8 @@ pub async fn kokoro_preview(
             .collect(),
         text,
         speed: speed.unwrap_or(1.0),
-        espeak_bin_path: espeak_bin_path.map(PathBuf::from),
-        espeak_data_path: espeak_data_path.map(PathBuf::from),
+        espeak_bin_path: espeak.bin_path,
+        espeak_data_path: espeak.data_path,
     };
 
     let audio_bytes =
@@ -800,14 +815,17 @@ pub async fn tts_preview(
                     .filter(|s| s.is_finite() && *s > 0.0)
                     .unwrap_or(1.0);
 
+                let espeak = kokoro::runtime::resolve_espeak_config(&app, None, None)
+                    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
                 let request = kokoro::KokoroSynthesisRequest {
                     asset_root: PathBuf::from(asset_root),
                     variant,
                     voice_blend: blend_specs,
                     text: text.clone(),
                     speed,
-                    espeak_bin_path: None,
-                    espeak_data_path: None,
+                    espeak_bin_path: espeak.bin_path,
+                    espeak_data_path: espeak.data_path,
                 };
 
                 let audio =

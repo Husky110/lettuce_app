@@ -314,6 +314,35 @@ jobs:
             echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
             echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
+      - name: Fetch eSpeak NG Android bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PIN_FILE=".github/espeak-android-bundle.env"
+          if [ ! -f "$PIN_FILE" ]; then
+            echo "Missing $PIN_FILE — publish a bundle via .github/workflows/espeak-android-bundle.yml first." >&2
+            exit 1
+          fi
+          # shellcheck disable=SC1090
+          . "$PIN_FILE"
+          if [ -z "${BUNDLE_TAG:-}" ] || [ -z "${BUNDLE_ASSET:-}" ] || [ -z "${BUNDLE_SHA256:-}" ]; then
+            echo "Bundle pin is incomplete (BUNDLE_TAG/BUNDLE_ASSET/BUNDLE_SHA256). Update $PIN_FILE." >&2
+            exit 1
+          fi
+          DEST="$RUNNER_TEMP/$BUNDLE_ASSET"
+          echo "Downloading $BUNDLE_ASSET from release $BUNDLE_TAG"
+          gh release download "$BUNDLE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$BUNDLE_ASSET" \
+            --output "$DEST" \
+            --clobber
+          ACTUAL="$(sha256sum "$DEST" | awk '{print $1}')"
+          if [ "$ACTUAL" != "$BUNDLE_SHA256" ]; then
+            echo "Bundle sha256 mismatch. Expected $BUNDLE_SHA256, got $ACTUAL" >&2
+            exit 1
+          fi
+          echo "KOKORO_ESPEAK_ANDROID_BUNDLE_PATH=$DEST" >> "$GITHUB_ENV"
 
       - name: Build Tauri Android app (Release build)
         env:

@@ -1,0 +1,113 @@
+name: Build / eSpeak NG Android Bundle
+
+run-name: eSpeak NG Android bundle (${{ inputs.tag }}) by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish the bundle under (e.g. espeak-android-bundle-v1)'
+        required: true
+        type: string
+      espeak_ref:
+        description: 'eSpeak NG git ref (branch, tag, or commit) to build'
+        required: false
+        default: 'master'
+        type: string
+      espeak_repo:
+        description: 'eSpeak NG git URL'
+        required: false
+        default: 'https://github.com/espeak-ng/espeak-ng.git'
+        type: string
+      prerelease:
+        description: 'Mark the GitHub release as prerelease'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: espeak-android-bundle-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      bundle_sha256: ${{ steps.build.outputs.bundle_sha256 }}
+      bundle_size: ${{ steps.build.outputs.bundle_size }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool pkg-config make unzip
+
+      - name: Build espeak-ng Android bundle
+        id: build
+        env:
+          ESPEAK_NG_REPO: ${{ inputs.espeak_repo }}
+          ESPEAK_NG_REF: ${{ inputs.espeak_ref }}
+          OUTPUT_BUNDLE: ${{ runner.temp }}/kokoro-espeak-android-bundle.tar.gz
+        run: bash scripts/build-espeak-android-bundle.sh
+
+      - name: Write sha256 sidecar
+        run: |
+          cd "${RUNNER_TEMP}"
+          sha256sum kokoro-espeak-android-bundle.tar.gz > kokoro-espeak-android-bundle.tar.gz.sha256
+          cat kokoro-espeak-android-bundle.tar.gz.sha256
+
+      - name: Build release notes
+        id: notes
+        env:
+          ESPEAK_REPO: ${{ inputs.espeak_repo }}
+          ESPEAK_REF: ${{ inputs.espeak_ref }}
+          BUNDLE_SHA: ${{ steps.build.outputs.bundle_sha256 }}
+          BUNDLE_SIZE: ${{ steps.build.outputs.bundle_size }}
+          BUNDLE_TAG: ${{ inputs.tag }}
+        run: |
+          DELIM="BODY_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "body<<${DELIM}"
+            echo "Prebuilt eSpeak NG Android bundle for Kokoro."
+            echo
+            echo "- Source: \`${ESPEAK_REPO}\` @ \`${ESPEAK_REF}\`"
+            echo "- Asset: \`kokoro-espeak-android-bundle.tar.gz\`"
+            echo "- Size: \`${BUNDLE_SIZE}\` bytes"
+            echo "- SHA256: \`${BUNDLE_SHA}\`"
+            echo
+            echo "Pin in \`.github/espeak-android-bundle.env\`:"
+            echo '```'
+            echo "BUNDLE_TAG=${BUNDLE_TAG}"
+            echo "BUNDLE_ASSET=kokoro-espeak-android-bundle.tar.gz"
+            echo "BUNDLE_SHA256=${BUNDLE_SHA}"
+            echo "ESPEAK_NG_REF=${ESPEAK_REF}"
+            echo '```'
+            echo "${DELIM}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: eSpeak NG Android bundle ${{ inputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: false
+          body: ${{ steps.notes.outputs.body }}
+          files: |
+            ${{ runner.temp }}/kokoro-espeak-android-bundle.tar.gz
+            ${{ runner.temp }}/kokoro-espeak-android-bundle.tar.gz.sha256
+          fail_on_unmatched_files: true

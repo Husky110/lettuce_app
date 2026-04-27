@@ -18,6 +18,7 @@ async function main() {
   await deleteStaleClassFiles(javaRootDir, targetJavaDir, [
     "MainActivity.kt",
     "CrashMonitorService.kt",
+    "KokoroPhonemizerBridge.kt",
   ]);
 
   await applyTemplate("MainActivity.kt.template", path.join(targetJavaDir, "MainActivity.kt"), {
@@ -26,6 +27,13 @@ async function main() {
   await applyTemplate(
     "CrashMonitorService.kt.template",
     path.join(targetJavaDir, "CrashMonitorService.kt"),
+    {
+      __PACKAGE__: packageName,
+    },
+  );
+  await applyTemplate(
+    "KokoroPhonemizerBridge.kt.template",
+    path.join(targetJavaDir, "KokoroPhonemizerBridge.kt"),
     {
       __PACKAGE__: packageName,
     },

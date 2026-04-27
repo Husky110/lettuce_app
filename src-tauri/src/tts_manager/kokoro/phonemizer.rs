@@ -1,8 +1,11 @@
+#[cfg(not(target_os = "android"))]
 use std::borrow::Cow;
 use std::collections::HashMap;
+#[cfg(not(target_os = "android"))]
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(not(target_os = "android"))]
 use std::process::{Command, Stdio};
 
 use serde::Serialize;
@@ -485,54 +488,168 @@ fn phonemize_segments_batch(
 }
 
 fn run_espeak(input: &str, lang: &str, espeak: &EspeakConfig) -> Result<String, KokoroError> {
-    let bin = espeak
-        .bin_path
-        .as_deref()
-        .map(|p| p.as_os_str().to_owned())
-        .unwrap_or_else(|| std::ffi::OsString::from("espeak-ng"));
-    let mut cmd = Command::new(&bin);
-    cmd.args(["--ipa", "--stdin", "-q", "-v", lang]);
-    if let Some(data_path) = espeak.data_path.as_deref() {
-        cmd.arg("--path").arg(data_path);
+    #[cfg(target_os = "android")]
+    {
+        return run_espeak_android(input, lang, espeak);
     }
 
-    #[cfg(target_os = "linux")]
-    if let Some(bin_dir) = espeak.bin_path.as_deref().and_then(|p| p.parent()) {
-        cmd.env("LD_LIBRARY_PATH", bin_dir);
-    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let bin = espeak
+            .bin_path
+            .as_deref()
+            .map(|p| p.as_os_str().to_owned())
+            .unwrap_or_else(|| std::ffi::OsString::from("espeak-ng"));
+        let mut cmd = Command::new(&bin);
+        cmd.args(["--ipa", "--stdin", "-q", "-v", lang]);
+        if let Some(data_path) = espeak.data_path.as_deref() {
+            cmd.arg("--path").arg(data_path);
+        }
 
-    let mut child = cmd
+        #[cfg(target_os = "linux")]
+        if let Some(bin_dir) = espeak.bin_path.as_deref().and_then(|p| p.parent()) {
+            cmd.env("LD_LIBRARY_PATH", bin_dir);
+        }
+
+        let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                KokoroError::EspeakNotFound
+                KokoroError::EspeakUnavailable(
+                    "Kokoro requires eSpeak NG for phonemization, but `espeak-ng` was not found on PATH. Install it and restart the app, or use the platform-bundled phonemizer path."
+                        .to_string(),
+                )
             } else {
                 KokoroError::Io(e)
             }
         })?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let stdin_payload = canonicalize_espeak_stdin_payload(input);
-        stdin
-            .write_all(stdin_payload.as_bytes())
-            .map_err(KokoroError::Io)?;
+        if let Some(mut stdin) = child.stdin.take() {
+            let stdin_payload = canonicalize_espeak_stdin_payload(input);
+            stdin
+                .write_all(stdin_payload.as_bytes())
+                .map_err(KokoroError::Io)?;
+        }
+
+        let output = child.wait_with_output().map_err(KokoroError::Io)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(KokoroError::PhonemizerFailed(format!(
+                "espeak-ng exited with code {:?}: {stderr}",
+                output.status.code()
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+}
+
+#[cfg(target_os = "android")]
+fn run_espeak_android(
+    input: &str,
+    lang: &str,
+    espeak: &EspeakConfig,
+) -> Result<String, KokoroError> {
+    use std::ffi::{CStr, CString};
+    use std::os::raw::{c_char, c_int, c_void};
+    use std::sync::OnceLock;
+
+    const AUDIO_OUTPUT_SYNCHRONOUS: c_int = 2;
+    const ESPEAK_INITIALIZE_PHONEME_IPA: c_int = 0x0002;
+    const ESPEAK_CHARS_UTF8: c_int = 1;
+    const ESPEAK_PHONEMES_IPA: c_int = 0x02;
+
+    extern "C" {
+        fn espeak_Initialize(
+            output: c_int,
+            buflength: c_int,
+            path: *const c_char,
+            options: c_int,
+        ) -> c_int;
+        fn espeak_SetVoiceByName(name: *const c_char) -> c_int;
+        fn espeak_TextToPhonemes(
+            textptr: *mut *const c_void,
+            textmode: c_int,
+            phonememode: c_int,
+        ) -> *const c_char;
     }
 
-    let output = child.wait_with_output().map_err(KokoroError::Io)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+
+    let data_root = espeak
+        .data_path
+        .as_deref()
+        .and_then(|path| path.parent())
+        .ok_or_else(|| {
+            KokoroError::EspeakUnavailable(
+                "Android eSpeak NG data path was not resolved before phonemization.".to_string(),
+            )
+        })?;
+
+    let data_root = CString::new(data_root.to_string_lossy().as_bytes()).map_err(|_| {
+        KokoroError::EspeakUnavailable(
+            "Android eSpeak NG data path contains a NUL byte.".to_string(),
+        )
+    })?;
+
+    INIT.get_or_init(|| {
+        let result = unsafe {
+            espeak_Initialize(
+                AUDIO_OUTPUT_SYNCHRONOUS,
+                0,
+                data_root.as_ptr(),
+                ESPEAK_INITIALIZE_PHONEME_IPA,
+            )
+        };
+        if result < 0 {
+            Err("eSpeak NG native initialization failed on Android.".to_string())
+        } else {
+            Ok(())
+        }
+    })
+    .as_ref()
+    .map_err(|err| KokoroError::EspeakUnavailable(err.clone()))?;
+
+    let lang = CString::new(lang).map_err(|_| {
+        KokoroError::EspeakUnavailable(
+            "Android eSpeak NG language contains a NUL byte.".to_string(),
+        )
+    })?;
+    let set_voice_result = unsafe { espeak_SetVoiceByName(lang.as_ptr()) };
+    if set_voice_result != 0 {
         return Err(KokoroError::PhonemizerFailed(format!(
-            "espeak-ng exited with code {:?}: {stderr}",
-            output.status.code()
+            "Android eSpeak NG failed to set voice '{:?}' with code {}",
+            lang, set_voice_result
         )));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let input = CString::new(input).map_err(|_| {
+        KokoroError::EspeakUnavailable("Android eSpeak NG input contains a NUL byte.".to_string())
+    })?;
+    let mut text_ptr = input.as_ptr() as *const c_void;
+    let mut output = String::new();
+
+    while !text_ptr.is_null() {
+        let chunk =
+            unsafe { espeak_TextToPhonemes(&mut text_ptr, ESPEAK_CHARS_UTF8, ESPEAK_PHONEMES_IPA) };
+        if chunk.is_null() {
+            break;
+        }
+        let chunk = unsafe { CStr::from_ptr(chunk) }
+            .to_string_lossy()
+            .into_owned();
+        if !chunk.is_empty() {
+            output.push_str(&chunk);
+        }
+    }
+
+    Ok(output)
 }
 
+#[cfg(not(target_os = "android"))]
 fn canonicalize_espeak_stdin_payload(input: &str) -> Cow<'_, str> {
     if input.ends_with('\n') {
         Cow::Borrowed(input)

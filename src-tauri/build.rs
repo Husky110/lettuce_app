@@ -45,12 +45,21 @@ fn macos_archive_candidates(target_arch: &str) -> Vec<(String, String)> {
 
 fn main() {
     println!("cargo:rerun-if-env-changed=ORT_LIB_LOCATION");
+    println!("cargo:rerun-if-env-changed=KOKORO_ESPEAK_ANDROID_BUNDLE_URL");
+    println!("cargo:rerun-if-env-changed=KOKORO_ESPEAK_ANDROID_BUNDLE_PATH");
+    println!("cargo:rerun-if-env-changed=KOKORO_ANDROID_BRIDGE_CLASS");
+    println!("cargo:rerun-if-changed=tauri.conf.json");
+
+    export_android_bridge_class();
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     match target_os.as_str() {
         "android" => {
             println!("cargo:warning=Detected Android build, checking ONNX Runtime libraries...");
             setup_android_libs().expect("Failed to setup Android libraries");
+            setup_android_espeak_bundle().expect("Failed to setup Android eSpeak NG bundle");
+            validate_android_espeak_bundle().expect("Failed to validate Android eSpeak NG bundle");
+            link_android_espeak_library().expect("Failed to link Android eSpeak NG library");
         }
         "ios" => {
             println!("cargo:warning=Detected iOS build.");
@@ -83,6 +92,42 @@ fn main() {
     }
 
     tauri_build::build();
+}
+
+fn export_android_bridge_class() {
+    const BRIDGE_CLASS_NAME: &str = "KokoroPhonemizerBridge";
+    let value = env::var("KOKORO_ANDROID_BRIDGE_CLASS")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            let identifier = read_tauri_identifier().unwrap_or_else(|err| {
+                println!(
+                    "cargo:warning=Could not read tauri.conf.json identifier ({err}); falling back to com.lettuceai.app for the Kokoro JNI bridge."
+                );
+                "com.lettuceai.app".to_string()
+            });
+            format!(
+                "{}/{}",
+                identifier.replace('.', "/"),
+                BRIDGE_CLASS_NAME
+            )
+        });
+    println!("cargo:rustc-env=KOKORO_ANDROID_BRIDGE_CLASS={value}");
+}
+
+fn read_tauri_identifier() -> anyhow::Result<String> {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let path = manifest_dir.join("tauri.conf.json");
+    let raw = fs::read_to_string(&path)?;
+    let value: serde_json::Value = serde_json::from_str(&raw)?;
+    let identifier = value
+        .get("identifier")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("tauri.conf.json is missing a top-level `identifier`"))?;
+    Ok(identifier.to_string())
 }
 
 fn ensure_resource_dir() -> anyhow::Result<PathBuf> {
@@ -156,6 +201,212 @@ fn setup_android_libs() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_android_espeak_bundle() -> anyhow::Result<()> {
+    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86_64"];
+    let jni_libs_path = PathBuf::from("gen/android/app/src/main/jniLibs");
+    let mut missing = Vec::new();
+
+    for abi in native_targets {
+        let path = jni_libs_path.join(abi).join("libttsespeak.so");
+        if !path.is_file() {
+            missing.push(path.display().to_string());
+        }
+    }
+
+    let data_dir = PathBuf::from("gen/android/app/src/main/assets/kokoro/espeak-ng-data");
+    let phontab = data_dir.join("phontab");
+    if !data_dir.is_dir() || !phontab.is_file() {
+        missing.push(data_dir.display().to_string());
+    }
+
+    if !missing.is_empty() {
+        anyhow::bail!(
+            "Android Kokoro requires bundled eSpeak NG. Add libttsespeak.so under each supported jniLibs ABI and add eSpeak data under assets/kokoro/espeak-ng-data. Missing:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    println!("cargo:warning=Android eSpeak NG bundle is present.");
+    Ok(())
+}
+
+fn link_android_espeak_library() -> anyhow::Result<()> {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let abi = match target_arch.as_str() {
+        "aarch64" => "arm64-v8a",
+        "arm" => "armeabi-v7a",
+        "x86_64" => "x86_64",
+        "x86" => "x86",
+        _ => anyhow::bail!(
+            "Unsupported Android architecture '{}' for eSpeak NG native library",
+            target_arch
+        ),
+    };
+    let lib_dir = PathBuf::from("gen/android/app/src/main/jniLibs").join(abi);
+    let lib_path = lib_dir.join("libttsespeak.so");
+    if !lib_path.is_file() {
+        anyhow::bail!("Missing Android eSpeak NG library: {}", lib_path.display());
+    }
+
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=dylib=ttsespeak");
+    Ok(())
+}
+
+fn setup_android_espeak_bundle() -> anyhow::Result<()> {
+    if android_espeak_bundle_complete() {
+        println!("cargo:warning=Android eSpeak NG bundle already present.");
+        return Ok(());
+    }
+
+    if let Ok(path) = env::var("KOKORO_ESPEAK_ANDROID_BUNDLE_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            println!(
+                "cargo:warning=Extracting Android eSpeak NG bundle from {}",
+                trimmed
+            );
+            extract_android_espeak_bundle(&fs::read(trimmed)?, trimmed)?;
+            return Ok(());
+        }
+    }
+
+    if let Ok(url) = env::var("KOKORO_ESPEAK_ANDROID_BUNDLE_URL") {
+        let trimmed = url.trim();
+        if !trimmed.is_empty() {
+            println!(
+                "cargo:warning=Downloading Android eSpeak NG bundle from {}",
+                trimmed
+            );
+            let response = reqwest::blocking::get(trimmed)?.error_for_status()?;
+            let bytes = response.bytes()?;
+            extract_android_espeak_bundle(&bytes, trimmed)?;
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!(
+        "Android Kokoro requires a bundled eSpeak NG archive during build.\n\
+Set KOKORO_ESPEAK_ANDROID_BUNDLE_URL or KOKORO_ESPEAK_ANDROID_BUNDLE_PATH to a .zip/.tar.gz containing:\n\
+- jniLibs/arm64-v8a/libttsespeak.so\n\
+- jniLibs/armeabi-v7a/libttsespeak.so\n\
+- jniLibs/x86_64/libttsespeak.so\n\
+- assets/kokoro/espeak-ng-data/phontab and the rest of espeak-ng-data"
+    )
+}
+
+fn android_espeak_bundle_complete() -> bool {
+    let native_targets = ["arm64-v8a", "armeabi-v7a", "x86_64"];
+    let jni_libs_path = PathBuf::from("gen/android/app/src/main/jniLibs");
+    let data_dir = PathBuf::from("gen/android/app/src/main/assets/kokoro/espeak-ng-data");
+
+    native_targets
+        .iter()
+        .all(|abi| jni_libs_path.join(abi).join("libttsespeak.so").is_file())
+        && data_dir.join("phontab").is_file()
+}
+
+fn extract_android_espeak_bundle(bytes: &[u8], source_name: &str) -> anyhow::Result<()> {
+    if source_name.ends_with(".zip") {
+        return extract_android_espeak_zip(bytes);
+    }
+    if source_name.ends_with(".tar.gz") || source_name.ends_with(".tgz") {
+        return extract_android_espeak_tgz(bytes);
+    }
+
+    extract_android_espeak_zip(bytes).or_else(|zip_err| {
+        extract_android_espeak_tgz(bytes).map_err(|tgz_err| {
+            anyhow::anyhow!(
+                "Failed to extract Android eSpeak NG bundle as zip ({zip_err}) or tar.gz ({tgz_err})"
+            )
+        })
+    })
+}
+
+fn extract_android_espeak_zip(bytes: &[u8]) -> anyhow::Result<()> {
+    let reader = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(reader)?;
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let name = entry.name().replace('\\', "/");
+        let Some(dest_path) = android_espeak_archive_dest(&name) else {
+            continue;
+        };
+        if entry.is_dir() {
+            fs::create_dir_all(dest_path)?;
+            continue;
+        }
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut outfile = fs::File::create(dest_path)?;
+        io::copy(&mut entry, &mut outfile)?;
+    }
+
+    Ok(())
+}
+
+fn extract_android_espeak_tgz(bytes: &[u8]) -> anyhow::Result<()> {
+    let reader = Cursor::new(bytes);
+    let tar = flate2::read::GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(tar);
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let name = entry.path()?.to_string_lossy().replace('\\', "/");
+        let Some(dest_path) = android_espeak_archive_dest(&name) else {
+            continue;
+        };
+        if entry.header().entry_type().is_dir() {
+            fs::create_dir_all(dest_path)?;
+            continue;
+        }
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut outfile = fs::File::create(dest_path)?;
+        io::copy(&mut entry, &mut outfile)?;
+    }
+
+    Ok(())
+}
+
+fn android_espeak_archive_dest(name: &str) -> Option<PathBuf> {
+    let normalized = name.trim_start_matches("./");
+    let relative = normalized.trim_start_matches('/');
+    let relative = relative
+        .find("jniLibs/")
+        .map(|index| &relative[index..])
+        .or_else(|| {
+            relative
+                .find("assets/kokoro/espeak-ng-data/")
+                .map(|index| &relative[index..])
+        })
+        .or_else(|| {
+            relative
+                .find("espeak-ng-data/")
+                .map(|index| &relative[index..])
+        })
+        .unwrap_or(relative);
+
+    if let Some(path) = relative.strip_prefix("jniLibs/") {
+        return Some(PathBuf::from("gen/android/app/src/main/jniLibs").join(path));
+    }
+    if let Some(path) = relative.strip_prefix("assets/kokoro/espeak-ng-data/") {
+        return Some(
+            PathBuf::from("gen/android/app/src/main/assets/kokoro/espeak-ng-data").join(path),
+        );
+    }
+    if let Some(path) = relative.strip_prefix("espeak-ng-data/") {
+        return Some(
+            PathBuf::from("gen/android/app/src/main/assets/kokoro/espeak-ng-data").join(path),
+        );
+    }
+
+    None
 }
 
 fn setup_linux_libs() -> anyhow::Result<()> {
