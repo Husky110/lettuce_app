@@ -124,13 +124,30 @@ done
 
 log "Extracting espeak-ng data"
 DATA_ZIP="${APK_EXTRACT_DIR}/assets/espeakdata.zip"
+DATA_SRC=""
 if [[ -f "${DATA_ZIP}" ]]; then
   unzip -q "${DATA_ZIP}" -d "${BUNDLE_ROOT}/espeak-ng-data"
 elif [[ -d "${APK_EXTRACT_DIR}/assets/espeak-ng-data" ]]; then
-  cp -R "${APK_EXTRACT_DIR}/assets/espeak-ng-data/." "${BUNDLE_ROOT}/espeak-ng-data/"
+  DATA_SRC="${APK_EXTRACT_DIR}/assets/espeak-ng-data"
 else
-  echo "error: could not locate espeak-ng data in APK (no espeakdata.zip or assets/espeak-ng-data)" >&2
-  exit 1
+  # Recent espeak-ng Gradle setups leave the generated data tables under
+  # android/.cxx/<variant>/<hash>/espeak-data/espeak-ng-data and never copy
+  # them into the APK. Fall back to scanning the CMake output for any
+  # phontab file (the espeak-ng marker file).
+  log "APK has no bundled data; scanning CMake build output for espeak-ng-data"
+  while IFS= read -r candidate; do
+    if [[ -d "${candidate}" ]]; then
+      DATA_SRC="${candidate}"
+      break
+    fi
+  done < <(find "${ANDROID_PROJECT_DIR}" -type f -name phontab 2>/dev/null \
+    | xargs -r -n1 dirname \
+    | sort -u)
+fi
+
+if [[ -n "${DATA_SRC}" ]]; then
+  log "Copying espeak-ng-data from ${DATA_SRC}"
+  cp -R "${DATA_SRC}/." "${BUNDLE_ROOT}/espeak-ng-data/"
 fi
 
 # Some espeak-ng builds wrap the data in a top-level espeak-ng-data/ directory. Flatten it
@@ -144,7 +161,7 @@ if [[ -d "${BUNDLE_ROOT}/espeak-ng-data/espeak-ng-data" ]]; then
 fi
 
 if [[ ! -f "${BUNDLE_ROOT}/espeak-ng-data/phontab" ]]; then
-  echo "error: bundled espeak-ng-data is missing phontab" >&2
+  echo "error: bundled espeak-ng-data is missing phontab (no espeakdata.zip, no assets/espeak-ng-data, no phontab under .cxx/)" >&2
   exit 1
 fi
 
