@@ -8,6 +8,7 @@
 
 mod api;
 mod app;
+mod asr_manager;
 mod chat_appearance;
 mod chat_manager;
 mod content_filter;

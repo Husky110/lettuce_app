@@ -319,6 +319,63 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           system_prompt TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS asr_vocabulary_terms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL,
+          normalized_term TEXT NOT NULL,
+          language TEXT,
+          category TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          priority INTEGER NOT NULL DEFAULT 50,
+          use_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_vocabulary_scope_language
+          ON asr_vocabulary_terms(scope, language, priority DESC, use_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_asr_vocabulary_normalized
+          ON asr_vocabulary_terms(normalized_term);
+
+        CREATE TABLE IF NOT EXISTS asr_corrections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          wrong TEXT NOT NULL,
+          normalized_wrong TEXT NOT NULL,
+          correct TEXT NOT NULL,
+          normalized_correct TEXT NOT NULL,
+          language TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          confidence REAL NOT NULL DEFAULT 0.75,
+          use_count INTEGER NOT NULL DEFAULT 1,
+          user_approved INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_corrections_scope_language
+          ON asr_corrections(scope, language, user_approved, confidence DESC, use_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_asr_corrections_normalized_wrong
+          ON asr_corrections(normalized_wrong);
+
+        CREATE TABLE IF NOT EXISTS asr_voice_examples (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          audio_path TEXT NOT NULL,
+          expected_text TEXT NOT NULL,
+          normalized_expected_text TEXT NOT NULL,
+          whisper_output TEXT,
+          normalized_whisper_output TEXT,
+          language TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          term_id INTEGER,
+          correction_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(term_id) REFERENCES asr_vocabulary_terms(id) ON DELETE SET NULL,
+          FOREIGN KEY(correction_id) REFERENCES asr_corrections(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_voice_examples_scope_language
+          ON asr_voice_examples(scope, language, created_at DESC);
+
         -- Secrets (API keys and similar), stored in DB instead of JSON
         CREATE TABLE IF NOT EXISTS secrets (
           service TEXT NOT NULL,

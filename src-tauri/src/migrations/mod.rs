@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 60;
+pub const CURRENT_MIGRATION_VERSION: u32 = 61;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -637,6 +637,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v59_to_v60(app)?;
         version = 60;
+    }
+
+    if version < 61 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v60 -> v61: Add ASR vocabulary, corrections, and voice examples tables",
+        );
+        migrate_v60_to_v61(app)?;
+        version = 61;
     }
 
     // Update the stored version
@@ -3400,5 +3410,71 @@ fn migrate_v59_to_v60(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
 
+    Ok(())
+}
+
+fn migrate_v60_to_v61(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS asr_vocabulary_terms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL,
+          normalized_term TEXT NOT NULL,
+          language TEXT,
+          category TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          priority INTEGER NOT NULL DEFAULT 50,
+          use_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_vocabulary_scope_language
+          ON asr_vocabulary_terms(scope, language, priority DESC, use_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_asr_vocabulary_normalized
+          ON asr_vocabulary_terms(normalized_term);
+
+        CREATE TABLE IF NOT EXISTS asr_corrections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          wrong TEXT NOT NULL,
+          normalized_wrong TEXT NOT NULL,
+          correct TEXT NOT NULL,
+          normalized_correct TEXT NOT NULL,
+          language TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          confidence REAL NOT NULL DEFAULT 0.75,
+          use_count INTEGER NOT NULL DEFAULT 1,
+          user_approved INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_corrections_scope_language
+          ON asr_corrections(scope, language, user_approved, confidence DESC, use_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_asr_corrections_normalized_wrong
+          ON asr_corrections(normalized_wrong);
+
+        CREATE TABLE IF NOT EXISTS asr_voice_examples (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          audio_path TEXT NOT NULL,
+          expected_text TEXT NOT NULL,
+          normalized_expected_text TEXT NOT NULL,
+          whisper_output TEXT,
+          normalized_whisper_output TEXT,
+          language TEXT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          term_id INTEGER,
+          correction_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(term_id) REFERENCES asr_vocabulary_terms(id) ON DELETE SET NULL,
+          FOREIGN KEY(correction_id) REFERENCES asr_corrections(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_asr_voice_examples_scope_language
+          ON asr_voice_examples(scope, language, created_at DESC);
+        "#,
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     Ok(())
 }
