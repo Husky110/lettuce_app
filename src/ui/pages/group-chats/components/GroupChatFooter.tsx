@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { ChevronsRight, Plus, SendHorizonal, Square, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
+import {
+  ArrowUp,
+  Check,
+  ChevronsRight,
+  Mic,
+  Plus,
+  Square,
+  X,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useI18n } from "../../../../core/i18n/context";
 import type { Character, ImageAttachment, Persona } from "../../../../core/storage/schemas";
@@ -7,6 +15,7 @@ import { radius, typography, interactive, shadows, cn } from "../../../design-to
 import { getPlatform } from "../../../../core/utils/platform";
 import { useAvatar } from "../../../hooks/useAvatar";
 import { AvatarImage } from "../../../components/AvatarImage";
+import { RecordingIndicator } from "../../chats/components/ChatFooter";
 
 interface GroupChatFooterProps {
   draft: string;
@@ -27,6 +36,15 @@ interface GroupChatFooterProps {
   onOpenPlusMenu?: () => void;
   triggerFileInput?: boolean;
   onFileInputTriggered?: () => void;
+  inlinePanel?: ReactNode;
+  onMicClick?: () => void;
+  onMicCancel?: () => void;
+  micActive?: boolean;
+  micDisabled?: boolean;
+  recordingElapsedMs?: number;
+  recordingAnalyser?: AnalyserNode | null;
+  recordingTranscribing?: boolean;
+  composerDisabled?: boolean;
 }
 
 export function GroupChatFooter({
@@ -47,6 +65,15 @@ export function GroupChatFooter({
   onOpenPlusMenu,
   triggerFileInput,
   onFileInputTriggered,
+  inlinePanel,
+  onMicClick,
+  onMicCancel,
+  micActive = false,
+  micDisabled = false,
+  recordingElapsedMs = 0,
+  recordingAnalyser = null,
+  recordingTranscribing = false,
+  composerDisabled = false,
 }: GroupChatFooterProps) {
   const { t } = useI18n();
   const hasDraft = draft.trim().length > 0;
@@ -378,121 +405,189 @@ export function GroupChatFooter({
 
       <div
         className={cn(
-          "relative flex items-end gap-2.5 p-2",
+          "relative",
           "rounded-4xl",
           "border border-fg/15 bg-surface-el/65 backdrop-blur-md",
           shadows.md,
         )}
       >
-        {/* Plus button */}
-        {(onOpenPlusMenu || onAddAttachment) && (
-          <button
-            onClick={handlePlusClick}
-            disabled={sending}
-            className={cn(
-              "mb-0.5 flex h-10 w-11 shrink-0 items-center justify-center self-end",
-              radius.full,
-              "border border-fg/15 bg-fg/10 text-fg/70",
-              interactive.transition.fast,
-              interactive.active.scale,
-              "hover:border-fg/25 hover:bg-fg/15",
-              "disabled:cursor-not-allowed disabled:opacity-40",
-            )}
-            title={
-              onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")
-            }
-            aria-label={
-              onOpenPlusMenu ? t("groupChats.footer.moreOptions") : t("groupChats.footer.addImage")
-            }
-          >
-            <Plus size={20} />
-          </button>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(event) => handleDraftChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder=" "
-          rows={1}
-          className={cn(
-            "peer max-h-32 flex-1 resize-none bg-transparent py-2.5",
-            typography.body.size,
-            "text-fg placeholder:text-transparent",
-            "focus:outline-none",
+        {inlinePanel && <div className="border-b border-fg/10">{inlinePanel}</div>}
+        <div className="relative flex items-end gap-2.5 p-2">
+          {(onOpenPlusMenu || onAddAttachment) && (
+            <button
+              onClick={handlePlusClick}
+              disabled={sending}
+              className={cn(
+                "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                radius.full,
+                "text-fg/60",
+                interactive.transition.fast,
+                interactive.active.scale,
+                "hover:bg-fg/10 hover:text-fg",
+                "disabled:cursor-not-allowed disabled:opacity-40",
+              )}
+              title={
+                onOpenPlusMenu
+                  ? t("groupChats.footer.moreOptions")
+                  : t("groupChats.footer.addImage")
+              }
+              aria-label={
+                onOpenPlusMenu
+                  ? t("groupChats.footer.moreOptions")
+                  : t("groupChats.footer.addImage")
+              }
+            >
+              <Plus size={20} />
+            </button>
           )}
-          disabled={sending}
-        />
 
-        {draft.length === 0 && !hasAttachments && (
-          <span
-            className={cn(
-              "pointer-events-none absolute",
-              onOpenPlusMenu || onAddAttachment ? "left-16" : "left-5",
-              "top-1/2 -translate-y-1/2",
-              "text-fg/40",
-              "transition-opacity duration-150",
-              "peer-not-placeholder-shown:opacity-0",
-              "peer-focus:opacity-70",
-            )}
-          >
-            {t("groupChats.footer.messagePlaceholder")}
-          </span>
-        )}
-
-        <button
-          onClick={handleSendClick}
-          disabled={sending && !onAbort}
-          className={cn(
-            "mb-0.5 flex h-10 w-11 shrink-0 items-center justify-center self-end",
-            radius.full,
-            sending && onAbort
-              ? "border border-red-400/40 bg-red-400/20 text-red-100"
-              : hasDraft || hasAttachments
-                ? "border border-accent/40 bg-accent/20 text-accent"
-                : "border border-fg/15 bg-fg/10 text-fg/70",
-            interactive.transition.fast,
-            interactive.active.scale,
-            sending && onAbort && "hover:border-red-400/60 hover:bg-red-400/30",
-            !sending && (hasDraft || hasAttachments) && "hover:border-accent/60 hover:bg-accent/30",
-            !sending &&
-              !hasDraft &&
-              !hasAttachments &&
-              "hover:border-fg/25 hover:bg-fg/15",
-            "disabled:cursor-not-allowed disabled:opacity-40",
-          )}
-          title={
-            sending && onAbort
-              ? t("groupChats.footer.stopGeneration")
-              : hasDraft || hasAttachments
-                ? t("groupChats.footer.sendMessage")
-                : onContinue
-                  ? t("groupChats.footer.continueConversation")
-                  : t("groupChats.footer.sendMessage")
-          }
-          aria-label={
-            sending && onAbort
-              ? t("groupChats.footer.stopGeneration")
-              : hasDraft || hasAttachments
-                ? t("groupChats.footer.sendMessage")
-                : onContinue
-                  ? t("groupChats.footer.continueConversation")
-                  : t("groupChats.footer.sendMessage")
-          }
-        >
-          {sending && onAbort ? (
-            <Square size={18} fill="currentColor" />
-          ) : sending ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : hasDraft || hasAttachments ? (
-            <SendHorizonal size={18} />
-          ) : onContinue ? (
-            <ChevronsRight size={18} />
+          {micActive ? (
+            <>
+              <RecordingIndicator
+                elapsedMs={recordingElapsedMs}
+                analyser={recordingAnalyser}
+                frozen={recordingTranscribing}
+              />
+              {onMicCancel && (
+                <button
+                  onClick={onMicCancel}
+                  disabled={recordingTranscribing}
+                  className={cn(
+                    "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                    radius.full,
+                    "text-fg/60",
+                    interactive.transition.fast,
+                    interactive.active.scale,
+                    "hover:bg-fg/10 hover:text-fg",
+                    "disabled:cursor-not-allowed disabled:opacity-40",
+                  )}
+                  title="Cancel recording"
+                  aria-label="Cancel recording"
+                >
+                  <X size={18} />
+                </button>
+              )}
+              {recordingTranscribing ? (
+                <div
+                  className={cn(
+                    "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                    radius.full,
+                    "bg-accent text-black",
+                  )}
+                  aria-label="Transcribing"
+                  title="Transcribing"
+                >
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                </div>
+              ) : (
+                onMicClick && (
+                  <button
+                    onClick={onMicClick}
+                    disabled={micDisabled}
+                    className={cn(
+                      "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                      radius.full,
+                      "bg-accent text-black shadow-sm",
+                      interactive.transition.fast,
+                      interactive.active.scale,
+                      "hover:brightness-110",
+                      "disabled:cursor-not-allowed disabled:opacity-40",
+                    )}
+                    title="Stop and transcribe"
+                    aria-label="Stop and transcribe"
+                  >
+                    <Check size={18} strokeWidth={2.75} />
+                  </button>
+                )
+              )}
+            </>
           ) : (
-            <SendHorizonal size={18} />
+            <>
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(event) => handleDraftChange(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t("groupChats.footer.messagePlaceholder")}
+                rows={1}
+                className={cn(
+                  "max-h-32 flex-1 resize-none bg-transparent py-2.5",
+                  typography.body.size,
+                  "text-fg placeholder:text-fg/40",
+                  "focus:outline-none",
+                )}
+                disabled={sending || composerDisabled}
+              />
+
+              {onMicClick && !hasDraft && !hasAttachments && !sending && (
+                <button
+                  onClick={onMicClick}
+                  disabled={micDisabled}
+                  className={cn(
+                    "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                    radius.full,
+                    "text-fg/60",
+                    interactive.transition.fast,
+                    interactive.active.scale,
+                    "hover:bg-fg/10 hover:text-fg",
+                    "disabled:cursor-not-allowed disabled:opacity-40",
+                  )}
+                  title="Record voice"
+                  aria-label="Record voice"
+                >
+                  <Mic size={18} strokeWidth={2} />
+                </button>
+              )}
+
+              <button
+                onClick={handleSendClick}
+                disabled={(sending && !onAbort) || composerDisabled}
+                className={cn(
+                  "mb-0.5 flex h-[43px] w-[43px] shrink-0 items-center justify-center self-end",
+                  radius.full,
+                  interactive.transition.fast,
+                  interactive.active.scale,
+                  sending && onAbort
+                    ? "bg-red-400/90 text-white hover:brightness-110"
+                    : hasDraft || hasAttachments
+                      ? "bg-accent text-black shadow-sm hover:brightness-110"
+                      : "bg-fg/15 text-fg/55 hover:bg-fg/20",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+                title={
+                  sending && onAbort
+                    ? t("groupChats.footer.stopGeneration")
+                    : hasDraft || hasAttachments
+                      ? t("groupChats.footer.sendMessage")
+                      : onContinue
+                        ? t("groupChats.footer.continueConversation")
+                        : t("groupChats.footer.sendMessage")
+                }
+                aria-label={
+                  sending && onAbort
+                    ? t("groupChats.footer.stopGeneration")
+                    : hasDraft || hasAttachments
+                      ? t("groupChats.footer.sendMessage")
+                      : onContinue
+                        ? t("groupChats.footer.continueConversation")
+                        : t("groupChats.footer.sendMessage")
+                }
+              >
+                {sending && onAbort ? (
+                  <Square size={16} fill="currentColor" />
+                ) : sending ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : hasDraft || hasAttachments ? (
+                  <ArrowUp size={18} strokeWidth={2.75} />
+                ) : onContinue ? (
+                  <ChevronsRight size={18} />
+                ) : (
+                  <ArrowUp size={18} strokeWidth={2.75} />
+                )}
+              </button>
+            </>
           )}
-        </button>
+        </div>
       </div>
     </footer>
   );

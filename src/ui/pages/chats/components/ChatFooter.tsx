@@ -401,7 +401,7 @@ function formatElapsed(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function RecordingIndicator({
+export function RecordingIndicator({
   elapsedMs,
   analyser,
   frozen = false,

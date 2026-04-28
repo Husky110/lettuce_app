@@ -30,6 +30,15 @@ import { useBeetrootRain } from "../chats/components/BeetrootRain";
 import { useBeetrootEasterEgg } from "../chats/hooks/useBeetrootEasterEgg";
 import { BottomMenu, MenuButton } from "../../components/BottomMenu";
 import {
+  asrCorrectionUpsert,
+  asrIgnoreSuggestion,
+  asrSuggestCorrectionsFromEdit,
+  asrWhisperListInstalledModels,
+  asrWhisperTranscribePcm,
+  type AsrInstalledWhisperModel,
+  type AsrLearnedSuggestion,
+} from "../../../core/asr";
+import {
   GroupChatFooter,
   GroupChatHeader,
   GroupChatMessage,
@@ -89,6 +98,30 @@ export function GroupChatPage() {
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([]);
   const [supportsImageInput, setSupportsImageInput] = useState(false);
+  const footerRecorderRef = useRef<{
+    stream: MediaStream;
+    audioContext: AudioContext;
+    source: MediaStreamAudioSourceNode;
+    processor: ScriptProcessorNode;
+    analyser: AnalyserNode;
+    chunks: Float32Array[];
+    sampleRate: number;
+    startedAt: number;
+  } | null>(null);
+  const footerRecordingTimerRef = useRef<number | null>(null);
+  const [footerAsrMode, setFooterAsrMode] = useState<
+    "idle" | "recording" | "transcribing"
+  >("idle");
+  const [footerRecordingMs, setFooterRecordingMs] = useState(0);
+  const [footerAnalyser, setFooterAnalyser] = useState<AnalyserNode | null>(null);
+  const [footerAsrBusy, setFooterAsrBusy] = useState(false);
+  const [footerAsrRawText, setFooterAsrRawText] = useState("");
+  const [footerAsrBaseText, setFooterAsrBaseText] = useState("");
+  const [footerAsrSuggestions, setFooterAsrSuggestions] = useState<AsrLearnedSuggestion[]>([]);
+  const [footerAsrLearning, setFooterAsrLearning] = useState(false);
+  const [installedWhisperModels, setInstalledWhisperModels] = useState<
+    AsrInstalledWhisperModel[]
+  >([]);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const helpMeReplyRequestIdRef = useRef<string | null>(null);
   const helpMeReplyUnlistenRef = useRef<UnlistenFn | null>(null);
@@ -988,7 +1021,344 @@ export function GroupChatPage() {
     checkImageSupport();
   }, [session, settings, characters]);
 
-  // Plus menu handlers
+  useEffect(() => {
+    let cancelled = false;
+    const loadInstalled = () =>
+      asrWhisperListInstalledModels()
+        .then((list) => {
+          if (!cancelled) setInstalledWhisperModels(list);
+        })
+        .catch((err) => {
+          console.error("Failed to load installed Whisper models:", err);
+        });
+    loadInstalled();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (footerAsrMode !== "recording") return;
+    const timer = window.setInterval(() => {
+      const startedAt = footerRecorderRef.current?.startedAt;
+      if (startedAt) setFooterRecordingMs(Date.now() - startedAt);
+    }, 200);
+    footerRecordingTimerRef.current = timer;
+    return () => {
+      window.clearInterval(timer);
+      footerRecordingTimerRef.current = null;
+    };
+  }, [footerAsrMode]);
+
+  useEffect(() => {
+    return () => {
+      const session = footerRecorderRef.current;
+      if (session) {
+        try {
+          session.processor.disconnect();
+          session.source.disconnect();
+          session.stream.getTracks().forEach((track) => track.stop());
+          void session.audioContext.close();
+        } catch {}
+        footerRecorderRef.current = null;
+      }
+      if (footerRecordingTimerRef.current != null) {
+        window.clearInterval(footerRecordingTimerRef.current);
+        footerRecordingTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !footerAsrRawText.trim() ||
+      !draft.trim() ||
+      draft.trim() === footerAsrBaseText.trim()
+    ) {
+      setFooterAsrSuggestions([]);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      void asrSuggestCorrectionsFromEdit({
+        before: footerAsrRawText,
+        after: draft,
+        language: null,
+        scope: "conversation",
+      })
+        .then((next) => {
+          setFooterAsrSuggestions((prev) => {
+            const seen = new Set<string>();
+            const merged: AsrLearnedSuggestion[] = [];
+            const key = (s: AsrLearnedSuggestion) =>
+              `${s.normalizedWrong} ${s.normalizedCorrect}`;
+            for (const s of prev) {
+              if (next.some((n) => key(n) === key(s))) {
+                seen.add(key(s));
+                merged.push(s);
+              }
+            }
+            for (const s of next) {
+              if (!seen.has(key(s))) {
+                seen.add(key(s));
+                merged.push(s);
+              }
+            }
+            return merged;
+          });
+        })
+        .catch((error) => {
+          console.error("Failed to suggest ASR corrections from group footer edit:", error);
+        });
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [draft, footerAsrRawText, footerAsrBaseText]);
+
+  const stopFooterRecordingVisuals = useCallback(() => {
+    if (footerRecordingTimerRef.current != null) {
+      window.clearInterval(footerRecordingTimerRef.current);
+      footerRecordingTimerRef.current = null;
+    }
+    setFooterRecordingMs(0);
+    setFooterAnalyser(null);
+  }, []);
+
+  const stopFooterRecording = useCallback(async () => {
+    const session = footerRecorderRef.current;
+    if (!session) return;
+    footerRecorderRef.current = null;
+    setFooterAsrMode("transcribing");
+    setFooterAsrBusy(true);
+    try {
+      session.processor.disconnect();
+      session.source.disconnect();
+      session.stream.getTracks().forEach((track) => track.stop());
+      await session.audioContext.close();
+    } catch {}
+
+    try {
+      const total = session.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      if (total === 0) {
+        stopFooterRecordingVisuals();
+        setFooterAsrMode("idle");
+        setFooterAsrBusy(false);
+        setError("No audio captured.");
+        return;
+      }
+      const merged = new Float32Array(total);
+      let offset = 0;
+      for (const chunk of session.chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const modelPath = installedWhisperModels[0]?.path;
+      if (!modelPath) {
+        stopFooterRecordingVisuals();
+        setFooterAsrMode("idle");
+        setFooterAsrBusy(false);
+        setError(
+          "No installed Whisper model found. Install one in Speech Recognition settings.",
+        );
+        return;
+      }
+      const pcmBytes = new Uint8Array(merged.buffer, merged.byteOffset, merged.byteLength);
+      const result = await asrWhisperTranscribePcm({
+        modelPath,
+        pcmBytes,
+        sampleRateHz: session.sampleRate,
+        channels: 1,
+        scopes: ["conversation", "global"],
+        useGpu: true,
+        forceCpu: false,
+        keepModelLoaded: true,
+      });
+      const nextDraft = result.correctedText?.trim() || result.rawText?.trim();
+      setFooterAsrRawText(result.rawText || "");
+      setFooterAsrBaseText(nextDraft || "");
+      setDraft(nextDraft || "");
+      setFooterAsrSuggestions([]);
+      setFooterAsrMode("idle");
+    } catch (error) {
+      console.error("Failed to transcribe group footer recording:", error);
+      setFooterAsrMode("idle");
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      stopFooterRecordingVisuals();
+      setFooterAsrBusy(false);
+    }
+  }, [installedWhisperModels, setDraft, setError, stopFooterRecordingVisuals]);
+
+  const handleFooterMicClick = useCallback(async () => {
+    if (sending || footerAsrBusy) return;
+    if (footerAsrMode === "recording") {
+      await stopFooterRecording();
+      return;
+    }
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.4;
+      const chunks: Float32Array[] = [];
+      processor.onaudioprocess = (event) => {
+        chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      };
+      source.connect(analyser);
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+      footerRecorderRef.current = {
+        stream,
+        audioContext,
+        source,
+        processor,
+        analyser,
+        chunks,
+        sampleRate: audioContext.sampleRate,
+        startedAt: Date.now(),
+      };
+      setFooterAnalyser(analyser);
+      setFooterAsrRawText("");
+      setFooterAsrBaseText("");
+      setFooterAsrSuggestions([]);
+      setFooterAsrMode("recording");
+      setFooterRecordingMs(0);
+    } catch (error) {
+      console.error("Failed to start group footer recording:", error);
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  }, [footerAsrBusy, footerAsrMode, sending, setError, stopFooterRecording]);
+
+  const cancelFooterRecording = useCallback(() => {
+    const session = footerRecorderRef.current;
+    if (!session) return;
+    footerRecorderRef.current = null;
+    stopFooterRecordingVisuals();
+    try {
+      session.processor.disconnect();
+      session.source.disconnect();
+      session.stream.getTracks().forEach((track) => track.stop());
+      void session.audioContext.close();
+    } catch (err) {
+      console.warn("Failed to cleanly cancel group footer recording:", err);
+    }
+    setFooterAsrMode("idle");
+    setFooterAsrRawText("");
+    setFooterAsrBaseText("");
+    setFooterAsrSuggestions([]);
+  }, [stopFooterRecordingVisuals]);
+
+  const handleLearnFooterSuggestion = useCallback(
+    async (suggestion: AsrLearnedSuggestion) => {
+      if (footerAsrLearning) return;
+      setFooterAsrLearning(true);
+      try {
+        await asrCorrectionUpsert({
+          wrong: suggestion.wrong,
+          correct: suggestion.correct,
+          confidence: suggestion.confidence,
+          language: suggestion.language ?? null,
+          scope: suggestion.scope,
+          userApproved: true,
+        });
+        setFooterAsrSuggestions((prev) =>
+          prev.filter(
+            (item) =>
+              !(
+                item.normalizedWrong === suggestion.normalizedWrong &&
+                item.normalizedCorrect === suggestion.normalizedCorrect
+              ),
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to learn group footer ASR correction:", error);
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setFooterAsrLearning(false);
+      }
+    },
+    [footerAsrLearning, setError],
+  );
+
+  const handleIgnoreFooterSuggestion = useCallback(
+    async (suggestion: AsrLearnedSuggestion) => {
+      if (footerAsrLearning) return;
+      setFooterAsrLearning(true);
+      try {
+        await asrIgnoreSuggestion(suggestion);
+        setFooterAsrSuggestions((prev) =>
+          prev.filter(
+            (item) =>
+              !(
+                item.normalizedWrong === suggestion.normalizedWrong &&
+                item.normalizedCorrect === suggestion.normalizedCorrect
+              ),
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to ignore group footer ASR suggestion:", error);
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setFooterAsrLearning(false);
+      }
+    },
+    [footerAsrLearning, setError],
+  );
+
+  const footerInlinePanel =
+    footerAsrSuggestions.length === 0 ? undefined : (
+      <div className="space-y-1.5 px-4 py-2">
+        {footerAsrSuggestions.map((suggestion, idx) => (
+          <div
+            key={`${suggestion.normalizedWrong}-${suggestion.normalizedCorrect}-${idx}`}
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="min-w-0 text-xs text-fg/65">
+              Learn correction:{" "}
+              <span className="text-danger/80 line-through decoration-danger/40">
+                {suggestion.wrong}
+              </span>
+              <span className="mx-1.5 text-fg/40">→</span>
+              <span className="font-medium text-fg">{suggestion.correct}</span>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => void handleLearnFooterSuggestion(suggestion)}
+                disabled={footerAsrLearning}
+                className={cn(
+                  "rounded-full border border-accent/30 bg-accent/15 px-3 py-1 text-xs font-medium text-accent",
+                  "hover:border-accent/50 hover:bg-accent/20 disabled:opacity-50",
+                )}
+              >
+                {footerAsrLearning ? "Learning..." : "Learn"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleIgnoreFooterSuggestion(suggestion)}
+                disabled={footerAsrLearning}
+                className={cn(
+                  "rounded-full border border-fg/15 bg-fg/8 px-3 py-1 text-xs font-medium text-fg/70",
+                  "hover:border-fg/25 hover:bg-fg/12 disabled:opacity-50",
+                )}
+              >
+                Ignore
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+
   const handleOpenPlusMenu = useCallback(() => {
     setShowPlusMenu(true);
   }, []);
@@ -1357,6 +1727,23 @@ export function GroupChatPage() {
             onOpenPlusMenu={handleOpenPlusMenu}
             triggerFileInput={shouldTriggerFileInput}
             onFileInputTriggered={() => setShouldTriggerFileInput(false)}
+            inlinePanel={footerInlinePanel}
+            onMicClick={
+              installedWhisperModels.length === 0
+                ? undefined
+                : () => {
+                    void handleFooterMicClick();
+                  }
+            }
+            onMicCancel={cancelFooterRecording}
+            micActive={
+              footerAsrMode === "recording" || footerAsrMode === "transcribing"
+            }
+            micDisabled={footerAsrBusy}
+            recordingElapsedMs={footerRecordingMs}
+            recordingAnalyser={footerAnalyser}
+            recordingTranscribing={footerAsrMode === "transcribing"}
+            composerDisabled={footerAsrMode !== "idle"}
           />
         </div>
       </div>
