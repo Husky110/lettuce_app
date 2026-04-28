@@ -248,9 +248,10 @@ fn split_text_parts(text: &str) -> Vec<TextPart> {
 }
 
 fn normalize_input_text(text: &str) -> String {
-    let mut normalized = String::with_capacity(text.len());
+    let cleaned = strip_inline_markdown(text);
+    let mut normalized = String::with_capacity(cleaned.len());
     let mut prev_space = false;
-    for ch in text.chars() {
+    for ch in cleaned.chars() {
         let mapped = match ch {
             '\u{2018}' | '\u{2019}' => '\'',
             '\u{201C}' | '\u{201D}' => '"',
@@ -277,6 +278,84 @@ fn normalize_input_text(text: &str) -> String {
         normalized.push(mapped);
     }
     normalized.trim().to_string()
+}
+
+fn strip_inline_markdown(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut output = String::with_capacity(text.len());
+    let mut idx = 0usize;
+
+    while idx < chars.len() {
+        let ch = chars[idx];
+
+        if matches!(ch, '*' | '_') {
+            let run_len = marker_run_len(&chars, idx, ch);
+            if let Some(closing_idx) = find_matching_marker_run(&chars, idx + run_len, ch, run_len) {
+                let inner_has_content = chars[idx + run_len..closing_idx]
+                    .iter()
+                    .any(|inner| !inner.is_whitespace());
+                let left_ok = idx == 0 || chars[idx.saturating_sub(1)].is_whitespace();
+                let right_ok = idx + run_len < chars.len() && !chars[idx + run_len].is_whitespace();
+                let closing_left_ok = closing_idx > 0 && !chars[closing_idx - 1].is_whitespace();
+                let closing_right_ok = closing_idx + run_len == chars.len()
+                    || chars[closing_idx + run_len].is_whitespace()
+                    || is_trailing_punctuation(chars[closing_idx + run_len]);
+
+                if inner_has_content && left_ok && right_ok && closing_left_ok && closing_right_ok {
+                    for inner in &chars[idx + run_len..closing_idx] {
+                        output.push(*inner);
+                    }
+                    idx = closing_idx + run_len;
+                    continue;
+                }
+            }
+        }
+
+        if ch == '`' {
+            let run_len = marker_run_len(&chars, idx, ch);
+            if let Some(closing_idx) = find_matching_marker_run(&chars, idx + run_len, ch, run_len)
+            {
+                for inner in &chars[idx + run_len..closing_idx] {
+                    output.push(*inner);
+                }
+                idx = closing_idx + run_len;
+                continue;
+            }
+        }
+
+        output.push(ch);
+        idx += 1;
+    }
+
+    output
+}
+
+fn marker_run_len(chars: &[char], start: usize, marker: char) -> usize {
+    let mut len = 0usize;
+    while start + len < chars.len() && chars[start + len] == marker {
+        len += 1;
+    }
+    len
+}
+
+fn find_matching_marker_run(
+    chars: &[char],
+    start: usize,
+    marker: char,
+    run_len: usize,
+) -> Option<usize> {
+    let mut idx = start;
+    while idx + run_len <= chars.len() {
+        if chars[idx] == marker && marker_run_len(chars, idx, marker) >= run_len {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn is_trailing_punctuation(ch: char) -> bool {
+    matches!(ch, '.' | ',' | '!' | '?' | ';' | ':' | ')' | ']' | '"' | '\'')
 }
 
 fn apply_lexicon_annotations(
@@ -799,7 +878,7 @@ fn push_space_id(ids: &mut Vec<i64>, vocab: &HashMap<char, i64>) -> Option<i64> 
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_stress_delta, split_text_parts, TextPart};
+    use super::{apply_stress_delta, normalize_input_text, split_text_parts, TextPart};
 
     #[test]
     fn parses_inline_phoneme_annotations() {
@@ -861,5 +940,26 @@ mod tests {
     fn lowers_primary_stress() {
         assert_eq!(apply_stress_delta("kˈOkəɹO", -1), "kˌOkəɹO");
         assert_eq!(apply_stress_delta("kˈOkəɹO", -2), "kOkəɹO");
+    }
+
+    #[test]
+    fn strips_markdown_emphasis_markers() {
+        assert_eq!(
+            normalize_input_text("Oh you *love* these pancakes"),
+            "Oh you love these pancakes"
+        );
+        assert_eq!(
+            normalize_input_text("This is **very** good."),
+            "This is very good."
+        );
+    }
+
+    #[test]
+    fn preserves_non_markdown_asterisks_and_annotations() {
+        assert_eq!(normalize_input_text("2 * 3 = 6"), "2 * 3 = 6");
+        assert_eq!(
+            normalize_input_text("Try [or](+2) now."),
+            "Try [or](+2) now."
+        );
     }
 }
