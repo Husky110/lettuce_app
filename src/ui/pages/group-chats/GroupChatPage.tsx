@@ -35,6 +35,7 @@ import {
   asrSuggestCorrectionsFromEdit,
   asrWhisperListInstalledModels,
   asrWhisperTranscribePcm,
+  micConstraintsWithStoredDevice,
   type AsrInstalledWhisperModel,
   type AsrLearnedSuggestion,
 } from "../../../core/asr";
@@ -1196,12 +1197,12 @@ export function GroupChatPage() {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
+        audio: micConstraintsWithStoredDevice({
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+        }),
       });
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);

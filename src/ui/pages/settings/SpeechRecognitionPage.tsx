@@ -59,6 +59,9 @@ import {
   asrWhisperRuntimePreloadModel,
   asrWhisperTranscribeFile,
   asrWhisperTranscribePcm,
+  getStoredMicDeviceId,
+  micConstraintsWithStoredDevice,
+  setStoredMicDeviceId,
   type AsrCorrection,
   type AsrExportBundle,
   type AsrInstalledWhisperModel,
@@ -235,6 +238,109 @@ interface FilterState {
 
 const DEFAULT_FILTER: FilterState = { language: "", scope: "" };
 const ALL_ASR_SCOPES = ["global", "project", "character", "conversation"];
+
+const WHISPER_LANGUAGES: { code: string; name: string }[] = [
+  { code: "af", name: "Afrikaans" },
+  { code: "am", name: "Amharic" },
+  { code: "ar", name: "Arabic" },
+  { code: "as", name: "Assamese" },
+  { code: "az", name: "Azerbaijani" },
+  { code: "ba", name: "Bashkir" },
+  { code: "be", name: "Belarusian" },
+  { code: "bg", name: "Bulgarian" },
+  { code: "bn", name: "Bengali" },
+  { code: "bo", name: "Tibetan" },
+  { code: "br", name: "Breton" },
+  { code: "bs", name: "Bosnian" },
+  { code: "ca", name: "Catalan" },
+  { code: "cs", name: "Czech" },
+  { code: "cy", name: "Welsh" },
+  { code: "da", name: "Danish" },
+  { code: "de", name: "German" },
+  { code: "el", name: "Greek" },
+  { code: "en", name: "English" },
+  { code: "es", name: "Spanish" },
+  { code: "et", name: "Estonian" },
+  { code: "eu", name: "Basque" },
+  { code: "fa", name: "Persian" },
+  { code: "fi", name: "Finnish" },
+  { code: "fo", name: "Faroese" },
+  { code: "fr", name: "French" },
+  { code: "gl", name: "Galician" },
+  { code: "gu", name: "Gujarati" },
+  { code: "ha", name: "Hausa" },
+  { code: "haw", name: "Hawaiian" },
+  { code: "he", name: "Hebrew" },
+  { code: "hi", name: "Hindi" },
+  { code: "hr", name: "Croatian" },
+  { code: "ht", name: "Haitian Creole" },
+  { code: "hu", name: "Hungarian" },
+  { code: "hy", name: "Armenian" },
+  { code: "id", name: "Indonesian" },
+  { code: "is", name: "Icelandic" },
+  { code: "it", name: "Italian" },
+  { code: "ja", name: "Japanese" },
+  { code: "jw", name: "Javanese" },
+  { code: "ka", name: "Georgian" },
+  { code: "kk", name: "Kazakh" },
+  { code: "km", name: "Khmer" },
+  { code: "kn", name: "Kannada" },
+  { code: "ko", name: "Korean" },
+  { code: "la", name: "Latin" },
+  { code: "lb", name: "Luxembourgish" },
+  { code: "ln", name: "Lingala" },
+  { code: "lo", name: "Lao" },
+  { code: "lt", name: "Lithuanian" },
+  { code: "lv", name: "Latvian" },
+  { code: "mg", name: "Malagasy" },
+  { code: "mi", name: "Maori" },
+  { code: "mk", name: "Macedonian" },
+  { code: "ml", name: "Malayalam" },
+  { code: "mn", name: "Mongolian" },
+  { code: "mr", name: "Marathi" },
+  { code: "ms", name: "Malay" },
+  { code: "mt", name: "Maltese" },
+  { code: "my", name: "Burmese" },
+  { code: "ne", name: "Nepali" },
+  { code: "nl", name: "Dutch" },
+  { code: "nn", name: "Norwegian Nynorsk" },
+  { code: "no", name: "Norwegian" },
+  { code: "oc", name: "Occitan" },
+  { code: "pa", name: "Punjabi" },
+  { code: "pl", name: "Polish" },
+  { code: "ps", name: "Pashto" },
+  { code: "pt", name: "Portuguese" },
+  { code: "ro", name: "Romanian" },
+  { code: "ru", name: "Russian" },
+  { code: "sa", name: "Sanskrit" },
+  { code: "sd", name: "Sindhi" },
+  { code: "si", name: "Sinhala" },
+  { code: "sk", name: "Slovak" },
+  { code: "sl", name: "Slovenian" },
+  { code: "sn", name: "Shona" },
+  { code: "so", name: "Somali" },
+  { code: "sq", name: "Albanian" },
+  { code: "sr", name: "Serbian" },
+  { code: "su", name: "Sundanese" },
+  { code: "sv", name: "Swedish" },
+  { code: "sw", name: "Swahili" },
+  { code: "ta", name: "Tamil" },
+  { code: "te", name: "Telugu" },
+  { code: "tg", name: "Tajik" },
+  { code: "th", name: "Thai" },
+  { code: "tk", name: "Turkmen" },
+  { code: "tl", name: "Tagalog" },
+  { code: "tr", name: "Turkish" },
+  { code: "tt", name: "Tatar" },
+  { code: "uk", name: "Ukrainian" },
+  { code: "ur", name: "Urdu" },
+  { code: "uz", name: "Uzbek" },
+  { code: "vi", name: "Vietnamese" },
+  { code: "yi", name: "Yiddish" },
+  { code: "yo", name: "Yoruba" },
+  { code: "yue", name: "Cantonese" },
+  { code: "zh", name: "Chinese" },
+];
 
 const FRIENDLY_MODEL_COPY: Record<string, { title: string; summary: string }> = {
   "tiny.en": {
@@ -738,12 +844,12 @@ export function SpeechRecognitionPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
+        audio: micConstraintsWithStoredDevice({
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+        }),
       });
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
@@ -1036,7 +1142,7 @@ export function SpeechRecognitionPage() {
 
             <aside
               data-tour-id="asr-mic-test"
-              className="min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1"
+              className="min-w-0 lg:sticky lg:top-4 lg:self-start"
             >
               <MicTestSection
                 installedModels={installedModels}
@@ -1768,13 +1874,18 @@ function MicTestSection({
 
       <div className={panelClass("space-y-3")}>
         <FieldShell label="Language">
-          <input
-            type="text"
+          <select
             className={inputClass()}
-            placeholder="auto / en / de"
             value={testLanguage}
             onChange={(event) => setTestLanguage(event.target.value)}
-          />
+          >
+            <option value="">Auto-detect</option>
+            {WHISPER_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.name} ({lang.code})
+              </option>
+            ))}
+          </select>
         </FieldShell>
         <FieldShell label="Extra prompt" hint="Appended to the vocabulary prompt for this test only.">
           <input
@@ -2046,6 +2157,7 @@ function RuntimeSection({
           description="Reuse the loaded Whisper context between transcriptions for lower latency."
           right={<Switch checked={testKeepModelLoaded} onChange={setTestKeepModelLoaded} />}
         />
+        <MicInputRow />
         <RuntimeRow
           icon={<Settings2 className="h-4 w-4" />}
           title="Whisper context cache"
@@ -2144,6 +2256,118 @@ function RuntimeRow({
         </div>
       </div>
       {right && <div className="shrink-0">{right}</div>}
+    </div>
+  );
+}
+
+function MicInputRow() {
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(getStoredMicDeviceId() ?? "");
+  const [needsPermission, setNeedsPermission] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const inputs = list.filter((d) => d.kind === "audioinput");
+      setDevices(inputs);
+      setNeedsPermission(inputs.some((d) => !d.label));
+    } catch (error) {
+      console.error("Failed to enumerate audio devices:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
+    const handler = () => void refresh();
+    navigator.mediaDevices.addEventListener("devicechange", handler);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", handler);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (devices.length === 0) return;
+    if (!devices.some((d) => d.deviceId === selectedId)) {
+      setSelectedId("");
+      setStoredMicDeviceId(null);
+    }
+  }, [devices, selectedId]);
+
+  const requestPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      await refresh();
+    } catch (error) {
+      console.error("Failed to request microphone permission:", error);
+      toast.error("Microphone permission denied", String(error));
+    }
+  };
+
+  const handleChange = (next: string) => {
+    setSelectedId(next);
+    setStoredMicDeviceId(next || null);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-fg/10 bg-fg/5 px-3.5 py-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-fg/10 bg-fg/5 text-fg/70">
+          <Mic className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-fg">Microphone</div>
+          <div className="text-[11px] leading-snug text-fg/55">
+            Used by the chat footer and Mic test.
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <select
+          className={cn(inputClass(), "h-9 w-56 max-w-[60vw] py-0")}
+          value={selectedId}
+          onChange={(event) => handleChange(event.target.value)}
+          disabled={devices.length === 0}
+        >
+          <option value="">System default</option>
+          {devices.map((device) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label || `Microphone (${device.deviceId.slice(0, 6)}...)`}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className={ghostButton("h-9 w-9 px-0 justify-center")}
+          title="Refresh device list"
+          aria-label="Refresh device list"
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+      {needsPermission && (
+        <button
+          type="button"
+          onClick={() => void requestPermission()}
+          className={cn(accentButton("h-8 px-3"), "text-xs")}
+        >
+          <Mic className="h-3.5 w-3.5" />
+          Grant access to see device names
+        </button>
+      )}
     </div>
   );
 }
@@ -2867,12 +3091,12 @@ function VoiceExampleEditor({
     if (isRecording || savingRecording) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
+        audio: micConstraintsWithStoredDevice({
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+        }),
       });
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
