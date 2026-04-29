@@ -64,14 +64,17 @@ bun install
 ### Common Commands
 
 ```bash
-# Desktop (Tauri)
+# Frontend only
+bun run dev
+bun run build
+
+# Desktop (default Tauri flow)
 bun run tauri dev
 bun run tauri build
-bun run tauri:build:macos
 
-# Desktop with NVIDIA CUDA llama.cpp acceleration
-bun run tauri dev --features llama-gpu-cuda
-bun run tauri build --features llama-gpu-cuda
+# Linux / Wayland fallback if the normal Tauri run has WebKit issues
+bun run tauri:dev:webkit-safe
+bun run tauri:build:webkit-safe
 
 # Desktop with NVIDIA CUDA llama.cpp acceleration (auto-detect local GPU arch)
 bun run tauri:dev:cuda:auto
@@ -84,14 +87,60 @@ bun run tauri build --features llama-gpu-vulkan
 # Desktop with Metal llama.cpp acceleration (Apple Silicon/Intel Macs, macOS only)
 bun run tauri:dev:metal
 bun run tauri:build:metal
+bun run tauri:build:macos
 
 # Android
-bun run tauri android dev
-bun run tauri android build
+bun run tauri:android:init
+bun run tauri:android:dev
+bun run tauri:android:build
+
+# iOS (macOS only)
+bun run tauri:ios:init
+bun run tauri:ios:dev:ready
+bun run tauri:ios:build:ready
 
 # Quality
 bunx tsc --noEmit
 bun run check
+cd src-tauri && cargo fmt && cargo check
+```
+
+### Which Command Should I Use?
+
+- Use `bun run tauri dev` / `bun run tauri build` for normal desktop work.
+- If you are on Linux and experiencing Wayland / WebKit issues, try
+  `bun run tauri:dev:webkit-safe` or `bun run tauri:build:webkit-safe`.
+- Use `bun run tauri:dev:cuda:auto` or `...build:cuda:auto` on NVIDIA systems.
+  These wrappers auto-detect `CMAKE_CUDA_ARCHITECTURES` and apply Linux PIC flags.
+- Use `bun run tauri:android:dev` / `...build` for Android instead of raw
+  `tauri android ...`.
+  The wrapper:
+  - forces a repo-local temp dir under `.tmp/android-build`
+  - reapplies the Android override templates before each run
+- Use `bun run tauri:ios:dev:ready` / `...build:ready` for iOS unless you are
+  managing ONNX Runtime slices manually.
+
+### Windows Shortcuts
+
+If some contributors are more comfortable with `.cmd` or PowerShell entry points,
+the repo also includes wrappers under `scripts/windows/`:
+
+```powershell
+.\scripts\windows\desktop-dev.ps1
+.\scripts\windows\desktop-build.ps1
+.\scripts\windows\android-init.ps1
+.\scripts\windows\android-dev.ps1
+.\scripts\windows\android-build.ps1
+.\scripts\windows\check.ps1
+```
+
+```bat
+scripts\windows\desktop-dev.cmd
+scripts\windows\desktop-build.cmd
+scripts\windows\android-init.cmd
+scripts\windows\android-dev.cmd
+scripts\windows\android-build.cmd
+scripts\windows\check.cmd
 ```
 
 ## Kokoro TTS / eSpeak NG
@@ -142,10 +191,46 @@ PATH lookup.
 
 ### Setup
 
-- Install Android Studio and set up the SDK
-- Ensure `ANDROID_SDK_ROOT` is set in your environment
-- Add platform tools to your `PATH` (example: `export PATH=$ANDROID_SDK_ROOT/platform-tools:$PATH`)
-- JDK 17 on `PATH` (Tauri Android plugin and the eSpeak NG bundle script both need it)
+- Install Android Studio and let it install:
+  - Android SDK
+  - Android SDK Platform-Tools
+  - Android command-line tools
+  - Android NDK
+- Use JDK 17 or newer
+- Set these env vars in your shell startup files so both interactive shells and
+  non-interactive `bash -lc` builds see the same Android toolchain:
+
+  ```bash
+  export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+  export ANDROID_HOME="$ANDROID_SDK_ROOT"
+  export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/<your-installed-ndk>"
+  export NDK_HOME="$ANDROID_NDK_HOME"
+  export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+  ```
+
+  PowerShell equivalent for the current session:
+
+  ```powershell
+  $env:ANDROID_SDK_ROOT = "$HOME\Android\Sdk"
+  $env:ANDROID_HOME = $env:ANDROID_SDK_ROOT
+  $env:ANDROID_NDK_HOME = "$env:ANDROID_SDK_ROOT\ndk\<your-installed-ndk>"
+  $env:NDK_HOME = $env:ANDROID_NDK_HOME
+  $env:PATH = "$env:ANDROID_SDK_ROOT\platform-tools;$env:ANDROID_SDK_ROOT\emulator;$env:ANDROID_SDK_ROOT\cmdline-tools\latest\bin;$env:PATH"
+  ```
+
+- If you use `fish`, set the same values there too. The most common failure mode
+  is having `fish` point at one SDK and `bash -lc` point at another.
+- Verify your environment before building:
+
+  ```bash
+  bash -lc 'echo ANDROID_HOME=$ANDROID_HOME; echo ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT; echo ANDROID_NDK_HOME=$ANDROID_NDK_HOME; echo NDK_HOME=$NDK_HOME'
+  ```
+
+- Initialize the Android project once:
+
+  ```bash
+  bun run tauri:android:init
+  ```
 
 ### Kokoro TTS / eSpeak NG bundle
 
@@ -159,14 +244,26 @@ The Rust JNI side resolves the Kotlin bridge class from `tauri.conf.json::identi
 at compile time (or from `KOKORO_ANDROID_BRIDGE_CLASS` if set), so flavors with
 different package identifiers work out of the box.
 
-There are three supported ways to provide the bundle:
+There are four supported ways to provide the bundle:
 
-1. **Local bundle build (recommended for first-time setup)**
+1. **Default project bundle URL**
+
+   If neither `KOKORO_ESPEAK_ANDROID_BUNDLE_PATH` nor
+   `KOKORO_ESPEAK_ANDROID_BUNDLE_URL` is set, `src-tauri/build.rs` automatically
+   downloads the current default bundle from the project release:
+
+   ```text
+   https://github.com/LettuceAI/app/releases/download/espeak-android-bundle-v2/kokoro-espeak-android-bundle.tar.gz
+   ```
+
+   This is the easiest path for most contributors and for CI.
+
+2. **Local bundle build**
 
    ```bash
    ANDROID_SDK_ROOT=$ANDROID_HOME bash scripts/build-espeak-android-bundle.sh
    export KOKORO_ESPEAK_ANDROID_BUNDLE_PATH=/tmp/kokoro-espeak-android-bundle.tar.gz
-   bun run tauri android dev   # or `tauri android build`
+   bun run tauri:android:dev   # or `bun run tauri:android:build`
    ```
 
    The script clones eSpeak NG into `/tmp/espeak-ng-android-build`, runs
@@ -184,7 +281,12 @@ There are three supported ways to provide the bundle:
    Override defaults with `ESPEAK_NG_REPO`, `ESPEAK_NG_REF`, `OUTPUT_BUNDLE`, or
    `WORK_DIR`.
 
-2. **Remote bundle (CI / shared dev machines)**
+   This helper is currently a Bash script. On Windows, most contributors should
+   prefer the default release bundle URL or provide `KOKORO_ESPEAK_ANDROID_BUNDLE_URL`
+   / `KOKORO_ESPEAK_ANDROID_BUNDLE_PATH` directly instead of trying to build the
+   bundle locally.
+
+3. **Remote bundle override**
 
    Point `build.rs` at any HTTP-reachable tarball/zip with the same layout:
 
@@ -192,7 +294,7 @@ There are three supported ways to provide the bundle:
    export KOKORO_ESPEAK_ANDROID_BUNDLE_URL=https://example.com/kokoro-espeak-android-bundle.tar.gz
    ```
 
-3. **Already-installed artifacts**
+4. **Already-installed artifacts**
 
    If `gen/android/app/src/main/jniLibs/<abi>/libttsespeak.so` and
    `gen/android/app/src/main/assets/kokoro/espeak-ng-data/phontab` already exist,
@@ -201,12 +303,24 @@ There are three supported ways to provide the bundle:
 ### Build and Run
 
 ```bash
-# Run on Android emulator (after providing the eSpeak bundle once)
-bun run tauri android dev
+# Run on Android emulator / attached device
+bun run tauri:android:dev
 
 # Build Android APK
-bun run tauri android build
+bun run tauri:android:build
 ```
+
+### Notes
+
+- `whisper-rs` Android builds expect a working NDK/CMake toolchain. If Android
+  Rust builds fail in `whisper-rs-sys`, check your `ANDROID_NDK_HOME` / `NDK_HOME`
+  first.
+- If Android builds fail in `tauri-plugin-fs` with a `File exists (os error 17)`
+  error under the Cargo registry, clear the Cargo build outputs and retry:
+
+  ```bash
+  cargo clean --manifest-path src-tauri/Cargo.toml
+  ```
 
 ### CI bundle workflow
 
@@ -251,17 +365,17 @@ builds pick it up automatically.
 
 ```bash
 export ORT_LIB_LOCATION=/absolute/path/to/onnxruntime/ios/libs
-bun run tauri ios init
+bun run tauri:ios:init
 ```
 
 ### Build and Run
 
 ```bash
 # Run on iOS simulator/device (from macOS)
-bun run tauri ios dev
+bun run tauri:ios:dev:ready
 
 # Build iOS app
-bun run tauri ios build
+bun run tauri:ios:build:ready
 ```
 
 For `llama-gpu-cuda`, install the NVIDIA CUDA toolkit and driver on the build machine.

@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const ORT_VERSION: &str = "1.22.0";
+const DEFAULT_KOKORO_ESPEAK_ANDROID_BUNDLE_URL: &str =
+    "https://github.com/LettuceAI/app/releases/download/espeak-android-bundle-v2/kokoro-espeak-android-bundle.tar.gz";
 
 fn macos_primary_dylib_name() -> String {
     format!("libonnxruntime.{}.dylib", ORT_VERSION)
@@ -285,15 +287,15 @@ fn setup_android_espeak_bundle() -> anyhow::Result<()> {
         }
     }
 
-    anyhow::bail!(
-        "Android Kokoro requires a bundled eSpeak NG archive during build.\n\
-Set KOKORO_ESPEAK_ANDROID_BUNDLE_URL or KOKORO_ESPEAK_ANDROID_BUNDLE_PATH to a .zip/.tar.gz containing:\n\
-- jniLibs/arm64-v8a/libttsespeak.so\n\
-- jniLibs/armeabi-v7a/libttsespeak.so\n\
-- jniLibs/x86/libttsespeak.so\n\
-- jniLibs/x86_64/libttsespeak.so\n\
-- assets/kokoro/espeak-ng-data/phontab and the rest of espeak-ng-data"
-    )
+    println!(
+        "cargo:warning=Downloading Android eSpeak NG bundle from default URL {}",
+        DEFAULT_KOKORO_ESPEAK_ANDROID_BUNDLE_URL
+    );
+    let response = reqwest::blocking::get(DEFAULT_KOKORO_ESPEAK_ANDROID_BUNDLE_URL)?
+        .error_for_status()?;
+    let bytes = response.bytes()?;
+    extract_android_espeak_bundle(&bytes, DEFAULT_KOKORO_ESPEAK_ANDROID_BUNDLE_URL)?;
+    Ok(())
 }
 
 fn android_espeak_bundle_complete() -> bool {
