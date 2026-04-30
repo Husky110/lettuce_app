@@ -100,6 +100,16 @@ export function LibraryPage() {
 
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement | null>(null);
+  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     const next = resolveLibraryFilter(location.search);
@@ -309,38 +319,47 @@ export function LibraryPage() {
   return (
     <div className="flex h-full flex-col pb-6 text-fg/80">
       <main ref={mainRef} className="flex-1 overflow-y-auto px-4 pt-4">
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-          {(["All", "Characters", "Personas", "Lorebooks", "Images"] as FilterOption[]).map(
-            (option) => {
-              const filterLabels: Record<FilterOption, string> = {
-                All: t("library.filters.all"),
-                Characters: t("library.filters.characters"),
-                Personas: t("library.filters.personas"),
-                Lorebooks: t("library.filters.lorebooks"),
-                Images: "Images",
-              };
+        <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+          <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(["All", "Characters", "Personas", "Lorebooks", "Images"] as FilterOption[]).map(
+              (option) => {
+                const filterLabels: Record<FilterOption, string> = {
+                  All: t("library.filters.all"),
+                  Characters: t("library.filters.characters"),
+                  Personas: t("library.filters.personas"),
+                  Lorebooks: t("library.filters.lorebooks"),
+                  Images: "Images",
+                };
 
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setLibraryFilter(option)}
-                  className={cn(
-                    "shrink-0 rounded-xl border px-4 py-2 text-sm font-medium transition",
-                    filter === option
-                      ? "border-fg/15 bg-fg/10 text-fg"
-                      : "border-fg/10 bg-surface-el/40 text-fg/60 hover:bg-fg/5 hover:text-fg",
-                  )}
-                >
-                  {filterLabels[option]}
-                </button>
-              );
-            },
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setLibraryFilter(option)}
+                    className={cn(
+                      "shrink-0 rounded-xl border px-4 py-2 text-sm font-medium transition",
+                      filter === option
+                        ? "border-fg/15 bg-fg/10 text-fg"
+                        : "border-fg/10 bg-surface-el/40 text-fg/60 hover:bg-fg/5 hover:text-fg",
+                    )}
+                  >
+                    {filterLabels[option]}
+                  </button>
+                );
+              },
+            )}
+          </div>
+          {filter === "Images" && isDesktop && (
+            <div ref={setToolbarHost} className="hidden min-w-0 flex-1 lg:flex" />
           )}
         </div>
 
         {filter === "Images" ? (
-          <ImageLibraryPanel embedded scrollContainerRef={mainRef} />
+          <ImageLibraryPanel
+            embedded
+            scrollContainerRef={mainRef}
+            toolbarHost={isDesktop ? toolbarHost : null}
+          />
         ) : filteredItems.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}

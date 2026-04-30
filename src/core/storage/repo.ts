@@ -52,6 +52,7 @@ export type SessionPreview = z.infer<typeof SessionPreviewSchema>;
 
 const ImageLibraryItemSchema = z.object({
   id: z.string(),
+  groupKey: z.string(),
   bucket: z.string(),
   filePath: z.string(),
   storagePath: z.string(),

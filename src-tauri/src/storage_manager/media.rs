@@ -101,6 +101,7 @@ fn validate_avatar_filename(filename: &str) -> Result<&str, String> {
 #[serde(rename_all = "camelCase")]
 pub struct ImageLibraryItem {
     pub id: String,
+    pub group_key: String,
     pub bucket: String,
     pub file_path: String,
     pub storage_path: String,
@@ -116,6 +117,80 @@ pub struct ImageLibraryItem {
     pub character_id: Option<String>,
     pub session_id: Option<String>,
     pub role: Option<String>,
+}
+
+fn default_image_group_key(item: &ImageLibraryItem) -> String {
+    item.storage_path
+        .rsplit_once('.')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_else(|| item.storage_path.clone())
+}
+
+fn assign_duplicate_candidate_group_keys(items: &mut [ImageLibraryItem]) {
+    use std::collections::HashMap;
+
+    const UPDATED_AT_BUCKET_MS: i64 = 5_000;
+    let mut candidate_groups: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (index, item) in items.iter().enumerate() {
+        let width = item.width.unwrap_or(0);
+        let height = item.height.unwrap_or(0);
+        if width == 0 || height == 0 {
+            continue;
+        }
+
+        let updated_bucket = if item.updated_at <= 0 {
+            0
+        } else {
+            item.updated_at / UPDATED_AT_BUCKET_MS
+        };
+        let candidate_key = format!("{width}x{height}:{updated_bucket}");
+        candidate_groups.entry(candidate_key).or_default().push(index);
+    }
+
+    for (_, indices) in candidate_groups {
+        if indices.len() != 2 {
+            continue;
+        }
+
+        let [first_index, second_index] = [indices[0], indices[1]];
+        let first = &items[first_index];
+        let second = &items[second_index];
+
+        let first_ext = Path::new(&first.filename)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let second_ext = Path::new(&second.filename)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        let is_png_webp_pair = matches!(
+            (first_ext.as_str(), second_ext.as_str()),
+            ("png", "webp") | ("webp", "png")
+        );
+        if !is_png_webp_pair {
+            continue;
+        }
+
+        let updated_bucket = if first.updated_at <= 0 {
+            0
+        } else {
+            first.updated_at / UPDATED_AT_BUCKET_MS
+        };
+        let group_key = format!(
+            "paired:{}x{}:{}",
+            first.width.unwrap_or(0),
+            first.height.unwrap_or(0),
+            updated_bucket
+        );
+
+        items[first_index].group_key = group_key.clone();
+        items[second_index].group_key = group_key;
+    }
 }
 
 fn decode_base64_payload(base64_data: &str) -> Result<Vec<u8>, String> {
@@ -228,6 +303,7 @@ fn scan_image_dir(
 
         let mut item = ImageLibraryItem {
             id: storage_path.clone(),
+            group_key: String::new(),
             bucket: "stored".to_string(),
             file_path: path.to_string_lossy().to_string(),
             storage_path,
@@ -283,6 +359,8 @@ fn scan_image_dir(
                 };
             }
         }
+
+        item.group_key = default_image_group_key(&item);
 
         out.push(item);
     }
@@ -483,6 +561,8 @@ pub fn storage_list_image_library(app: tauri::AppHandle) -> Result<Vec<ImageLibr
         let path = root.join(dir);
         scan_image_dir(&root, &path, &mut items)?;
     }
+
+    assign_duplicate_candidate_group_keys(&mut items);
 
     items.sort_by(|a, b| {
         b.updated_at

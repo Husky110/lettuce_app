@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { motion } from "framer-motion";
-import { Copy, Download, Image as ImageIcon, Loader2, Trash2 } from "lucide-react";
+import { ArrowUpDown, Copy, Download, Image as ImageIcon, Loader2, Search, Trash2, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -32,6 +33,14 @@ const SORTS: SortOption[] = ["Newest", "Largest", "Name"];
 const GRID_GAP = 12;
 const GRID_OVERSCAN_ROWS = 3;
 const assetUrlCache = new Map<string, string>();
+const FORMAT_DISPLAY_ORDER = ["webp", "png", "jpg", "jpeg", "gif"] as const;
+
+type ImageLibraryGroup = {
+  id: string;
+  item: ImageLibraryItem;
+  variants: ImageLibraryItem[];
+  searchableText: string;
+};
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -117,39 +126,118 @@ function compactPath(value: string): string {
   return `${value.slice(0, 20)}...${value.slice(-28)}`;
 }
 
+function getFileExtension(filename: string): string {
+  const match = /\.([^.]+)$/.exec(filename);
+  return match?.[1]?.toLowerCase() ?? "";
+}
+
+function getVariantDisplayLabel(item: ImageLibraryItem): string {
+  const extension = getFileExtension(item.filename);
+  return extension ? extension.toUpperCase() : item.mimeType;
+}
+
+function getDisplayTitle(group: ImageLibraryGroup): string {
+  const { item, variants } = group;
+  if (variants.length > 1) {
+    return item.width && item.height
+      ? `${item.width} x ${item.height} image`
+      : "Image";
+  }
+
+  return item.filename.length > 28 ? `${item.filename.slice(0, 28)}...` : item.filename;
+}
+
+function getGroupingKey(item: ImageLibraryItem): string {
+  return item.groupKey;
+}
+
+function getFormatSortIndex(item: ImageLibraryItem): number {
+  const extension = getFileExtension(item.filename);
+  const index = FORMAT_DISPLAY_ORDER.indexOf(
+    extension as (typeof FORMAT_DISPLAY_ORDER)[number],
+  );
+  return index === -1 ? FORMAT_DISPLAY_ORDER.length : index;
+}
+
+function sortGroupedVariants(items: ImageLibraryItem[]): ImageLibraryItem[] {
+  return [...items].sort(
+    (a, b) =>
+      getFormatSortIndex(a) - getFormatSortIndex(b) ||
+      b.updatedAt - a.updatedAt ||
+      a.filename.localeCompare(b.filename),
+  );
+}
+
+function chooseRepresentativeItem(items: ImageLibraryItem[]): ImageLibraryItem {
+  return sortGroupedVariants(items)[0] ?? items[0];
+}
+
+function groupImageLibraryItems(items: ImageLibraryItem[]): ImageLibraryGroup[] {
+  const groups = new Map<string, ImageLibraryItem[]>();
+  for (const item of items) {
+    const key = getGroupingKey(item);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(item);
+    } else {
+      groups.set(key, [item]);
+    }
+  }
+
+  return Array.from(groups.entries()).map(([id, groupItems]) => {
+    const variants = sortGroupedVariants(groupItems);
+    const item = chooseRepresentativeItem(variants);
+    const searchableText = [
+      ...variants.map((variant) => variant.filename.toLowerCase()),
+      ...variants.map((variant) => variant.storagePath.toLowerCase()),
+      ...variants.map((variant) => variant.entityId?.toLowerCase() ?? ""),
+      ...variants.map((variant) => variant.sessionId?.toLowerCase() ?? ""),
+      ...variants.map((variant) => variant.characterId?.toLowerCase() ?? ""),
+    ].join("\n");
+
+    return { id, item, variants, searchableText };
+  });
+}
+
 const ImageTile = memo(function ImageTile({
-  item,
+  group,
   kindLabel,
   onSelect,
 }: {
-  item: ImageLibraryItem;
+  group: ImageLibraryGroup;
   kindLabel: string;
-  onSelect: (item: ImageLibraryItem) => void;
+  onSelect: (group: ImageLibraryGroup) => void;
 }) {
+  const { item, variants } = group;
   return (
     <button
       type="button"
-      onClick={() => onSelect(item)}
-      className="group relative aspect-square overflow-hidden rounded-2xl border border-fg/10 bg-fg/3 text-left"
+      onClick={() => onSelect(group)}
+      className="group relative aspect-square overflow-hidden rounded-2xl border border-fg/10 bg-fg/3 text-left transition hover:border-fg/20 hover:shadow-lg hover:shadow-black/20"
     >
       <img
         src={getAssetUrl(item.filePath)}
         alt={item.filename}
-        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
         loading="lazy"
         decoding="async"
       />
-      <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/20 to-transparent" />
-      <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-medium uppercase tracking-widest text-white/85 backdrop-blur-md">
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/75 via-black/0 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+      <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-md border border-white/10 bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm shadow-black/40 backdrop-blur-md">
+        <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
         {kindLabel}
       </div>
-      <div className="absolute inset-x-0 bottom-0 p-3">
-        <div className="truncate text-sm font-semibold text-white">{item.filename}</div>
-        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-white/70">
-          <span>
+      {variants.length > 1 ? (
+        <div className="absolute right-2 top-2 rounded-md border border-white/10 bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm shadow-black/40 backdrop-blur-md">
+          {variants.length}×
+        </div>
+      ) : null}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1 p-2.5 opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="flex items-center justify-between gap-2 text-[11px] text-white/85">
+          <span className="truncate">
             {item.width && item.height ? `${item.width} × ${item.height}` : item.mimeType}
           </span>
-          <span>{formatBytes(item.sizeBytes)}</span>
+          <span className="shrink-0">{formatBytes(item.sizeBytes)}</span>
         </div>
       </div>
     </button>
@@ -157,16 +245,16 @@ const ImageTile = memo(function ImageTile({
 });
 
 const ImageLibraryGrid = memo(function ImageLibraryGrid({
-  items,
+  groups,
   backgroundIds,
   scrollContainerRef,
   onSelect,
   columnCountOverride,
 }: {
-  items: ImageLibraryItem[];
+  groups: ImageLibraryGroup[];
   backgroundIds: Set<string>;
   scrollContainerRef: RefObject<HTMLElement | null>;
-  onSelect: (item: ImageLibraryItem) => void;
+  onSelect: (group: ImageLibraryGroup) => void;
   columnCountOverride?: number;
 }) {
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -195,7 +283,7 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
     resizeObserver.observe(grid);
 
     return () => resizeObserver.disconnect();
-  }, [items.length]);
+  }, [groups.length]);
 
   const columnCount = useMemo(() => {
     if (columnCountOverride && columnCountOverride > 0) return columnCountOverride;
@@ -211,7 +299,7 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
     return Math.max(0, (safeGridWidth - GRID_GAP * (columnCount - 1)) / columnCount);
   }, [columnCount, gridWidth]);
 
-  const rowCount = Math.ceil(items.length / columnCount);
+  const rowCount = Math.ceil(groups.length / columnCount);
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
@@ -234,7 +322,7 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
     >
       {virtualRows.map((virtualRow) => {
         const startIndex = virtualRow.index * columnCount;
-        const rowItems = items.slice(startIndex, startIndex + columnCount);
+        const rowItems = groups.slice(startIndex, startIndex + columnCount);
 
         return (
           <div
@@ -246,11 +334,11 @@ const ImageLibraryGrid = memo(function ImageLibraryGrid({
               transform: `translateY(${virtualRow.start + virtualRow.index * GRID_GAP}px)`,
             }}
           >
-            {rowItems.map((item) => (
+            {rowItems.map((group) => (
               <ImageTile
-                key={item.id}
-                item={item}
-                kindLabel={imageKindLabel(getImageKind(item, backgroundIds))}
+                key={group.id}
+                group={group}
+                kindLabel={imageKindLabel(getImageKind(group.item, backgroundIds))}
                 onSelect={onSelect}
               />
             ))}
@@ -269,6 +357,7 @@ export function ImageLibraryPanel({
   fixedFilter,
   hideFilterTabs = false,
   columnCountOverride,
+  toolbarHost,
 }: {
   scrollContainerRef: RefObject<HTMLElement | null>;
   embedded?: boolean;
@@ -277,6 +366,7 @@ export function ImageLibraryPanel({
   fixedFilter?: FilterOption;
   hideFilterTabs?: boolean;
   columnCountOverride?: number;
+  toolbarHost?: HTMLElement | null;
 }) {
   const { t } = useI18n();
   const [items, setItems] = useState<ImageLibraryItem[]>([]);
@@ -285,11 +375,24 @@ export function ImageLibraryPanel({
   const [filter, setFilter] = useState<FilterOption>(fixedFilter ?? "All");
   const [sort, setSort] = useState<SortOption>("Newest");
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ImageLibraryItem | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<ImageLibraryGroup | null>(null);
   const [backgroundIds, setBackgroundIds] = useState<Set<string>>(new Set());
   const [downloadingItemId, setDownloadingItemId] = useState<string | null>(null);
   const [usingItemId, setUsingItemId] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [isWide, setIsWide] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsWide(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const collapseChips = isWide && !hideFilterTabs && (searchFocused || query.trim().length > 0);
 
   useEffect(() => {
     if (fixedFilter) {
@@ -325,34 +428,35 @@ export function ImageLibraryPanel({
     void load();
   }, [t]);
 
+  const groups = useMemo(() => groupImageLibraryItems(items), [items]);
+
   const counts = useMemo(
     () => ({
-      all: items.length,
-      backgrounds: items.filter((item) => getImageKind(item, backgroundIds) === "Backgrounds")
+      all: groups.length,
+      backgrounds: groups.filter((group) => getImageKind(group.item, backgroundIds) === "Backgrounds")
         .length,
-      avatars: items.filter((item) => getImageKind(item, backgroundIds) === "Avatars").length,
-      attachments: items.filter((item) => getImageKind(item, backgroundIds) === "Attachments")
+      avatars: groups.filter((group) => getImageKind(group.item, backgroundIds) === "Avatars").length,
+      attachments: groups.filter((group) => getImageKind(group.item, backgroundIds) === "Attachments")
         .length,
-      other: items.filter((item) => getImageKind(item, backgroundIds) === "Other").length,
+      other: groups.filter((group) => getImageKind(group.item, backgroundIds) === "Other").length,
     }),
-    [backgroundIds, items],
+    [backgroundIds, groups],
   );
 
-  const filteredItems = useMemo(() => {
+  const filteredGroups = useMemo(() => {
     const lowered = query.trim().toLowerCase();
-    const next = items.filter((item) => {
-      if (!matchesFilter(item, filter, backgroundIds)) return false;
+    const next = groups.filter((group) => {
+      if (!matchesFilter(group.item, filter, backgroundIds)) return false;
       if (!lowered) return true;
-      return (
-        item.filename.toLowerCase().includes(lowered) ||
-        item.storagePath.toLowerCase().includes(lowered) ||
-        item.entityId?.toLowerCase().includes(lowered) ||
-        item.sessionId?.toLowerCase().includes(lowered) ||
-        item.characterId?.toLowerCase().includes(lowered)
-      );
+      return group.searchableText.includes(lowered);
     });
-    return sortItems(next, sort);
-  }, [backgroundIds, filter, items, query, sort]);
+    return sortItems(
+      next.map((group) => group.item),
+      sort,
+    )
+      .map((item) => next.find((group) => group.item.id === item.id))
+      .filter((group): group is ImageLibraryGroup => Boolean(group));
+  }, [backgroundIds, filter, groups, query, sort]);
 
   const handleDownload = async (item: ImageLibraryItem) => {
     try {
@@ -404,7 +508,23 @@ export function ImageLibraryPanel({
         setDeletingItemId(item.id);
         await deleteImageLibraryItem(item);
         setItems((current) => current.filter((entry) => entry.id !== item.id));
-        setSelectedItem((current) => (current?.id === item.id ? null : current));
+        setSelectedGroup((current) => {
+          if (!current) return null;
+          const remainingVariants = current.variants.filter((variant) => variant.id !== item.id);
+          if (remainingVariants.length === 0) return null;
+          return {
+            ...current,
+            item: chooseRepresentativeItem(remainingVariants),
+            variants: sortGroupedVariants(remainingVariants),
+            searchableText: [
+              ...remainingVariants.map((variant) => variant.filename.toLowerCase()),
+              ...remainingVariants.map((variant) => variant.storagePath.toLowerCase()),
+              ...remainingVariants.map((variant) => variant.entityId?.toLowerCase() ?? ""),
+              ...remainingVariants.map((variant) => variant.sessionId?.toLowerCase() ?? ""),
+              ...remainingVariants.map((variant) => variant.characterId?.toLowerCase() ?? ""),
+            ].join("\n"),
+          };
+        });
 
         const storedId = getStoredImageId(item);
         if (storedId) {
@@ -430,11 +550,25 @@ export function ImageLibraryPanel({
     [t],
   );
 
-  return (
-    <>
-      <div className="mb-4 space-y-3">
+  const toolbarMarkup = (
+    <div
+      className={cn(
+        "flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3",
+        toolbarHost ? "min-w-0 flex-1" : "mb-4",
+      )}
+    >
         {!hideFilterTabs && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <motion.div
+            className="flex shrink-0 items-center overflow-hidden"
+            animate={{
+              width: collapseChips ? 0 : "auto",
+              opacity: collapseChips ? 0 : 1,
+              marginRight: collapseChips ? -12 : 0,
+            }}
+            initial={false}
+            transition={{ type: "spring", stiffness: 380, damping: 36, mass: 0.7 }}
+          >
+          <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-fg/8 bg-surface-el/40 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               {
                 key: "All" as const,
@@ -461,43 +595,91 @@ export function ImageLibraryPanel({
                 label: t("library.imageLibrary.filters.other"),
                 count: counts.other,
               },
-            ].map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setFilter(option.key)}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm transition",
-                  filter === option.key
-                    ? "border-fg/15 bg-fg/10 text-fg"
-                    : "border-fg/10 bg-surface-el/20 text-fg/65 hover:bg-fg/5 hover:text-fg",
-                )}
-              >
-                <span className="font-medium">{option.label}</span>
-                <span className="rounded-md bg-fg/8 px-1.5 py-0.5 text-[11px] text-fg/55">
-                  {option.count}
-                </span>
-              </button>
-            ))}
+            ].map((option) => {
+              const isActive = filter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setFilter(option.key)}
+                  className={cn(
+                    "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors",
+                    isActive
+                      ? "text-fg"
+                      : "text-fg/60 hover:text-fg",
+                  )}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="image-library-filter-pill"
+                      className="absolute inset-0 rounded-lg bg-fg/12 shadow-sm shadow-black/20"
+                      transition={{ type: "spring", stiffness: 500, damping: 38, mass: 0.6 }}
+                    />
+                  )}
+                  <span className="relative z-10 font-medium">{option.label}</span>
+                  <span
+                    className={cn(
+                      "relative z-10 rounded-md px-1 text-[11px] tabular-nums transition-colors",
+                      isActive ? "bg-fg/10 text-fg/70" : "text-fg/40",
+                    )}
+                  >
+                    {option.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+          </motion.div>
         )}
 
-        <div className="flex items-center gap-3">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("library.imageLibrary.searchPlaceholder")}
-            className="min-w-0 flex-1 rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-3 text-sm text-fg outline-none transition focus:border-fg/25"
-          />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg/35" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setQuery("");
+                  (event.target as HTMLInputElement).blur();
+                }
+              }}
+              placeholder={t("library.imageLibrary.searchPlaceholder")}
+              className={cn(
+                "w-full rounded-xl border border-fg/10 bg-surface-el/20 py-2.5 pl-9 text-sm text-fg outline-none transition focus:border-fg/25",
+                query ? "pr-9" : "pr-3",
+              )}
+            />
+            {query && (
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-fg/45 transition hover:bg-fg/10 hover:text-fg"
+                title="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setShowSortMenu(true)}
-            className="shrink-0 rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-3 text-sm font-medium text-fg/70 transition hover:bg-fg/5 hover:text-fg"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-2.5 text-sm font-medium text-fg/70 transition hover:bg-fg/5 hover:text-fg"
+            title={t("library.imageLibrary.actions.sort")}
           >
-            {t("library.imageLibrary.actions.sort")}
+            <ArrowUpDown className="h-4 w-4" />
+            <span className="hidden text-xs text-fg/55 sm:inline">{sort}</span>
           </button>
         </div>
       </div>
+  );
+
+  return (
+    <>
+      {toolbarHost ? createPortal(toolbarMarkup, toolbarHost) : toolbarMarkup}
 
       {loading ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -508,7 +690,7 @@ export function ImageLibraryPanel({
             />
           ))}
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -524,10 +706,10 @@ export function ImageLibraryPanel({
         </motion.div>
       ) : (
         <ImageLibraryGrid
-          items={filteredItems}
+          groups={filteredGroups}
           backgroundIds={backgroundIds}
           scrollContainerRef={scrollContainerRef}
-          onSelect={setSelectedItem}
+          onSelect={setSelectedGroup}
           columnCountOverride={columnCountOverride}
         />
       )}
@@ -569,198 +751,259 @@ export function ImageLibraryPanel({
       </BottomMenu>
 
       <BottomMenu
-        isOpen={Boolean(selectedItem)}
-        onClose={() => setSelectedItem(null)}
-        title={selectedItem?.filename ?? ""}
+        isOpen={Boolean(selectedGroup)}
+        onClose={() => setSelectedGroup(null)}
+        title={
+          selectedGroup
+            ? `${imageKindLabel(getImageKind(selectedGroup.item, backgroundIds))} details`
+            : ""
+        }
       >
-        {selectedItem && (
-          <div className={mode === "picker" ? "space-y-3" : "space-y-4"}>
-            <div className="overflow-hidden rounded-2xl border border-fg/10 bg-fg/3">
-              <img
-                src={getAssetUrl(selectedItem.filePath)}
-                alt={selectedItem.filename}
-                className="max-h-[50vh] w-full object-contain"
-              />
-            </div>
+        {selectedGroup && (() => {
+          const item = selectedGroup.item;
+          const kind = getImageKind(item, backgroundIds);
+          const kindLabel = imageKindLabel(kind);
+          const dimensions =
+            item.width && item.height ? `${item.width} × ${item.height}` : null;
+          const ext = getFileExtension(item.filename).toUpperCase();
+          const downloading = selectedGroup.variants.some(
+            (variant) => downloadingItemId === variant.id,
+          );
+          const isDeleting = deletingItemId === item.id;
+          const hasContext = Boolean(item.entityId || item.sessionId || item.characterId);
 
-            {mode === "picker" ? (
-              <button
-                type="button"
-                onClick={() => void handleUseItem(selectedItem)}
-                disabled={usingItemId === selectedItem.id}
-                className={cn(
-                  "flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
-                  usingItemId === selectedItem.id
-                    ? "cursor-wait border-fg/10 bg-fg/6 text-fg/55"
-                    : "border-fg/10 bg-fg/4 text-fg/80 hover:bg-fg/8 hover:text-fg",
-                )}
-              >
-                {usingItemId === selectedItem.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {usingItemId === selectedItem.id
-                  ? t("library.imageLibrary.actions.using")
-                  : t("library.imageLibrary.actions.useThis")}
-              </button>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    {
-                      label: "Kind",
-                      value: imageKindLabel(getImageKind(selectedItem, backgroundIds)),
-                    },
-                    { label: "Type", value: selectedItem.mimeType },
-                    {
-                      label: "Dimensions",
-                      value:
-                        selectedItem.width && selectedItem.height
-                          ? `${selectedItem.width} × ${selectedItem.height}`
-                          : "Unknown",
-                    },
-                    { label: "Size", value: formatBytes(selectedItem.sizeBytes) },
-                    { label: "Updated", value: formatDate(selectedItem.updatedAt) },
-                    {
-                      label: "Scope",
-                      value:
-                        getImageKind(selectedItem, backgroundIds) === "Backgrounds"
-                          ? "Chat background"
-                          : (selectedItem.variant ?? "Standard"),
-                    },
-                  ].map((field) => (
-                    <div
-                      key={field.label}
-                      className="rounded-xl border border-fg/10 bg-surface-el/60 px-3 py-2.5"
-                    >
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                        {field.label}
-                      </div>
-                      <div className="mt-1 text-[13px] font-medium text-fg">{field.value}</div>
-                    </div>
-                  ))}
-                </div>
+          return (
+            <div className={mode === "picker" ? "space-y-3" : "space-y-3"}>
+              <div className="overflow-hidden rounded-2xl bg-fg/3 ring-1 ring-fg/8">
+                <img
+                  src={getAssetUrl(item.filePath)}
+                  alt={item.filename}
+                  className="max-h-[48vh] w-full object-contain"
+                />
+              </div>
 
-                <details className="rounded-xl border border-fg/10 bg-surface-el/60">
-                  <summary className="cursor-pointer list-none px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                          Storage Path
-                        </div>
-                        <div className="mt-1 truncate font-mono text-[11px] text-fg/60">
-                          {compactPath(selectedItem.storagePath)}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
-                    </div>
-                  </summary>
-                  <div className="border-t border-fg/10 px-3 pb-3 pt-2">
-                    <div className="break-all font-mono text-xs text-fg/75">
-                      {selectedItem.storagePath}
-                    </div>
+              {mode === "picker" ? (
+                <button
+                  type="button"
+                  onClick={() => void handleUseItem(item)}
+                  disabled={usingItemId === item.id}
+                  className={cn(
+                    "flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                    usingItemId === item.id
+                      ? "cursor-wait border-fg/10 bg-fg/6 text-fg/55"
+                      : "border-fg/10 bg-fg/4 text-fg/80 hover:bg-fg/8 hover:text-fg",
+                  )}
+                >
+                  {usingItemId === item.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {usingItemId === item.id
+                    ? t("library.imageLibrary.actions.using")
+                    : t("library.imageLibrary.actions.useThis")}
+                </button>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-fg/65">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-fg/8 px-2 py-0.5 text-[11px] font-medium text-fg">
+                      <span className="h-1.5 w-1.5 rounded-full bg-fg/60" />
+                      {kindLabel}
+                    </span>
+                    {dimensions && <span className="tabular-nums">{dimensions}</span>}
+                    <span className="tabular-nums">{formatBytes(item.sizeBytes)}</span>
+                    {ext && <span className="font-mono uppercase tracking-wide">{ext}</span>}
+                    <span className="text-fg/45">·</span>
+                    <span>{formatDate(item.updatedAt)}</span>
                   </div>
-                </details>
 
-                {(selectedItem.entityId || selectedItem.sessionId || selectedItem.characterId) && (
-                  <details className="rounded-xl border border-fg/10 bg-surface-el/60">
-                    <summary className="cursor-pointer list-none px-3 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
-                            Context
-                          </div>
-                          <div className="mt-1 truncate text-xs text-fg/60">
-                            {[
-                              selectedItem.entityType,
-                              selectedItem.characterId,
-                              selectedItem.sessionId,
-                            ]
-                              .filter(Boolean)
-                              .join(" • ") || "Linked record"}
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(item.filename, "Filename")}
+                    className="flex w-full items-center gap-2 rounded-xl border border-fg/10 bg-surface-el/40 px-3 py-2 text-left text-fg/75 transition hover:bg-fg/5 hover:text-fg"
+                    title="Copy filename"
+                  >
+                    <Copy className="h-3.5 w-3.5 shrink-0 text-fg/40" />
+                    <span className="min-w-0 truncate font-mono text-[12px]">
+                      {item.filename}
+                    </span>
+                  </button>
+
+                  {selectedGroup.variants.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                        Formats
+                      </span>
+                      {selectedGroup.variants.map((variant) => (
+                        <span
+                          key={variant.id}
+                          className="rounded-md bg-fg/6 px-2 py-0.5 text-[11px] font-medium text-fg/75"
+                        >
+                          {getVariantDisplayLabel(variant)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <details className="group rounded-xl bg-surface-el/40">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px]">
+                      <span className="text-fg/55">
+                        Storage path
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-fg/55">
+                        {compactPath(item.storagePath)}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-fg/40 transition group-open:hidden">
+                        Show
+                      </span>
+                      <span className="hidden shrink-0 text-[11px] text-fg/40 group-open:inline">
+                        Hide
+                      </span>
                     </summary>
-                    <div className="border-t border-fg/10 px-3 pb-3 pt-2">
-                      <div className="space-y-1 text-sm text-fg/75">
-                        {selectedItem.entityType && selectedItem.entityId && (
-                          <p>
-                            {selectedItem.entityType}:{" "}
-                            <span className="font-mono">{selectedItem.entityId}</span>
-                          </p>
-                        )}
-                        {selectedItem.characterId && (
-                          <p>
-                            character: <span className="font-mono">{selectedItem.characterId}</span>
-                          </p>
-                        )}
-                        {selectedItem.sessionId && (
-                          <p>
-                            session: <span className="font-mono">{selectedItem.sessionId}</span>
-                          </p>
-                        )}
-                        {selectedItem.role && <p>role: {selectedItem.role}</p>}
+                    <div className="border-t border-fg/8 px-3 pb-3 pt-2">
+                      <div className="break-all font-mono text-[11px] text-fg/70">
+                        {item.storagePath}
                       </div>
                     </div>
                   </details>
+
+                  {hasContext && (
+                    <details className="group rounded-xl bg-surface-el/40">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px]">
+                        <span className="text-fg/55">Context</span>
+                        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-fg/55">
+                          {[item.entityType, item.characterId, item.sessionId]
+                            .filter(Boolean)
+                            .join(" · ") || "Linked"}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-fg/40 group-open:hidden">
+                          Show
+                        </span>
+                        <span className="hidden shrink-0 text-[11px] text-fg/40 group-open:inline">
+                          Hide
+                        </span>
+                      </summary>
+                      <div className="border-t border-fg/8 px-3 pb-3 pt-2">
+                        <div className="space-y-1 text-[12px] text-fg/70">
+                          {item.entityType && item.entityId && (
+                            <p>
+                              <span className="text-fg/45">{item.entityType}:</span>{" "}
+                              <span className="font-mono">{item.entityId}</span>
+                            </p>
+                          )}
+                          {item.characterId && (
+                            <p>
+                              <span className="text-fg/45">character:</span>{" "}
+                              <span className="font-mono">{item.characterId}</span>
+                            </p>
+                          )}
+                          {item.sessionId && (
+                            <p>
+                              <span className="text-fg/45">session:</span>{" "}
+                              <span className="font-mono">{item.sessionId}</span>
+                            </p>
+                          )}
+                          {item.role && (
+                            <p>
+                              <span className="text-fg/45">role:</span> {item.role}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(item.storagePath, "Storage path")}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-fg/10 bg-fg/4 px-3 py-2.5 text-sm font-medium text-fg/75 transition hover:bg-fg/8 hover:text-fg"
+                    >
+                      <Copy className="h-4 w-4" />
+                      {t("library.imageLibrary.actions.copyPath")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedGroup.variants.length > 1) {
+                          setShowDownloadMenu(true);
+                          return;
+                        }
+                        void handleDownload(item);
+                      }}
+                      disabled={downloading}
+                      className={cn(
+                        "flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition",
+                        downloading
+                          ? "cursor-wait border-fg/10 bg-fg/6 text-fg/55"
+                          : "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20",
+                      )}
+                    >
+                      {downloading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      {downloading
+                        ? t("library.imageLibrary.actions.saving")
+                        : selectedGroup.variants.length > 1
+                          ? `${t("library.imageLibrary.actions.download")} Format`
+                          : t("library.imageLibrary.actions.download")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteItem(item)}
+                      disabled={isDeleting}
+                      title={t("library.imageLibrary.actions.delete")}
+                      className={cn(
+                        "flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border transition",
+                        isDeleting
+                          ? "cursor-wait border-red-500/15 bg-red-500/8 text-red-200/65"
+                          : "border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20",
+                      )}
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={showDownloadMenu}
+        onClose={() => setShowDownloadMenu(false)}
+        title={t("library.imageLibrary.actions.download")}
+      >
+        <div className="space-y-2">
+          {selectedGroup?.variants.map((variant) => {
+            const isDownloading = downloadingItemId === variant.id;
+            return (
+              <button
+                key={variant.id}
+                type="button"
+                onClick={() => {
+                  setShowDownloadMenu(false);
+                  void handleDownload(variant);
+                }}
+                disabled={isDownloading}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition",
+                  isDownloading
+                    ? "cursor-wait border-fg/10 bg-fg/6 text-fg/55"
+                    : "border-fg/10 bg-surface-el/50 text-fg/75 hover:bg-fg/5 hover:text-fg",
                 )}
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(selectedItem.storagePath, "Storage path")}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-fg/10 bg-fg/4 px-4 py-3 text-sm font-medium text-fg/75 transition hover:bg-fg/8 hover:text-fg"
-                  >
-                    <Copy className="h-4 w-4" />
-                    {t("library.imageLibrary.actions.copyPath")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDownload(selectedItem)}
-                    disabled={downloadingItemId === selectedItem.id}
-                    className={cn(
-                      "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
-                      downloadingItemId === selectedItem.id
-                        ? "cursor-wait border-fg/10 bg-fg/6 text-fg/55"
-                        : "border-fg/10 bg-fg/4 text-fg/75 hover:bg-fg/8 hover:text-fg",
-                    )}
-                  >
-                    {downloadingItemId === selectedItem.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    {downloadingItemId === selectedItem.id
-                      ? t("library.imageLibrary.actions.saving")
-                      : t("library.imageLibrary.actions.download")}
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteItem(selectedItem)}
-                  disabled={deletingItemId === selectedItem.id}
-                  className={cn(
-                    "flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
-                    deletingItemId === selectedItem.id
-                      ? "cursor-wait border-red-500/15 bg-red-500/8 text-red-200/65"
-                      : "border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/16",
-                  )}
-                >
-                  {deletingItemId === selectedItem.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                  {deletingItemId === selectedItem.id
-                    ? t("library.imageLibrary.actions.deleting")
-                    : t("library.imageLibrary.actions.delete")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
+              >
+                <span className="font-medium">{getVariantDisplayLabel(variant)}</span>
+                <span className="text-xs text-fg/55">{formatBytes(variant.sizeBytes)}</span>
+              </button>
+            );
+          })}
+        </div>
       </BottomMenu>
     </>
   );
