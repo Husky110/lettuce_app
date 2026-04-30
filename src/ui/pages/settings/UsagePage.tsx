@@ -33,6 +33,7 @@ import {
 import { BottomMenu } from "../../components";
 import { useI18n } from "../../../core/i18n/context";
 import { ActivityItem, formatCompactNumber, formatCurrency } from "./UsageActivityShared";
+import { getEffectiveTotalCost } from "./UsageActivityShared";
 import { typography, colors, components, cn, animations, radius } from "../../design-tokens";
 
 // ============================================================================
@@ -86,10 +87,10 @@ function getDateRange(preset: DatePreset): { start: Date; end: Date } {
     case "today":
       break;
     case "week":
-      start.setDate(start.getDate() - 7);
+      start.setDate(start.getDate() - 6);
       break;
     case "month":
-      start.setDate(start.getDate() - 30);
+      start.setDate(start.getDate() - 29);
       break;
     case "all":
       start.setFullYear(start.getFullYear() - 10);
@@ -288,19 +289,17 @@ export function UsagePage() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
 
+  const resolveDashboardRange = () => {
+    if (datePreset === "custom") {
+      return { start: customStartDate, end: customEndDate };
+    }
+    return getDateRange(datePreset);
+  };
+
   // Load dashboard data
   const loadDashboardData = async () => {
     setLoading(true);
-    let start: Date, end: Date;
-
-    if (datePreset === "custom") {
-      start = customStartDate;
-      end = customEndDate;
-    } else {
-      const range = getDateRange(datePreset);
-      start = range.start;
-      end = range.end;
-    }
+    const { start, end } = resolveDashboardRange();
 
     const filter: UsageFilter = {
       startTimestamp: start.getTime(),
@@ -338,7 +337,7 @@ export function UsagePage() {
 
   // Filtered records for dashboard
   const filteredRecords = useMemo(() => {
-    let list = records;
+    let list = [...records];
     if (selectedModel) list = list.filter((r) => r.modelId === selectedModel);
     if (selectedCharacter) list = list.filter((r) => r.characterId === selectedCharacter);
     return list.sort((a, b) => b.timestamp - a.timestamp);
@@ -354,7 +353,7 @@ export function UsagePage() {
       if (r.modelId && r.modelName) {
         const existing = modelMap.get(r.modelId) || { name: r.modelName, tokens: 0, cost: 0 };
         existing.tokens += r.totalTokens || 0;
-        existing.cost += r.cost?.totalCost || 0;
+        existing.cost += getEffectiveTotalCost(r);
         modelMap.set(r.modelId, existing);
       }
       if (r.characterId && r.characterName) {
@@ -364,15 +363,15 @@ export function UsagePage() {
           cost: 0,
         };
         existing.tokens += r.totalTokens || 0;
-        existing.cost += r.cost?.totalCost || 0;
+        existing.cost += getEffectiveTotalCost(r);
         charMap.set(r.characterId, existing);
       }
       const recordDate = new Date(r.timestamp);
-      const dateKey = recordDate.toISOString().split("T")[0];
+      const dateKey = dayKeyFromDate(recordDate);
       const dayData = dailyMap.get(dateKey) || { input: 0, output: 0, cost: 0, date: recordDate };
       dayData.input += r.promptTokens || 0;
       dayData.output += r.completionTokens || 0;
-      dayData.cost += r.cost?.totalCost || 0;
+      dayData.cost += getEffectiveTotalCost(r);
       dailyMap.set(dateKey, dayData);
     }
 
@@ -416,7 +415,7 @@ export function UsagePage() {
     const totals = filteredRecords.reduce(
       (acc, r) => {
         acc.tokens += r.totalTokens || 0;
-        acc.cost += r.cost?.totalCost || 0;
+        acc.cost += getEffectiveTotalCost(r);
         acc.requests += 1;
         return acc;
       },
@@ -535,7 +534,7 @@ export function UsagePage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const { start, end } = getDateRange(datePreset);
+      const { start, end } = resolveDashboardRange();
       const csv = await exportCSV({
         startTimestamp: start.getTime(),
         endTimestamp: end.getTime(),

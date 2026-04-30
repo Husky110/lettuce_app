@@ -4,6 +4,7 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::chat_manager::types::ProviderId;
+use crate::chat_manager::{prompting::request as chat_request, types::UsageSummary};
 use crate::providers::config::resolve_base_url;
 use crate::usage::{
     add_usage_record,
@@ -19,6 +20,7 @@ fn record_image_generation_usage(
     app: &AppHandle,
     request: &ImageGenerationRequest,
     provider_label: &str,
+    usage_summary: Option<&UsageSummary>,
     success: bool,
     error_message: Option<String>,
     image_count: usize,
@@ -51,17 +53,17 @@ fn record_image_generation_usage(
         } else {
             UsageFinishReason::Error
         }),
-        prompt_tokens: None,
-        completion_tokens: None,
-        total_tokens: None,
+        prompt_tokens: usage_summary.and_then(|usage| usage.prompt_tokens),
+        completion_tokens: usage_summary.and_then(|usage| usage.completion_tokens),
+        total_tokens: usage_summary.and_then(|usage| usage.total_tokens),
         cached_prompt_tokens: None,
         cache_write_tokens: None,
         memory_tokens: None,
         summary_tokens: None,
-        reasoning_tokens: None,
-        image_tokens: None,
-        web_search_requests: None,
-        api_cost: None,
+        reasoning_tokens: usage_summary.and_then(|usage| usage.reasoning_tokens),
+        image_tokens: usage_summary.and_then(|usage| usage.image_tokens),
+        web_search_requests: usage_summary.and_then(|usage| usage.web_search_requests),
+        api_cost: usage_summary.and_then(|usage| usage.api_cost),
         cost: None,
         success,
         error_message,
@@ -84,7 +86,7 @@ pub async fn generate_image(
 ) -> Result<ImageGenerationResponse, String> {
     let mut provider_label = request.provider_id.clone();
 
-    let result: Result<ImageGenerationResponse, String> = async {
+    let result: Result<(ImageGenerationResponse, Option<UsageSummary>), String> = async {
         log_info(
             &app,
             "image_generator",
@@ -170,6 +172,7 @@ pub async fn generate_image(
                 format!("Failed to parse response: {}", e),
             )
         })?;
+        let usage_summary = chat_request::extract_usage(&response_json);
 
         log_info(
             &app,
@@ -210,19 +213,23 @@ pub async fn generate_image(
             });
         }
 
-        Ok(ImageGenerationResponse {
-            images: generated_images,
-            model: request.model.clone(),
-            provider_id: request.provider_id.clone(),
-        })
+        Ok((
+            ImageGenerationResponse {
+                images: generated_images,
+                model: request.model.clone(),
+                provider_id: request.provider_id.clone(),
+            },
+            usage_summary,
+        ))
     }
     .await;
 
     match &result {
-        Ok(response) => record_image_generation_usage(
+        Ok((response, usage_summary)) => record_image_generation_usage(
             &app,
             &request,
             &provider_label,
+            usage_summary.as_ref(),
             true,
             None,
             response.images.len(),
@@ -231,11 +238,12 @@ pub async fn generate_image(
             &app,
             &request,
             &provider_label,
+            None,
             false,
             Some(err.clone()),
             0,
         ),
     }
 
-    result
+    result.map(|(response, _)| response)
 }

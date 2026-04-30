@@ -456,7 +456,14 @@ fn usage_from_map(map: &Map<String, Value>) -> Option<UsageSummary> {
         .and_then(|r| r.as_str())
         .map(|s| s.to_string());
 
-    if prompt_tokens.is_none() && completion_tokens.is_none() && total_tokens.is_none() {
+    if prompt_tokens.is_none()
+        && completion_tokens.is_none()
+        && total_tokens.is_none()
+        && reasoning_tokens.is_none()
+        && image_tokens.is_none()
+        && web_search_requests.is_none()
+        && api_cost.is_none()
+    {
         None
     } else {
         Some(UsageSummary {

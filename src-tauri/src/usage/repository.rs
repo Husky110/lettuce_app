@@ -117,11 +117,14 @@ fn build_request_cost(
     completion_cost: Option<f64>,
     total_cost: Option<f64>,
 ) -> Option<crate::models::types::RequestCost> {
-    let (Some(prompt_cost), Some(completion_cost), Some(total_cost)) =
-        (prompt_cost, completion_cost, total_cost)
-    else {
+    let api_cost = usage.api_cost.or_else(|| parse_metadata_f64(&usage.metadata, &["api_cost"]));
+    let prompt_cost = prompt_cost.unwrap_or(0.0);
+    let completion_cost = completion_cost.unwrap_or_else(|| api_cost.unwrap_or(0.0));
+    let total_cost = total_cost.unwrap_or_else(|| api_cost.unwrap_or(prompt_cost + completion_cost));
+
+    if !total_cost.is_finite() {
         return None;
-    };
+    }
 
     Some(crate::models::types::RequestCost {
         prompt_tokens: usage.prompt_tokens.unwrap_or(0),
@@ -486,9 +489,7 @@ impl UsageRepository {
         for record in records {
             accumulate_usage_stats(&mut stats, &record);
         }
-        if stats.total_requests > 0 {
-            stats.average_cost_per_request = stats.total_cost / stats.total_requests as f64;
-        }
+        finalize_usage_stats(&mut stats);
         Ok(stats)
     }
 
@@ -595,6 +596,13 @@ impl UsageRepository {
 }
 
 fn accumulate_usage_stats(stats: &mut UsageStats, record: &RequestUsage) {
+    let record_total_cost = record
+        .cost
+        .as_ref()
+        .map(|cost| cost.total_cost)
+        .or(record.api_cost)
+        .unwrap_or(0.0);
+
     stats.total_requests += 1;
 
     if record.success {
@@ -607,9 +615,7 @@ fn accumulate_usage_stats(stats: &mut UsageStats, record: &RequestUsage) {
         stats.total_tokens += tokens;
     }
 
-    if let Some(cost) = &record.cost {
-        stats.total_cost += cost.total_cost;
-    }
+    stats.total_cost += record_total_cost;
 
     let provider_stats = stats
         .by_provider
@@ -618,13 +624,13 @@ fn accumulate_usage_stats(stats: &mut UsageStats, record: &RequestUsage) {
     provider_stats.total_requests += 1;
     if record.success {
         provider_stats.successful_requests += 1;
+    } else {
+        provider_stats.failed_requests += 1;
     }
     if let Some(tokens) = record.total_tokens {
         provider_stats.total_tokens += tokens;
     }
-    if let Some(cost) = &record.cost {
-        provider_stats.total_cost += cost.total_cost;
-    }
+    provider_stats.total_cost += record_total_cost;
 
     let model_stats = stats
         .by_model
@@ -633,13 +639,13 @@ fn accumulate_usage_stats(stats: &mut UsageStats, record: &RequestUsage) {
     model_stats.total_requests += 1;
     if record.success {
         model_stats.successful_requests += 1;
+    } else {
+        model_stats.failed_requests += 1;
     }
     if let Some(tokens) = record.total_tokens {
         model_stats.total_tokens += tokens;
     }
-    if let Some(cost) = &record.cost {
-        model_stats.total_cost += cost.total_cost;
-    }
+    model_stats.total_cost += record_total_cost;
 
     let character_stats = stats
         .by_character
@@ -648,36 +654,77 @@ fn accumulate_usage_stats(stats: &mut UsageStats, record: &RequestUsage) {
     character_stats.total_requests += 1;
     if record.success {
         character_stats.successful_requests += 1;
+    } else {
+        character_stats.failed_requests += 1;
     }
     if let Some(tokens) = record.total_tokens {
         character_stats.total_tokens += tokens;
     }
-    if let Some(cost) = &record.cost {
-        character_stats.total_cost += cost.total_cost;
+    character_stats.total_cost += record_total_cost;
+}
+
+fn finalize_usage_stats(stats: &mut UsageStats) {
+    if stats.total_requests > 0 {
+        stats.average_cost_per_request = stats.total_cost / stats.total_requests as f64;
+    }
+
+    for provider_stats in stats.by_provider.values_mut() {
+        if provider_stats.total_requests > 0 {
+            provider_stats.average_cost_per_request =
+                provider_stats.total_cost / provider_stats.total_requests as f64;
+        }
+    }
+
+    for model_stats in stats.by_model.values_mut() {
+        if model_stats.total_requests > 0 {
+            model_stats.average_cost_per_request =
+                model_stats.total_cost / model_stats.total_requests as f64;
+        }
+    }
+
+    for character_stats in stats.by_character.values_mut() {
+        if character_stats.total_requests > 0 {
+            character_stats.average_cost_per_request =
+                character_stats.total_cost / character_stats.total_requests as f64;
+        }
+    }
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
     }
 }
 
 fn build_csv(records: &[RequestUsage]) -> String {
-    let mut csv = String::from("timestamp,session_id,character_name,model_name,provider_label,operation_type,prompt_tokens,cached_prompt_tokens,cache_write_tokens,completion_tokens,reasoning_tokens,web_search_requests,total_tokens,memory_tokens,summary_tokens,prompt_cost,cache_read_cost,cache_write_cost,completion_cost,reasoning_cost,request_cost,web_search_cost,total_cost,api_cost,success,error_message\n");
+    let mut csv = String::from("timestamp,session_id,character_name,model_name,provider_label,operation_type,prompt_tokens,cached_prompt_tokens,cache_write_tokens,completion_tokens,reasoning_tokens,image_tokens,web_search_requests,total_tokens,memory_tokens,summary_tokens,input_image_count,output_image_count,prompt_cost,cache_read_cost,cache_write_cost,completion_cost,reasoning_cost,request_cost,web_search_cost,total_cost,api_cost,success,error_message\n");
 
     for record in records {
+        let input_image_count = parse_metadata_u64(&record.metadata, &["input_image_count"]).unwrap_or(0);
+        let output_image_count =
+            parse_metadata_u64(&record.metadata, &["output_image_count"]).unwrap_or(0);
         let line = format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             record.timestamp,
-            record.session_id,
-            record.character_name,
-            record.model_name,
-            record.provider_label,
+            csv_escape(&record.session_id),
+            csv_escape(&record.character_name),
+            csv_escape(&record.model_name),
+            csv_escape(&record.provider_label),
             record.operation_type,
             record.prompt_tokens.unwrap_or(0),
             record.cached_prompt_tokens.unwrap_or(0),
             record.cache_write_tokens.unwrap_or(0),
             record.completion_tokens.unwrap_or(0),
             record.reasoning_tokens.unwrap_or(0),
+            record.image_tokens.unwrap_or(0),
             record.web_search_requests.unwrap_or(0),
             record.total_tokens.unwrap_or(0),
             record.memory_tokens.unwrap_or(0),
             record.summary_tokens.unwrap_or(0),
+            input_image_count,
+            output_image_count,
             record.cost.as_ref().map(|c| c.prompt_cost).unwrap_or(0.0),
             record
                 .cost
@@ -708,7 +755,7 @@ fn build_csv(records: &[RequestUsage]) -> String {
             record.cost.as_ref().map(|c| c.total_cost).unwrap_or(0.0),
             record.api_cost.unwrap_or(0.0),
             if record.success { "yes" } else { "no" },
-            record.error_message.as_deref().unwrap_or("")
+            csv_escape(record.error_message.as_deref().unwrap_or(""))
         );
         csv.push_str(&line);
     }

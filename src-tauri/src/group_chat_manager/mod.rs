@@ -837,7 +837,7 @@ async fn record_group_usage(
         model_id: model.id.clone(),
         model_name: model.name.clone(),
         provider_id: provider_cred.provider_id.clone(),
-        provider_label: provider_cred.provider_id.clone(),
+        provider_label: provider_cred.label.clone(),
         operation_type,
         finish_reason: usage_info
             .finish_reason
@@ -927,7 +927,7 @@ async fn record_decision_maker_usage(
         model_id: model.id.clone(),
         model_name: model.name.clone(),
         provider_id: provider_cred.provider_id.clone(),
-        provider_label: provider_cred.provider_id.clone(),
+        provider_label: provider_cred.label.clone(),
         operation_type: UsageOperationType::GroupChatDecisionMaker,
         finish_reason: usage_info
             .finish_reason

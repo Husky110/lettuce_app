@@ -16,6 +16,10 @@ export function formatCompactNumber(value: number): string {
   return value.toString();
 }
 
+export function getEffectiveTotalCost(request: RequestUsage): number {
+  return request.cost?.totalCost ?? request.apiCost ?? 0;
+}
+
 export function getRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
@@ -41,6 +45,8 @@ export function getOperationColor(type: string): string {
     summary: "var(--color-warning)",
     memory_manager: "var(--color-accent)",
     image_generation: "var(--color-accent)",
+    ai_creator: "var(--color-secondary)",
+    reply_helper: "var(--color-warning)",
     group_chat_message: "var(--color-info)",
     group_chat_regenerate: "var(--color-secondary)",
     group_chat_continue: "#22d3ee",
@@ -57,6 +63,8 @@ export function getOperationLabel(type: string): string {
     summary: "Summary",
     memory_manager: "Memory",
     image_generation: "Image Gen",
+    ai_creator: "AI Creator",
+    reply_helper: "Reply Helper",
     group_chat_message: "Group Chat",
     group_chat_regenerate: "Group Regen",
     group_chat_continue: "Group Continue",
@@ -104,6 +112,11 @@ export function ActivityItem({
 }) {
   const clickable = Boolean(onClick);
   const opColor = getOperationColor(request.operationType);
+  const outputImageCount = parseMetadataNumber(request.metadata, "output_image_count");
+  const usageLabel =
+    outputImageCount && (request.totalTokens ?? 0) === 0
+      ? `${formatCompactNumber(outputImageCount)} image${outputImageCount === 1 ? "" : "s"}`
+      : `${formatCompactNumber(request.totalTokens || 0)} tokens`;
 
   // Robust background color calculation that works with both hex and var()
   const bgStyle = opColor.includes("var")
@@ -142,14 +155,14 @@ export function ActivityItem({
           </span>
         </div>
         <div className={cn(typography.caption.size, "mt-0.5 flex items-center gap-2 text-fg/40")}>
-          <span>{formatCompactNumber(request.totalTokens || 0)} tokens</span>
+          <span>{usageLabel}</span>
           <span className="opacity-30">·</span>
           <span>{getRelativeTime(request.timestamp)}</span>
         </div>
       </div>
       <div className="shrink-0 text-right">
         <p className={cn(typography.body.size, typography.body.weight, "text-accent")}>
-          {formatCurrency(request.cost?.totalCost || 0)}
+          {formatCurrency(getEffectiveTotalCost(request))}
         </p>
         <p className={cn(typography.overline.size, "mt-0.5 truncate text-fg/30")}>
           {request.modelName}
@@ -185,6 +198,8 @@ export function UsageRequestDetailSheet({
     request?.apiCost ??
     parseMetadataNumber(request?.metadata, "api_cost") ??
     parseMetadataNumber(request?.metadata, "openrouter_api_cost");
+  const inputImageCount = parseMetadataNumber(request?.metadata, "input_image_count");
+  const outputImageCount = parseMetadataNumber(request?.metadata, "output_image_count");
 
   return (
     <BottomMenu
@@ -235,8 +250,15 @@ export function UsageRequestDetailSheet({
                 label="Reasoning"
                 value={(request.reasoningTokens ?? 0).toLocaleString()}
               />
+              <DetailStat label="Image" value={(request.imageTokens ?? 0).toLocaleString()} />
               <DetailStat label="Memory" value={(request.memoryTokens ?? 0).toLocaleString()} />
               <DetailStat label="Summary" value={(request.summaryTokens ?? 0).toLocaleString()} />
+              {inputImageCount !== null && (
+                <DetailStat label="Input Images" value={inputImageCount.toLocaleString()} />
+              )}
+              {outputImageCount !== null && (
+                <DetailStat label="Output Images" value={outputImageCount.toLocaleString()} />
+              )}
               {cachedPromptTokens !== null && (
                 <DetailStat label="Cached Prompt" value={cachedPromptTokens.toLocaleString()} />
               )}
@@ -266,7 +288,7 @@ export function UsageRequestDetailSheet({
                 label="Completion"
                 value={formatCurrency(request.cost?.completionCost || 0)}
               />
-              <DetailStat label="Total" value={formatCurrency(request.cost?.totalCost || 0)} />
+              <DetailStat label="Total" value={formatCurrency(getEffectiveTotalCost(request))} />
             </div>
             {(request.cost?.cacheReadCost ||
               request.cost?.cacheWriteCost ||

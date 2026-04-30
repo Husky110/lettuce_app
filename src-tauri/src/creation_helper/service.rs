@@ -1500,7 +1500,7 @@ fn record_image_generation_usage(
         model_name: model_name.to_string(),
         provider_id: provider_id.to_string(),
         provider_label: provider_label.to_string(),
-        operation_type: UsageOperationType::AICreator,
+        operation_type: UsageOperationType::ImageGeneration,
         finish_reason: None,
         prompt_tokens: None,
         completion_tokens: None,

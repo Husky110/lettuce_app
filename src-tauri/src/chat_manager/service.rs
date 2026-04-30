@@ -501,7 +501,7 @@ pub async fn record_usage_if_available(
         model_id: model.id.clone(),
         model_name: model.name.clone(),
         provider_id: credential.provider_id.clone(),
-        provider_label: credential.provider_id.clone(),
+        provider_label: credential.label.clone(),
         operation_type,
         finish_reason: usage_info
             .finish_reason
@@ -602,7 +602,7 @@ pub fn record_failed_usage(
         model_id: model.id.clone(),
         model_name: model.name.clone(),
         provider_id: credential.provider_id.clone(),
-        provider_label: credential.provider_id.clone(),
+        provider_label: credential.label.clone(),
         operation_type,
         finish_reason: usage_info
             .finish_reason

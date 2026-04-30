@@ -174,8 +174,10 @@ pub struct UsageStats {
 pub struct ProviderStats {
     pub total_requests: u64,
     pub successful_requests: u64,
+    pub failed_requests: u64,
     pub total_tokens: u64,
     pub total_cost: f64,
+    pub average_cost_per_request: f64,
 }
 
 impl ProviderStats {
@@ -183,8 +185,10 @@ impl ProviderStats {
         Self {
             total_requests: 0,
             successful_requests: 0,
+            failed_requests: 0,
             total_tokens: 0,
             total_cost: 0.0,
+            average_cost_per_request: 0.0,
         }
     }
 }
@@ -195,8 +199,10 @@ pub struct ModelStats {
     pub provider_id: String,
     pub total_requests: u64,
     pub successful_requests: u64,
+    pub failed_requests: u64,
     pub total_tokens: u64,
     pub total_cost: f64,
+    pub average_cost_per_request: f64,
 }
 
 impl ModelStats {
@@ -205,8 +211,10 @@ impl ModelStats {
             provider_id: provider_id.to_string(),
             total_requests: 0,
             successful_requests: 0,
+            failed_requests: 0,
             total_tokens: 0,
             total_cost: 0.0,
+            average_cost_per_request: 0.0,
         }
     }
 }
@@ -216,8 +224,10 @@ impl ModelStats {
 pub struct CharacterStats {
     pub total_requests: u64,
     pub successful_requests: u64,
+    pub failed_requests: u64,
     pub total_tokens: u64,
     pub total_cost: f64,
+    pub average_cost_per_request: f64,
 }
 
 impl CharacterStats {
@@ -225,8 +235,10 @@ impl CharacterStats {
         Self {
             total_requests: 0,
             successful_requests: 0,
+            failed_requests: 0,
             total_tokens: 0,
             total_cost: 0.0,
+            average_cost_per_request: 0.0,
         }
     }
 }
