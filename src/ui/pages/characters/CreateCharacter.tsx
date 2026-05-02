@@ -28,6 +28,54 @@ import {
 } from "../../components/AvatarPicker/librarySelection";
 
 const CREATE_CHARACTER_DRAFT_KEY = "create-character-draft";
+const MAX_DRAFT_INLINE_IMAGE_LENGTH = 200_000;
+
+function isInlineImageData(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith("data:image");
+}
+
+function keepDraftInlineImage(value: string | null | undefined): string {
+  if (!isInlineImageData(value)) {
+    return typeof value === "string" ? value : "";
+  }
+
+  return value.length <= MAX_DRAFT_INLINE_IMAGE_LENGTH ? value : "";
+}
+
+function buildCompactCreateCharacterDraft(draft: Record<string, unknown>): Record<string, unknown> {
+  const avatarPath = typeof draft.avatarPath === "string" ? draft.avatarPath : "";
+  const avatarRoundPath =
+    typeof draft.avatarRoundPath === "string" ? draft.avatarRoundPath : null;
+  const backgroundImagePath =
+    typeof draft.backgroundImagePath === "string" ? draft.backgroundImagePath : "";
+
+  const safeAvatarRoundPath = keepDraftInlineImage(avatarRoundPath);
+  const safeAvatarPath = keepDraftInlineImage(avatarPath);
+  const safeBackgroundImagePath = keepDraftInlineImage(backgroundImagePath);
+
+  return {
+    ...draft,
+    avatarPath: safeAvatarRoundPath || safeAvatarPath,
+    avatarRoundPath: safeAvatarRoundPath || null,
+    backgroundImagePath: safeBackgroundImagePath,
+  };
+}
+
+function persistCreateCharacterDraft(draft: Record<string, unknown>) {
+  const writeDraft = (value: Record<string, unknown>) => {
+    sessionStorage.setItem(CREATE_CHARACTER_DRAFT_KEY, JSON.stringify(value));
+  };
+
+  const compactDraft = buildCompactCreateCharacterDraft(draft);
+
+  try {
+    writeDraft(compactDraft);
+    return;
+  } catch (error) {
+    console.warn("Failed to persist create character draft, clearing saved draft.", error);
+    sessionStorage.removeItem(CREATE_CHARACTER_DRAFT_KEY);
+  }
+}
 
 function loadCreateCharacterDraft(locationState: unknown, returnPath: string) {
   if (
@@ -186,7 +234,7 @@ export function CreateCharacterPage() {
       defaultSceneId: state.defaultSceneId,
     };
 
-    sessionStorage.setItem(CREATE_CHARACTER_DRAFT_KEY, JSON.stringify(draft));
+    persistCreateCharacterDraft(draft);
   }, [
     state.loadingModels,
     state.loadingTemplates,

@@ -136,17 +136,6 @@ function getVariantDisplayLabel(item: ImageLibraryItem): string {
   return extension ? extension.toUpperCase() : item.mimeType;
 }
 
-function getDisplayTitle(group: ImageLibraryGroup): string {
-  const { item, variants } = group;
-  if (variants.length > 1) {
-    return item.width && item.height
-      ? `${item.width} x ${item.height} image`
-      : "Image";
-  }
-
-  return item.filename.length > 28 ? `${item.filename.slice(0, 28)}...` : item.filename;
-}
-
 function getGroupingKey(item: ImageLibraryItem): string {
   return item.groupKey;
 }
