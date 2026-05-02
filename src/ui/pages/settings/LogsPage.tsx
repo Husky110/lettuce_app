@@ -1041,26 +1041,12 @@ function LogsPageInner() {
         logger.warn("Failed to read database size", err);
       }
 
-      let embeddingTest;
+      let embeddingTest: Awaited<ReturnType<typeof runEmbeddingTest>> | null = null;
+      let embeddingTestError: string | null = null;
       try {
         embeddingTest = await runEmbeddingTest();
       } catch (err: any) {
-        embeddingTest = {
-          success: false,
-          message: err?.message || "Embedding test failed",
-          scores: [],
-          modelInfo: embeddingInfo.installed
-            ? {
-                version: embeddingInfo.version ?? "unknown",
-                maxTokens: embeddingInfo.maxTokens ?? 0,
-                embeddingDimensions: 0,
-              }
-            : {
-                version: "not installed",
-                maxTokens: 0,
-                embeddingDimensions: 0,
-              },
-        };
+        embeddingTestError = err?.message || "Embedding test failed";
       }
 
       const dynamicSettings = settings?.advancedSettings?.dynamicMemory;
@@ -1145,20 +1131,29 @@ function LogsPageInner() {
       lines.push(`- Max tokens: ${embeddingInfo.maxTokens ?? "unknown"}`);
       lines.push("");
       lines.push("Embedding Test");
-      lines.push(`- Success: ${embeddingTest.success ? "yes" : "no"}`);
-      lines.push(`- Message: ${embeddingTest.message}`);
-      if (embeddingTest.scores.length > 0) {
-        lines.push("- Scores:");
-        for (const score of embeddingTest.scores) {
-          const scoreValue = Number.isFinite(score.similarityScore)
-            ? score.similarityScore.toFixed(3)
-            : String(score.similarityScore);
-          lines.push(
-            `  - ${score.pairName}: ${scoreValue} (expected ${score.expected}) ${score.passed ? "PASS" : "FAIL"}`,
-          );
-        }
+      if (!embeddingTest) {
+        lines.push(`- Failed to run: ${embeddingTestError ?? "unknown error"}`);
       } else {
-        lines.push("- Scores: none");
+        lines.push(`- Success: ${embeddingTest.success ? "yes" : "no"}`);
+        lines.push(`- Message: ${embeddingTest.message}`);
+        lines.push(
+          `- Health: ${embeddingTest.health.passed ? "PASS" : "FAIL"} (identity ${embeddingTest.health.identityCosine.toFixed(4)})`,
+        );
+        lines.push(
+          `- Retrieval: ${embeddingTest.retrieval.passed ? "PASS" : "FAIL"} (top-1 ${(embeddingTest.retrieval.top1Rate * 100).toFixed(0)}%, top-3 ${(embeddingTest.retrieval.top3Rate * 100).toFixed(0)}%, mrr ${embeddingTest.retrieval.mrr.toFixed(2)})`,
+        );
+        lines.push(
+          `- Separation: ${embeddingTest.separation.passed ? "PASS" : "FAIL"} (related ${embeddingTest.separation.relatedAvg.toFixed(3)}, unrelated ${embeddingTest.separation.unrelatedAvg.toFixed(3)}, margin ${embeddingTest.separation.margin.toFixed(3)})`,
+        );
+        if (embeddingTest.retrieval.cases.length > 0) {
+          lines.push("- Retrieval cases:");
+          for (const c of embeddingTest.retrieval.cases) {
+            const rank = c.rank > 0 ? `#${c.rank}` : "n/a";
+            lines.push(
+              `  - ${c.name}: rank ${rank} ${c.correct ? "PASS" : "FAIL"} (top ${c.topScore.toFixed(3)}, expected ${c.correctScore.toFixed(3)})`,
+            );
+          }
+        }
       }
 
       setDiagnosticsText(lines.join("\n"));

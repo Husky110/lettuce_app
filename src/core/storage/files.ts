@@ -137,52 +137,104 @@ export const storageBridge = {
     invoke<{
       success: boolean;
       message: string;
-      scores: Array<{
-        pairName: string;
-        textA: string;
-        textB: string;
-        similarityScore: number;
-        expected: string;
-        passed: boolean;
-        category: string;
-      }>;
       modelInfo: {
         version: string;
         maxTokens: number;
         embeddingDimensions: number;
       };
+      health: {
+        loadOk: boolean;
+        identityCosine: number;
+        passed: boolean;
+      };
+      retrieval: {
+        caseCount: number;
+        top1Rate: number;
+        top3Rate: number;
+        mrr: number;
+        passed: boolean;
+        cases: Array<{
+          name: string;
+          query: string;
+          expectedId: string;
+          expectedText: string;
+          rank: number;
+          correct: boolean;
+          topId: string;
+          topText: string;
+          topScore: number;
+          correctScore: number;
+        }>;
+      };
+      separation: {
+        relatedAvg: number;
+        unrelatedAvg: number;
+        margin: number;
+        passed: boolean;
+        relatedPairs: Array<{
+          name: string;
+          textA: string;
+          textB: string;
+          score: number;
+        }>;
+        unrelatedPairs: Array<{
+          name: string;
+          textA: string;
+          textB: string;
+          score: number;
+        }>;
+      };
     }>("run_embedding_test"),
   runEmbeddingDevBenchmark: () =>
     invoke<{
       maxTokensUsed: number;
-      v2: {
-        version: string;
-        sampleCount: number;
-        averageMs: number;
-        p95Ms: number;
-        minMs: number;
-        maxMs: number;
-      };
+      configuredV4Dimensions: number;
       v3: {
         version: string;
+        label: string;
+        embeddingDimensions: number;
         sampleCount: number;
         averageMs: number;
         p95Ms: number;
         minMs: number;
         maxMs: number;
+        relatedAverage: number;
+        unrelatedAverage: number;
+        separationMargin: number;
+        retrievalTop1: number;
+        retrievalMrr: number;
+        pairScores: Array<{
+          pairName: string;
+          category: string;
+          similarity: number;
+        }>;
       };
-      pairDeltas: Array<{
-        pairName: string;
-        v2Similarity: number;
-        v3Similarity: number;
-        delta: number;
-      }>;
-      averageSpeedupV3VsV2: number;
+      v4: {
+        version: string;
+        label: string;
+        embeddingDimensions: number;
+        sampleCount: number;
+        averageMs: number;
+        p95Ms: number;
+        minMs: number;
+        maxMs: number;
+        relatedAverage: number;
+        unrelatedAverage: number;
+        separationMargin: number;
+        retrievalTop1: number;
+        retrievalMrr: number;
+        pairScores: Array<{
+          pairName: string;
+          category: string;
+          similarity: number;
+        }>;
+      };
+      averageSpeedupV4VsV3: number;
     }>("run_embedding_dev_benchmark"),
   compareCustomTexts: (textA: string, textB: string) =>
     invoke<number>("compare_custom_texts", { textA, textB }),
   deleteEmbeddingModel: () => invoke("delete_embedding_model") as Promise<void>,
-  deleteEmbeddingModelVersion: (version: "v1" | "v2" | "v3") =>
+  deleteEmbeddingModelVersion: (version: "v1" | "v2" | "v3" | "v4") =>
     invoke("delete_embedding_model_version", { version }) as Promise<void>,
 
   // Companion analysis models (emotion / NER / router) — installed individually
