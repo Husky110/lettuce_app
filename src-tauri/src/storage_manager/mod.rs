@@ -10,6 +10,7 @@ pub mod importer;
 pub mod legacy;
 pub mod lorebook;
 pub mod media;
+pub mod memory_embeddings;
 pub mod models;
 pub mod personas;
 pub mod providers;

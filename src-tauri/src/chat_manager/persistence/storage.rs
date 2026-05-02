@@ -3,6 +3,7 @@ use tauri::AppHandle;
 
 use crate::storage_manager::{
     characters::characters_list_typed,
+    memory_embeddings::{self, SessionKind},
     personas::personas_list_typed,
     sessions::{
         messages_list_internal, messages_list_pinned_internal, messages_upsert_batch_internal,
@@ -255,6 +256,22 @@ pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>
     let Some(mut session) = session_get_meta_internal(app, session_id)? else {
         return Ok(None);
     };
+
+    // Memory embeddings: prefer the new normalised table when it has rows for
+    // this session. Sessions that have never been saved under the new schema
+    // still read from the legacy JSON column populated by
+    // `session_get_meta_internal`; the next `save_session` will migrate them.
+    let new_table_count = memory_embeddings::count_for_session_app(
+        app,
+        session_id,
+        SessionKind::Session,
+    )
+    .unwrap_or(0);
+    if new_table_count > 0 {
+        session.memory_embeddings =
+            memory_embeddings::load_for_session_app(app, session_id, SessionKind::Session)?;
+    }
+
     let recent = messages_list_internal(app, session_id, 120, None, None)?;
     let pinned = messages_list_pinned_internal(app, session_id)?;
 
@@ -273,8 +290,22 @@ pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>
 }
 
 pub fn save_session(app: &AppHandle, session: &Session) -> Result<(), String> {
+    // Persist embeddings to the new normalised table first. If this fails, the
+    // legacy JSON column still holds the previous state, so the session is
+    // recoverable.
+    memory_embeddings::replace_all_app(
+        app,
+        &session.id,
+        SessionKind::Session,
+        &session.memory_embeddings,
+    )?;
+
     let mut meta = session.clone();
     meta.messages = Vec::new();
+    // Strip embeddings from the meta clone so the legacy JSON column on
+    // `sessions` stays at `[]`, avoiding the expensive serde_json round-trip
+    // on every turn.
+    meta.memory_embeddings = Vec::new();
     session_upsert_meta_internal(app, &meta)?;
 
     if let Some(last) = session.messages.last() {

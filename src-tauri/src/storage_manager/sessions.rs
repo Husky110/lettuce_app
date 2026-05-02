@@ -24,6 +24,62 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "other",
 ];
 
+/// Read the current memory embeddings for a single-character session,
+/// preferring the normalised `memory_embeddings` table when populated.
+/// Falls back to the legacy JSON column for sessions that haven't been saved
+/// under the new schema yet.
+fn read_session_embeddings_with_fallback(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<Vec<MemoryEmbedding>, String> {
+    let count = crate::storage_manager::memory_embeddings::count_for_session(
+        conn,
+        session_id,
+        crate::storage_manager::memory_embeddings::SessionKind::Session,
+    )
+    .unwrap_or(0);
+    if count > 0 {
+        return crate::storage_manager::memory_embeddings::load_for_session(
+            conn,
+            session_id,
+            crate::storage_manager::memory_embeddings::SessionKind::Session,
+        );
+    }
+    let json: String = conn
+        .query_row(
+            "SELECT memory_embeddings FROM sessions WHERE id = ?",
+            params![session_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        .unwrap_or_else(|| "[]".to_string());
+    Ok(serde_json::from_str(&json).unwrap_or_default())
+}
+
+/// Persist memory embeddings for a single-character session through the new
+/// table and clear the legacy JSON column. Caller is responsible for any other
+/// column updates (e.g. `updated_at`, `memories`).
+fn write_session_embeddings_through_table(
+    conn: &mut rusqlite::Connection,
+    session_id: &str,
+    embeddings: &[MemoryEmbedding],
+) -> Result<(), String> {
+    crate::storage_manager::memory_embeddings::replace_all(
+        conn,
+        session_id,
+        crate::storage_manager::memory_embeddings::SessionKind::Session,
+        embeddings,
+    )?;
+    let now = now_ms() as i64;
+    conn.execute(
+        "UPDATE sessions SET memory_embeddings = '[]', updated_at = ? WHERE id = ?",
+        params![now, session_id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(())
+}
+
 fn normalize_memory_category(category: Option<String>) -> Result<Option<String>, String> {
     let normalized = category
         .map(|c| c.trim().to_string())
@@ -1131,8 +1187,29 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
 
     let memories: JsonValue =
         serde_json::from_str(&memories_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
-    let memory_embeddings: JsonValue =
-        serde_json::from_str(&memory_embeddings_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
+    // Prefer the normalised `memory_embeddings` table when populated; fall back
+    // to the legacy JSON column for sessions that haven't been saved under the
+    // new schema yet.
+    let memory_embeddings: JsonValue = {
+        let new_table_count = crate::storage_manager::memory_embeddings::count_for_session(
+            conn,
+            id,
+            crate::storage_manager::memory_embeddings::SessionKind::Session,
+        )
+        .unwrap_or(0);
+        if new_table_count > 0 {
+            let typed = crate::storage_manager::memory_embeddings::load_for_session(
+                conn,
+                id,
+                crate::storage_manager::memory_embeddings::SessionKind::Session,
+            )
+            .unwrap_or_default();
+            serde_json::to_value(typed).unwrap_or_else(|_| JsonValue::Array(vec![]))
+        } else {
+            serde_json::from_str(&memory_embeddings_json)
+                .unwrap_or_else(|_| JsonValue::Array(vec![]))
+        }
+    };
     let memory_tool_events: JsonValue =
         serde_json::from_str(&memory_tool_events_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
 
@@ -1353,8 +1430,28 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
     // Parse memories JSON array
     let memories: JsonValue =
         serde_json::from_str(&memories_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
-    let memory_embeddings: JsonValue =
-        serde_json::from_str(&memory_embeddings_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
+    // Prefer the normalised `memory_embeddings` table when populated; fall back
+    // to the legacy JSON column otherwise.
+    let memory_embeddings: JsonValue = {
+        let new_table_count = crate::storage_manager::memory_embeddings::count_for_session(
+            conn,
+            id,
+            crate::storage_manager::memory_embeddings::SessionKind::Session,
+        )
+        .unwrap_or(0);
+        if new_table_count > 0 {
+            let typed = crate::storage_manager::memory_embeddings::load_for_session(
+                conn,
+                id,
+                crate::storage_manager::memory_embeddings::SessionKind::Session,
+            )
+            .unwrap_or_default();
+            serde_json::to_value(typed).unwrap_or_else(|_| JsonValue::Array(vec![]))
+        } else {
+            serde_json::from_str(&memory_embeddings_json)
+                .unwrap_or_else(|_| JsonValue::Array(vec![]))
+        }
+    };
     let memory_tool_events: JsonValue =
         serde_json::from_str(&memory_tool_events_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
 
@@ -2815,6 +2912,12 @@ pub fn session_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
             );
             e.to_string()
         })?;
+    // Cascade-delete memory embeddings (the new table has no FK constraint).
+    let _ = crate::storage_manager::memory_embeddings::delete_all_for_session_app(
+        &app,
+        &id,
+        crate::storage_manager::memory_embeddings::SessionKind::Session,
+    );
     Ok(())
 }
 
@@ -2943,25 +3046,24 @@ pub async fn session_add_memory(
         "session_add_memory",
         format!("Adding memory to session {}", session_id),
     );
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
 
-    // Read current memories
-    let (current_memories_json, current_embeddings_json): (String, String) = conn
+    // Read current memories (legacy column) and embeddings (new table or
+    // legacy fallback).
+    let current_memories_json: String = conn
         .query_row(
-            "SELECT memories, memory_embeddings FROM sessions WHERE id = ?",
+            "SELECT memories FROM sessions WHERE id = ?",
             params![&session_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .optional()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-        .unwrap_or_else(|| ("[]".to_string(), "[]".to_string()));
+        .unwrap_or_else(|| "[]".to_string());
 
     let mut memories: Vec<String> =
         serde_json::from_str(&current_memories_json).unwrap_or_else(|_| vec![]);
-    let mut memory_embeddings: Vec<JsonValue> =
-        serde_json::from_str(&current_embeddings_json).unwrap_or_else(|_| vec![]);
+    let mut memory_embeddings = read_session_embeddings_with_fallback(&conn, &session_id)?;
 
-    // Add new memory (clone so we can still use `memory` for the embedding)
     memories.push(memory.clone());
 
     // Compute embedding (best-effort)
@@ -2977,29 +3079,49 @@ pub async fn session_add_memory(
         }
     };
 
-    // Count tokens (best-effort)
     let token_count = crate::embedding::tokenizer::count_tokens(&app, &memory).unwrap_or(0);
     let normalized_category = normalize_memory_category(memory_category)?;
+    let (embedding_source_version, embedding_dimensions) =
+        embedding::resolve_active_embedding_signature(&app)
+            .unwrap_or_else(|_| ("v3".to_string(), 512));
 
-    memory_embeddings.push(serde_json::json!({
-        "id": uuid::Uuid::new_v4().to_string(),
-        "text": memory.clone(),
-        "embedding": embedding,
-        "createdAt": now_ms() as i64,
-        "tokenCount": token_count,
-        "category": normalized_category,
-    }));
+    let now_u = now_ms();
+    memory_embeddings.push(MemoryEmbedding {
+        id: uuid::Uuid::new_v4().to_string(),
+        text: memory.clone(),
+        embedding,
+        created_at: now_u,
+        token_count: token_count as u32,
+        is_cold: false,
+        last_accessed_at: now_u,
+        importance_score: 1.0,
+        persistence_importance: 1.0,
+        prompt_importance: 1.0,
+        volatility: 0.4,
+        is_pinned: false,
+        access_count: 0,
+        embedding_source_version: Some(embedding_source_version),
+        embedding_dimensions: Some(embedding_dimensions),
+        match_score: None,
+        category: normalized_category,
+        canonical_entities: Vec::new(),
+        fact_signature: None,
+        fact_polarity: None,
+        source_role: None,
+        source_message_id: None,
+        superseded_by: None,
+        superseded_at: None,
+        supersedes: Vec::new(),
+    });
 
-    // Save back
+    // Save back: embeddings via new table, memories + updated_at via legacy.
+    write_session_embeddings_through_table(&mut *conn, &session_id, &memory_embeddings)?;
     let new_memories_json = serde_json::to_string(&memories)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let new_embeddings_json = serde_json::to_string(&memory_embeddings)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let now = now_ms() as i64;
-
     conn.execute(
-        "UPDATE sessions SET memories = ?, memory_embeddings = ?, updated_at = ? WHERE id = ?",
-        params![new_memories_json, new_embeddings_json, now, &session_id],
+        "UPDATE sessions SET memories = ?, updated_at = ? WHERE id = ?",
+        params![new_memories_json, now, &session_id],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
@@ -3017,42 +3139,34 @@ pub fn session_remove_memory(
     session_id: String,
     memory_index: usize,
 ) -> Result<Option<String>, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
 
-    // Read current memories
-    let (current_memories_json, current_embeddings_json): (String, String) = conn
+    let current_memories_json: String = conn
         .query_row(
-            "SELECT memories, memory_embeddings FROM sessions WHERE id = ?",
+            "SELECT memories FROM sessions WHERE id = ?",
             params![&session_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .optional()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-        .unwrap_or_else(|| ("[]".to_string(), "[]".to_string()));
+        .unwrap_or_else(|| "[]".to_string());
 
     let mut memories: Vec<String> =
         serde_json::from_str(&current_memories_json).unwrap_or_else(|_| vec![]);
-    let mut memory_embeddings: Vec<JsonValue> =
-        serde_json::from_str(&current_embeddings_json).unwrap_or_else(|_| vec![]);
+    let mut memory_embeddings = read_session_embeddings_with_fallback(&conn, &session_id)?;
 
-    // Remove memory at index
     if memory_index < memories.len() {
         memories.remove(memory_index);
-
         if memory_index < memory_embeddings.len() {
             memory_embeddings.remove(memory_index);
         }
-
-        // Save back
+        write_session_embeddings_through_table(&mut *conn, &session_id, &memory_embeddings)?;
         let new_memories_json = serde_json::to_string(&memories)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        let new_embeddings_json = serde_json::to_string(&memory_embeddings)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let now = now_ms() as i64;
-
         conn.execute(
-            "UPDATE sessions SET memories = ?, memory_embeddings = ?, updated_at = ? WHERE id = ?",
-            params![new_memories_json, new_embeddings_json, now, &session_id],
+            "UPDATE sessions SET memories = ?, updated_at = ? WHERE id = ?",
+            params![new_memories_json, now, &session_id],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
@@ -3073,30 +3187,26 @@ pub async fn session_update_memory(
     new_memory: String,
     new_category: Option<String>,
 ) -> Result<Option<String>, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
 
-    // Read current memories
-    let (current_memories_json, current_embeddings_json): (String, String) = conn
+    let current_memories_json: String = conn
         .query_row(
-            "SELECT memories, memory_embeddings FROM sessions WHERE id = ?",
+            "SELECT memories FROM sessions WHERE id = ?",
             params![&session_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .optional()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-        .unwrap_or_else(|| ("[]".to_string(), "[]".to_string()));
+        .unwrap_or_else(|| "[]".to_string());
 
     let mut memories: Vec<String> =
         serde_json::from_str(&current_memories_json).unwrap_or_else(|_| vec![]);
-    let mut memory_embeddings: Vec<JsonValue> =
-        serde_json::from_str(&current_embeddings_json).unwrap_or_else(|_| vec![]);
+    let mut memory_embeddings = read_session_embeddings_with_fallback(&conn, &session_id)?;
 
-    // Update memory at index
     if memory_index < memories.len() {
         memories[memory_index] = new_memory.clone();
         let normalized_category = normalize_memory_category(new_category)?;
 
-        // Recompute embedding
         let embedding = match embedding::compute_embedding(app.clone(), new_memory.clone()).await {
             Ok(vec) => vec,
             Err(err) => {
@@ -3108,49 +3218,55 @@ pub async fn session_update_memory(
                 Vec::new()
             }
         };
+        let (embedding_source_version, embedding_dimensions) =
+            embedding::resolve_active_embedding_signature(&app)
+                .unwrap_or_else(|_| ("v3".to_string(), 512));
 
+        let now_u = now_ms();
         if memory_index < memory_embeddings.len() {
-            if let Some(obj) = memory_embeddings
-                .get_mut(memory_index)
-                .and_then(|v| v.as_object_mut())
-            {
-                obj.insert(
-                    "text".into(),
-                    JsonValue::String(memories[memory_index].clone()),
-                );
-                obj.insert(
-                    "embedding".into(),
-                    JsonValue::Array(embedding.iter().map(|f| JsonValue::from(*f)).collect()),
-                );
-                match normalized_category.as_ref() {
-                    Some(category) => {
-                        obj.insert("category".into(), JsonValue::String(category.clone()));
-                    }
-                    None => {
-                        obj.remove("category");
-                    }
-                }
-            }
+            let m = &mut memory_embeddings[memory_index];
+            m.text = memories[memory_index].clone();
+            m.embedding = embedding;
+            m.embedding_source_version = Some(embedding_source_version);
+            m.embedding_dimensions = Some(embedding_dimensions);
+            m.category = normalized_category;
         } else {
-            memory_embeddings.push(serde_json::json!({
-                "id": uuid::Uuid::new_v4().to_string(),
-                "text": memories[memory_index].clone(),
-                "embedding": embedding,
-                "createdAt": now_ms() as i64,
-                "category": normalized_category,
-            }));
+            memory_embeddings.push(MemoryEmbedding {
+                id: uuid::Uuid::new_v4().to_string(),
+                text: memories[memory_index].clone(),
+                embedding,
+                created_at: now_u,
+                token_count: 0,
+                is_cold: false,
+                last_accessed_at: now_u,
+                importance_score: 1.0,
+                persistence_importance: 1.0,
+                prompt_importance: 1.0,
+                volatility: 0.4,
+                is_pinned: false,
+                access_count: 0,
+                embedding_source_version: Some(embedding_source_version),
+                embedding_dimensions: Some(embedding_dimensions),
+                match_score: None,
+                category: normalized_category,
+                canonical_entities: Vec::new(),
+                fact_signature: None,
+                fact_polarity: None,
+                source_role: None,
+                source_message_id: None,
+                superseded_by: None,
+                superseded_at: None,
+                supersedes: Vec::new(),
+            });
         }
 
-        // Save back
+        write_session_embeddings_through_table(&mut *conn, &session_id, &memory_embeddings)?;
         let new_memories_json = serde_json::to_string(&memories)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        let new_embeddings_json = serde_json::to_string(&memory_embeddings)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let now = now_ms() as i64;
-
         conn.execute(
-            "UPDATE sessions SET memories = ?, memory_embeddings = ?, updated_at = ? WHERE id = ?",
-            params![new_memories_json, new_embeddings_json, now, &session_id],
+            "UPDATE sessions SET memories = ?, updated_at = ? WHERE id = ?",
+            params![new_memories_json, now, &session_id],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
@@ -3169,51 +3285,21 @@ pub fn session_toggle_memory_pin(
     session_id: String,
     memory_index: usize,
 ) -> Result<Option<String>, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
 
-    // Read current memory embeddings
-    let current_embeddings_json: String = conn
-        .query_row(
-            "SELECT memory_embeddings FROM sessions WHERE id = ?",
-            params![&session_id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-        .unwrap_or_else(|| "[]".to_string());
+    let mut memory_embeddings = read_session_embeddings_with_fallback(&conn, &session_id)?;
+    let now = now_ms();
 
-    let mut memory_embeddings: Vec<JsonValue> =
-        serde_json::from_str(&current_embeddings_json).unwrap_or_else(|_| vec![]);
-
-    let now = now_ms() as i64;
-
-    // Toggle pin status at index
     if memory_index < memory_embeddings.len() {
-        if let Some(obj) = memory_embeddings
-            .get_mut(memory_index)
-            .and_then(|v| v.as_object_mut())
-        {
-            let current_pinned = obj
-                .get("isPinned")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let next_pinned = !current_pinned;
-            obj.insert("isPinned".into(), JsonValue::Bool(next_pinned));
-            if next_pinned {
-                obj.insert("isCold".into(), JsonValue::Bool(false));
-                obj.insert("importanceScore".into(), JsonValue::from(1.0));
-                obj.insert("lastAccessedAt".into(), JsonValue::from(now));
-            }
+        let m = &mut memory_embeddings[memory_index];
+        let next_pinned = !m.is_pinned;
+        m.is_pinned = next_pinned;
+        if next_pinned {
+            m.is_cold = false;
+            m.importance_score = 1.0;
+            m.last_accessed_at = now;
         }
-
-        // Save back
-        let new_embeddings_json = serde_json::to_string(&memory_embeddings)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        conn.execute(
-            "UPDATE sessions SET memory_embeddings = ?, updated_at = ? WHERE id = ?",
-            params![new_embeddings_json, now, &session_id],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        write_session_embeddings_through_table(&mut *conn, &session_id, &memory_embeddings)?;
     }
 
     if let Some(json) = read_session_meta(&conn, &session_id)? {
@@ -3231,23 +3317,19 @@ pub fn session_set_memory_cold_state(
     memory_index: usize,
     is_cold: bool,
 ) -> Result<Option<String>, String> {
-    let conn = open_db(&app)?;
+    let mut conn = open_db(&app)?;
 
-    // Read current memories + embeddings so we can keep alignment.
-    let (current_memories_json, current_embeddings_json): (String, String) = conn
+    let memories_json: String = conn
         .query_row(
-            "SELECT memories, memory_embeddings FROM sessions WHERE id = ?",
+            "SELECT memories FROM sessions WHERE id = ?",
             params![&session_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .optional()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-        .unwrap_or_else(|| ("[]".to_string(), "[]".to_string()));
-
-    let memories: Vec<String> =
-        serde_json::from_str(&current_memories_json).unwrap_or_else(|_| vec![]);
-    let mut memory_embeddings: Vec<JsonValue> =
-        serde_json::from_str(&current_embeddings_json).unwrap_or_else(|_| vec![]);
+        .unwrap_or_else(|| "[]".to_string());
+    let memories: Vec<String> = serde_json::from_str(&memories_json).unwrap_or_default();
+    let mut memory_embeddings = read_session_embeddings_with_fallback(&conn, &session_id)?;
 
     if memory_index >= memories.len() {
         if let Some(json) = read_session_meta(&conn, &session_id)? {
@@ -3258,53 +3340,60 @@ pub fn session_set_memory_cold_state(
         return Ok(None);
     }
 
-    let now = now_ms() as i64;
+    let now_u = now_ms();
 
     // Ensure embeddings vector is long enough; fill missing entries with placeholders.
     while memory_embeddings.len() <= memory_index {
         let idx = memory_embeddings.len();
         let text = memories.get(idx).cloned().unwrap_or_default();
-        memory_embeddings.push(serde_json::json!({
-            "id": uuid::Uuid::new_v4().to_string(),
-            "text": text,
-            "embedding": [],
-            "createdAt": now,
-            "tokenCount": 0,
-        }));
+        memory_embeddings.push(MemoryEmbedding {
+            id: uuid::Uuid::new_v4().to_string(),
+            text,
+            embedding: Vec::new(),
+            created_at: now_u,
+            token_count: 0,
+            is_cold: false,
+            last_accessed_at: now_u,
+            importance_score: 1.0,
+            persistence_importance: 1.0,
+            prompt_importance: 1.0,
+            volatility: 0.4,
+            is_pinned: false,
+            access_count: 0,
+            embedding_source_version: None,
+            embedding_dimensions: None,
+            match_score: None,
+            category: None,
+            canonical_entities: Vec::new(),
+            fact_signature: None,
+            fact_polarity: None,
+            source_role: None,
+            source_message_id: None,
+            superseded_by: None,
+            superseded_at: None,
+            supersedes: Vec::new(),
+        });
     }
 
-    if let Some(obj) = memory_embeddings
-        .get_mut(memory_index)
-        .and_then(|v| v.as_object_mut())
     {
-        let is_pinned = obj
-            .get("isPinned")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if is_pinned && is_cold {
+        let m = &mut memory_embeddings[memory_index];
+        if m.is_pinned && is_cold {
             return Err(crate::utils::err_msg(
                 module_path!(),
                 line!(),
                 "Pinned memories cannot be moved to cold storage",
             ));
         }
-
-        obj.insert("isCold".into(), JsonValue::Bool(is_cold));
+        m.is_cold = is_cold;
         if is_cold {
-            obj.insert("importanceScore".into(), JsonValue::from(0.0));
+            m.importance_score = 0.0;
         } else {
-            obj.insert("importanceScore".into(), JsonValue::from(1.0));
-            obj.insert("lastAccessedAt".into(), JsonValue::from(now));
+            m.importance_score = 1.0;
+            m.last_accessed_at = now_u;
         }
     }
 
-    let new_embeddings_json = serde_json::to_string(&memory_embeddings)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    conn.execute(
-        "UPDATE sessions SET memory_embeddings = ?, updated_at = ? WHERE id = ?",
-        params![new_embeddings_json, now, &session_id],
-    )
-    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    write_session_embeddings_through_table(&mut *conn, &session_id, &memory_embeddings)?;
 
     if let Some(json) = read_session_meta(&conn, &session_id)? {
         return Ok(Some(serde_json::to_string(&json).map_err(|e| {

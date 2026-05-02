@@ -545,7 +545,7 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                          memory_status, memory_error, memory_progress_step, archived, created_at, updated_at FROM sessions")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
-    let sessions: Vec<(String, JsonValue)> = stmt
+    let mut sessions: Vec<(String, JsonValue)> = stmt
         .query_map([], |r| {
             let id: String = r.get(0)?;
             let json = serde_json::json!({
@@ -584,6 +584,35 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    // Backfill embeddings from the normalised table for sessions that have
+    // already migrated (legacy column == '[]').
+    for (id, json) in sessions.iter_mut() {
+        let needs_backfill = json
+            .get("memory_embeddings")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim() == "[]" || s.trim().is_empty())
+            .unwrap_or(true);
+        if !needs_backfill {
+            continue;
+        }
+        if let Ok(typed) = crate::storage_manager::memory_embeddings::load_for_session(
+            &conn,
+            id,
+            crate::storage_manager::memory_embeddings::SessionKind::Session,
+        ) {
+            if !typed.is_empty() {
+                if let Ok(serialized) = serde_json::to_string(&typed) {
+                    if let Some(obj) = json.as_object_mut() {
+                        obj.insert(
+                            "memory_embeddings".to_string(),
+                            JsonValue::String(serialized),
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     // For each session, get messages
     let mut result = Vec::new();
@@ -666,7 +695,7 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
-    let sessions: Vec<(String, JsonValue)> = stmt
+    let mut sessions: Vec<(String, JsonValue)> = stmt
         .query_map([], |r| {
             let id: String = r.get(0)?;
             let json = serde_json::json!({
@@ -700,6 +729,34 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    // Backfill embeddings for group sessions that have already migrated.
+    for (id, json) in sessions.iter_mut() {
+        let needs_backfill = json
+            .get("memory_embeddings")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim() == "[]" || s.trim().is_empty())
+            .unwrap_or(true);
+        if !needs_backfill {
+            continue;
+        }
+        if let Ok(typed) = crate::storage_manager::memory_embeddings::load_for_session(
+            &conn,
+            id,
+            crate::storage_manager::memory_embeddings::SessionKind::GroupSession,
+        ) {
+            if !typed.is_empty() {
+                if let Ok(serialized) = serde_json::to_string(&typed) {
+                    if let Some(obj) = json.as_object_mut() {
+                        obj.insert(
+                            "memory_embeddings".to_string(),
+                            JsonValue::String(serialized),
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     let mut result = Vec::new();
     for (session_id, mut session_json) in sessions {
