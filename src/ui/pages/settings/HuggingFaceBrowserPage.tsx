@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -66,6 +66,7 @@ interface RunabilityScore {
   label: "excellent" | "good" | "marginal" | "poor" | "unrunnable";
   fitsInRam: boolean;
   fitsInVram: boolean;
+  gpuMode: string;
 }
 
 interface FileRecommendation {
@@ -109,6 +110,7 @@ interface ModelArchInfo {
 interface RecommendationData {
   availableRam: number;
   availableVram: number;
+  supportsGpuOffload: boolean;
   unifiedMemory: boolean;
   totalAvailable: number;
   kvBasePerToken: number | null;
@@ -130,6 +132,10 @@ const KV_BPV: Record<string, number> = {
   iq4_nl: 0.5,
 };
 
+function dynamicSafetyReserve(totalSystemMemory: number): number {
+  return Math.min(Math.max(totalSystemMemory * 0.1, 512_000_000), 2_000_000_000);
+}
+
 /** Compute max context for a given file size + KV BPV dynamically */
 function maxContextForBpv(
   fileSize: number,
@@ -139,8 +145,9 @@ function maxContextForBpv(
   modelMaxCtx: number,
 ): number {
   if (!kvBasePerToken || kvBasePerToken <= 0) return modelMaxCtx;
+  const safety = dynamicSafetyReserve(totalAvailable);
   const overhead = computeOverhead(fileSize);
-  const remaining = Math.max(totalAvailable - fileSize - overhead, 0);
+  const remaining = Math.max(totalAvailable - fileSize - overhead - safety, 0);
   const bytesPerToken = kvBasePerToken * bpv;
   if (bytesPerToken <= 0) return modelMaxCtx;
   const maxCtx = Math.floor(remaining / bytesPerToken);
@@ -179,8 +186,9 @@ function computeRamMaxContext(
   kvContextCap: number | null,
 ): number {
   if (!kvBasePerToken) return 0;
+  const safety = dynamicSafetyReserve(totalAvailable);
   const overhead = computeOverhead(fileSize);
-  const remaining = Math.max(totalAvailable - fileSize - overhead, 0);
+  const remaining = Math.max(totalAvailable - fileSize - overhead - safety, 0);
   const rawCtx = Math.floor(remaining / (kvBasePerToken * bpv));
   if (kvContextCap && rawCtx >= kvContextCap) return modelMaxCtx;
   return rawCtx >= 512 ? Math.min(rawCtx, modelMaxCtx) : 0;
@@ -190,11 +198,20 @@ function calcScore(
   modelSize: number,
   quantQuality: number,
   kvCacheBytes: number,
+  availableRam: number,
   totalAvailable: number,
   availableVram: number,
-): { score: number; label: string; fitsVram: boolean; gpuMode: string } {
+  modelOffload: ModelOffload = "auto",
+  kvPlacement: KvPlacement = "auto",
+): { score: number; label: string; fitsVram: boolean; gpuMode: string; gpuScore: number } {
   const overhead = computeOverhead(modelSize);
   const totalNeeded = modelSize + kvCacheBytes + overhead;
+  const ramBudget = availableRam * 0.9;
+  const vramBudget = availableVram * 0.9;
+  const modelFitsRam = availableRam > 0 && modelSize + overhead <= ramBudget;
+  const kvFitsVram = availableVram > 0 && kvCacheBytes + overhead <= vramBudget;
+  const kvOnVramRequested = kvPlacement === "vram";
+  const kvOnRamRequested = kvPlacement === "ram";
 
   // Memory fitness (25%)
   let memoryScore: number;
@@ -205,48 +222,99 @@ function calcScore(
     memoryScore = r < 1.2 ? 20 : r < 1.5 ? 50 : r < 2.0 ? 70 : r < 3.0 ? 85 : 100;
   }
 
-  // GPU acceleration (35%)
-  const vramBudget = availableVram * 0.9;
-  let gpuScore: number;
-  let fitsVram: boolean;
-  let gpuMode: string;
-  if (availableVram > 0) {
-    if (totalNeeded <= vramBudget) {
-      // Everything fits in VRAM
-      gpuScore = 100;
-      fitsVram = true;
-      gpuMode = "full";
-    } else if (modelSize === 0) {
-      gpuScore = 10;
-      fitsVram = false;
-      gpuMode = "cpu";
-    } else if (modelSize <= vramBudget) {
-      // Model weights fit, KV/compute spills to RAM
+  const scoreForPlacement = (
+    placement: Exclude<ModelOffload, "auto">,
+  ): { score: number; fitsVram: boolean; gpuMode: string; priority: number } => {
+    if (placement === "cpu") {
+      if (!modelFitsRam) {
+        return {
+          score: 0,
+          fitsVram: false,
+          gpuMode: kvOnVramRequested && availableVram > 0 ? "ramModelVramCtx" : "cpu",
+          priority: 0,
+        };
+      }
+      const ramFitRatio = Math.min(ramBudget / (modelSize + overhead), 1.0);
+      const baseScore = kvOnVramRequested && kvFitsVram && availableVram > 0 ? 82 : 68;
+      return {
+        score: baseScore + ramFitRatio * (kvOnVramRequested ? 10 : 14),
+        fitsVram: false,
+        gpuMode: kvOnVramRequested && availableVram > 0 ? "ramModelVramCtx" : "ramModelRamCtx",
+        priority: 0,
+      };
+    }
+
+    if (availableVram <= 0) {
+      return {
+        score: 0,
+        fitsVram: false,
+        gpuMode: placement === "gpu" ? "gpuUnavailable" : "cpu",
+        priority: placement === "gpu" ? 2 : 1,
+      };
+    }
+
+    if (placement === "gpu") {
+      if (modelSize === 0) {
+        return { score: 10, fitsVram: false, gpuMode: "gpuUnavailable", priority: 2 };
+      }
+      if (modelSize > vramBudget) {
+        return { score: 8, fitsVram: false, gpuMode: "gpuUnavailable", priority: 2 };
+      }
+      if (totalNeeded <= vramBudget) {
+        return { score: 100, fitsVram: true, gpuMode: "full", priority: 2 };
+      }
       const remaining = vramBudget - modelSize;
       const spill = kvCacheBytes + overhead;
       const fitRatio = spill > 0 ? Math.min(remaining / spill, 1.0) : 1.0;
-      gpuScore = 70 + fitRatio * 25; // 70-95
-      fitsVram = true;
-      gpuMode = fitRatio >= 0.8 ? "nearFull" : fitRatio >= 0.4 ? "kvSpill" : "kvHeavySpill";
-    } else {
-      // Model doesn't fit — partial layer offload
-      const offloadRatio = Math.min(vramBudget / modelSize, 1.0);
-      gpuScore = 10 + offloadRatio * 60; // 10-70
-      fitsVram = false;
-      gpuMode =
+      let adjustedFitRatio = fitRatio;
+      if (kvOnVramRequested && !kvFitsVram) adjustedFitRatio *= 0.55;
+      if (kvOnRamRequested) adjustedFitRatio = Math.max(adjustedFitRatio, 0.7);
+      return {
+        score: 72 + adjustedFitRatio * 23,
+        fitsVram: true,
+        gpuMode:
+          adjustedFitRatio >= 0.8 ? "nearFull" : adjustedFitRatio >= 0.4 ? "kvSpill" : "kvHeavySpill",
+        priority: 2,
+      };
+    }
+
+    if (totalNeeded <= vramBudget) {
+      return { score: 96, fitsVram: true, gpuMode: "full", priority: 1 };
+    }
+    if (modelSize === 0) {
+      return { score: 10, fitsVram: false, gpuMode: "cpu", priority: 1 };
+    }
+    const offloadRatio = Math.min(vramBudget / modelSize, 1.0);
+    const kvPenalty = kvOnVramRequested && !kvFitsVram ? 12 : 0;
+    const kvBonus = kvOnRamRequested ? 4 : 0;
+    return {
+      score: Math.max(12, 28 + offloadRatio * 54 + kvBonus - kvPenalty),
+      fitsVram: false,
+      gpuMode:
         offloadRatio >= 0.75
           ? "mostLayers"
           : offloadRatio >= 0.5
             ? "halfLayers"
             : offloadRatio >= 0.2
               ? "fewLayers"
-              : "cpu";
-    }
-  } else {
-    gpuScore = 0;
-    fitsVram = false;
-    gpuMode = "cpu";
-  }
+              : "cpu",
+      priority: 1,
+    };
+  };
+
+  const placementResult =
+    modelOffload === "auto"
+      ? (["gpu", "mixed", "cpu"] as const)
+          .map((placement) => {
+            const result = scoreForPlacement(placement);
+            return { ...result, adjustedScore: result.score + result.priority * 4 };
+          })
+          .sort((a, b) => b.adjustedScore - a.adjustedScore)[0]
+      : { ...scoreForPlacement(modelOffload), adjustedScore: 0 };
+
+  const gpuScore = placementResult.score;
+  const fitsVram = placementResult.fitsVram;
+  const gpuMode = placementResult.gpuMode;
 
   // KV headroom (15%)
   let kvScore: number;
@@ -273,7 +341,237 @@ function calcScore(
           : score >= 20
             ? "poor"
             : "unrunnable";
-  return { score, label, fitsVram, gpuMode };
+  return { score, label, fitsVram, gpuMode, gpuScore };
+}
+
+function getRunabilityModeCopy(gpuMode: string): { short: string; long: string } {
+  switch (gpuMode) {
+    case "gpuUnavailable":
+      return { short: "Full GPU unavailable", long: "Model does not fit fully on GPU" };
+    case "full":
+      return { short: "GPU + VRAM ctx", long: "Run model on GPU, keep ctx in VRAM" };
+    case "nearFull":
+      return {
+        short: "GPU + mostly VRAM ctx",
+        long: "Run model on GPU, keep most ctx in VRAM",
+      };
+    case "kvSpill":
+      return { short: "GPU + RAM ctx", long: "Run model on GPU, keep ctx in RAM" };
+    case "kvHeavySpill":
+      return {
+        short: "GPU + mostly RAM ctx",
+        long: "Run model on GPU, keep most ctx in RAM",
+      };
+    case "ramModelVramCtx":
+      return {
+        short: "RAM model + VRAM ctx",
+        long: "Run model on RAM, keep ctx in VRAM",
+      };
+    case "ramModelRamCtx":
+      return {
+        short: "RAM model + RAM ctx",
+        long: "Run model on RAM, keep ctx in RAM",
+      };
+    case "mostLayers":
+      return { short: "GPU split, RAM ctx", long: "Run most layers on GPU, keep ctx in RAM" };
+    case "halfLayers":
+      return {
+        short: "Split model, RAM ctx",
+        long: "Split model across GPU and RAM, keep ctx in RAM",
+      };
+    case "fewLayers":
+      return {
+        short: "RAM-first, some GPU",
+        long: "Run most of the model on RAM, keep a few layers on GPU",
+      };
+    case "cpu":
+    default:
+      return { short: "RAM + RAM ctx", long: "Run model on RAM, keep ctx in RAM" };
+  }
+}
+
+function getKvPlacementCopy(value: KvPlacement): { label: string; description: string } {
+  switch (value) {
+    case "ram":
+      return {
+        label: "RAM",
+        description: "Keep KV cache in RAM",
+      };
+    case "vram":
+      return {
+        label: "VRAM",
+        description: "Keep KV cache in VRAM",
+      };
+    case "auto":
+    default:
+      return {
+        label: "Auto",
+        description: "Let Lettuce choose RAM or VRAM",
+      };
+  }
+}
+
+function kvPlacementToOffloadKqv(value: KvPlacement): boolean | null {
+  switch (value) {
+    case "ram":
+      return false;
+    case "vram":
+      return true;
+    case "auto":
+    default:
+      return null;
+  }
+}
+
+function getModelOffloadCopy(value: ModelOffload): { label: string; description: string } {
+  switch (value) {
+    case "cpu":
+      return {
+        label: "CPU / RAM",
+        description: "Keep model weights in RAM and avoid GPU layer offload",
+      };
+    case "gpu":
+      return {
+        label: "GPU",
+        description: "Require full model offload to GPU when possible",
+      };
+    case "mixed":
+      return {
+        label: "Mixed",
+        description: "Split model layers across GPU and RAM",
+      };
+    case "auto":
+    default:
+      return {
+        label: "Auto",
+        description: "Prefer GPU offload first, then mixed offload, then RAM-only",
+      };
+  }
+}
+
+function getHeadroomStatus(totalNeeded: number, totalAvailable: number): {
+  label: string;
+  tone: string;
+  description: string;
+} {
+  const remaining = totalAvailable - totalNeeded;
+  if (totalAvailable <= 0 || totalNeeded > totalAvailable) {
+    return {
+      label: "Risky",
+      tone: "text-red-400",
+      description: "Very little memory slack. Expect failures or heavy slowdown.",
+    };
+  }
+  const headroomRatio = remaining / Math.max(totalAvailable, 1);
+  if (remaining >= 4_000_000_000 || headroomRatio >= 0.25) {
+    return {
+      label: "Comfortable",
+      tone: "text-emerald-400",
+      description: "Healthy memory reserve for this run plan.",
+    };
+  }
+  if (remaining >= 1_500_000_000 || headroomRatio >= 0.12) {
+    return {
+      label: "OK",
+      tone: "text-blue-400",
+      description: "Enough memory headroom for normal use.",
+    };
+  }
+  return {
+    label: "Tight",
+    tone: "text-amber-400",
+    description: "Should run, but memory headroom is limited.",
+  };
+}
+
+function getRunStatus(score: number): { label: string; tone: string; description: string } {
+  if (score >= 75) {
+    return {
+      label: "Yes",
+      tone: "text-emerald-400",
+      description: "This plan should run cleanly.",
+    };
+  }
+  if (score >= 55) {
+    return {
+      label: "Borderline",
+      tone: "text-amber-400",
+      description: "This plan should run, but with tighter limits.",
+    };
+  }
+  return {
+    label: "No",
+    tone: "text-red-400",
+    description: "This plan is likely to fail or perform poorly.",
+  };
+}
+
+function getPerformanceStatus(gpuMode: string): {
+  prefill: { label: string; tone: string };
+  generation: { label: string; tone: string };
+} {
+  switch (gpuMode) {
+    case "full":
+      return {
+        prefill: { label: "Fast", tone: "text-emerald-400" },
+        generation: { label: "Fast", tone: "text-emerald-400" },
+      };
+    case "nearFull":
+      return {
+        prefill: { label: "Fast", tone: "text-emerald-400" },
+        generation: { label: "Fast", tone: "text-emerald-400" },
+      };
+    case "kvSpill":
+    case "ramModelVramCtx":
+      return {
+        prefill: { label: "Medium", tone: "text-blue-400" },
+        generation: { label: "Medium", tone: "text-blue-400" },
+      };
+    case "kvHeavySpill":
+    case "mostLayers":
+    case "halfLayers":
+      return {
+        prefill: { label: "Slow", tone: "text-amber-400" },
+        generation: { label: "Medium", tone: "text-blue-400" },
+      };
+    case "fewLayers":
+    case "ramModelRamCtx":
+    case "cpu":
+    case "gpuUnavailable":
+    default:
+      return {
+        prefill: { label: "Slow", tone: "text-amber-400" },
+        generation: { label: "Slow", tone: "text-amber-400" },
+      };
+  }
+}
+
+function modelOffloadToGpuLayers(
+  value: ModelOffload,
+  totalLayers: number | null | undefined,
+  mixedLayers: number | null,
+): number | null {
+  switch (value) {
+    case "cpu":
+      return 0;
+    case "gpu":
+      return totalLayers && totalLayers > 0 ? totalLayers : null;
+    case "mixed":
+      return mixedLayers != null && mixedLayers > 0 ? mixedLayers : null;
+    case "auto":
+    default:
+      return null;
+  }
+}
+
+function gpuLayersToModelOffload(
+  llamaGpuLayers: number | null | undefined,
+  totalLayers: number | null | undefined,
+): ModelOffload {
+  if (llamaGpuLayers == null) return "auto";
+  if (llamaGpuLayers <= 0) return "cpu";
+  if (totalLayers != null && totalLayers > 0 && llamaGpuLayers >= totalLayers) return "gpu";
+  return "mixed";
 }
 
 interface HfModelInfo {
@@ -296,6 +594,8 @@ type CompareSelection = {
   kvType: string;
 };
 type TrackedDownloadRole = "model" | "mmproj";
+type KvPlacement = "auto" | "ram" | "vram";
+type ModelOffload = "auto" | "cpu" | "gpu" | "mixed";
 type QueueDownloadMetadata = {
   createModelWhenFinished?: boolean;
   mmprojFile?: string | false;
@@ -303,6 +603,9 @@ type QueueDownloadMetadata = {
   displayName?: string | null;
   contextLength?: number | null;
   kvType?: string | null;
+  llamaOffloadKqv?: boolean | null;
+  llamaGpuLayers?: number | null;
+  llamaModelOffloadMode?: ModelOffload | null;
   downloadRole?: TrackedDownloadRole | null;
 };
 
@@ -422,12 +725,16 @@ function DetailReportContent({
   recData,
   selectedFile,
   kvType,
+  modelOffload,
+  kvPlacement,
   contextLength,
   t,
 }: {
   recData: RecommendationData;
   selectedFile: FileRecommendation;
   kvType: string;
+  modelOffload: ModelOffload;
+  kvPlacement: KvPlacement;
   contextLength: number;
   t: (key: any, vars?: any) => string;
 }) {
@@ -452,12 +759,15 @@ function DetailReportContent({
   const totalNeeded = selectedFile.size + kvBytes + overhead;
   const headroom = Math.max(totalAvail - totalNeeded, 0);
   const vramBudget = recData.availableVram * 0.9;
-  const { score, gpuMode } = calcScore(
+  const { score, gpuMode, gpuScore } = calcScore(
     selectedFile.size,
     selectedFile.quantQuality,
     kvBytes,
+    recData.availableRam,
     totalAvail,
     recData.availableVram,
+    modelOffload,
+    kvPlacement,
   );
 
   const modelMax = recData.modelMaxContext;
@@ -484,19 +794,6 @@ function DetailReportContent({
     const r = totalAvail / totalNeeded;
     return r < 1.2 ? 20 : r < 1.5 ? 50 : r < 2.0 ? 70 : r < 3.0 ? 85 : 100;
   })();
-  const gpuScore = (() => {
-    if (recData.availableVram <= 0) return 0;
-    if (totalNeeded <= vramBudget) return 100;
-    if (selectedFile.size === 0) return 10;
-    if (selectedFile.size <= vramBudget) {
-      const remaining = vramBudget - selectedFile.size;
-      const spill = kvBytes + overhead;
-      const fitRatio = spill > 0 ? Math.min(remaining / spill, 1.0) : 1.0;
-      return Math.round(70 + fitRatio * 25);
-    }
-    const offloadRatio = Math.min(vramBudget / selectedFile.size, 1.0);
-    return Math.round(10 + offloadRatio * 60);
-  })();
   const kvScore = (() => {
     if (kvBytes === 0) return 50;
     const h = Math.max(totalAvail - selectedFile.size - overhead, 0);
@@ -507,9 +804,17 @@ function DetailReportContent({
     }
     return Math.round(50 * (h / kvBytes));
   })();
+  const modelOffloadCopy = getModelOffloadCopy(modelOffload);
+  const kvPlacementCopy = getKvPlacementCopy(kvPlacement);
+  const showGpuPlanning = recData.availableVram > 0 && modelOffload !== "cpu";
 
   const offloadPct = (() => {
-    if (recData.availableVram <= 0 || totalNeeded === 0) return 0;
+    if (recData.availableVram <= 0 || modelOffload === "cpu") return 0;
+    if (modelOffload === "gpu") return selectedFile.size <= vramBudget ? 100 : 0;
+    if (selectedFile.size <= 0) return 0;
+    if (modelOffload === "mixed") {
+      return Math.min(Math.round((vramBudget / selectedFile.size) * 100), 100);
+    }
     if (totalNeeded <= vramBudget) return 100;
     return Math.min(Math.round((vramBudget / totalNeeded) * 100), 99);
   })();
@@ -517,6 +822,7 @@ function DetailReportContent({
   const detailTotalLayers = recData.arch?.blockCount;
   const detailRecLayers = (() => {
     if (!detailTotalLayers || detailTotalLayers <= 0) return null;
+    if (!showGpuPlanning) return 0;
     if (totalNeeded <= vramBudget) return detailTotalLayers;
     if (recData.availableVram <= 0) return null;
     const layers = Math.floor((vramBudget / totalNeeded) * detailTotalLayers);
@@ -628,6 +934,8 @@ function DetailReportContent({
         {row(t("hfBrowser.quantization"), selectedFile.quantization)}
         {row(t("hfBrowser.detailModelSize"), formatBytes(selectedFile.size))}
         {row(t("hfBrowser.contextLength"), clampedCtx.toLocaleString() + " tokens")}
+        {row("Model offload", modelOffloadCopy.label)}
+        {row("KV location", kvPlacementCopy.label)}
         {row(t("hfBrowser.kvCacheType"), kvType.toUpperCase())}
         {recData.kvContextCap &&
           row(
@@ -635,7 +943,8 @@ function DetailReportContent({
             effectiveKvCtx.toLocaleString() + " tokens",
             "text-white/60",
           )}
-        {detailFullGpuCtx > 0 &&
+        {showGpuPlanning &&
+          detailFullGpuCtx > 0 &&
           row(
             t("hfBrowser.detailOptimalGpuCtx"),
             detailFullGpuCtx.toLocaleString() + " tokens",
@@ -666,26 +975,17 @@ function DetailReportContent({
         )}
         {recData.availableVram > 0 &&
           row(
-            t("hfBrowser.detailGpuFit"),
-            {
-              full: t("hfBrowser.gpuFull"),
-              nearFull: t("hfBrowser.gpuNearFull"),
-              kvSpill: t("hfBrowser.gpuKvSpill"),
-              kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
-              mostLayers: t("hfBrowser.gpuMostLayers"),
-              halfLayers: t("hfBrowser.gpuHalfLayers"),
-              fewLayers: t("hfBrowser.gpuFewLayers"),
-              cpu: t("hfBrowser.gpuCpu"),
-            }[gpuMode] || t("hfBrowser.gpuCpu"),
+            "Mode",
+            getRunabilityModeCopy(gpuMode).long,
             ["full", "nearFull"].includes(gpuMode)
               ? "text-emerald-400"
-              : ["kvSpill", "mostLayers"].includes(gpuMode)
+              : ["kvSpill", "mostLayers", "ramModelVramCtx"].includes(gpuMode)
                 ? "text-blue-400"
-                : ["kvHeavySpill", "halfLayers"].includes(gpuMode)
+                : ["kvHeavySpill", "halfLayers", "ramModelRamCtx"].includes(gpuMode)
                   ? "text-amber-400"
                   : "text-red-400",
           )}
-        {recData.availableVram > 0 &&
+        {showGpuPlanning &&
           row(
             t("hfBrowser.detailOffload"),
             `${offloadPct}%`,
@@ -716,7 +1016,13 @@ function DetailReportContent({
         recData.availableVram > 0 &&
         (() => {
           let kvVramPct: number;
-          if (totalNeeded <= vramBudget) {
+          if (!showGpuPlanning && kvPlacement !== "vram") {
+            kvVramPct = 0;
+          } else if (kvPlacement === "ram") {
+            kvVramPct = 0;
+          } else if (kvPlacement === "vram") {
+            kvVramPct = kvBytes > 0 ? Math.min(Math.round((vramBudget / kvBytes) * 100), 100) : 100;
+          } else if (totalNeeded <= vramBudget) {
             kvVramPct = 100;
           } else if (selectedFile.size >= vramBudget) {
             const layerRatio = Math.min(vramBudget / selectedFile.size, 1.0);
@@ -764,7 +1070,7 @@ function DetailReportContent({
           );
         })()}
 
-      {fullGpuCtx && fullGpuCtx < clampedCtx && (
+      {showGpuPlanning && fullGpuCtx && fullGpuCtx < clampedCtx && (
         <div className="flex items-start gap-2 rounded-xl border border-blue-400/20 bg-blue-400/5 px-3 py-2 mt-1">
           <Info size={12} className="text-blue-400 shrink-0 mt-0.5" />
           <p className="text-[12px] leading-snug text-blue-300/80">
@@ -917,6 +1223,8 @@ export function HuggingFaceBrowserPage() {
   const [recFile, setRecFile] = useState(""); // selected file in dropdown
   const [recContext, setRecContext] = useState(4096);
   const [recKvType, setRecKvType] = useState("f16");
+  const [recModelOffload, setRecModelOffload] = useState<ModelOffload>("auto");
+  const [recKvPlacement, setRecKvPlacement] = useState<KvPlacement>("auto");
   const [recImageSupport, setRecImageSupport] = useState(false);
   const [recMmprojFile, setRecMmprojFile] = useState("");
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
@@ -1170,6 +1478,10 @@ export function HuggingFaceBrowserPage() {
         setRecFile(data.best?.filename || files[0]?.filename || "");
         setRecContext(data.best?.contextLength || 4096);
         setRecKvType(data.best?.kvType || "q8_0");
+        if (!data.supportsGpuOffload) {
+          setRecModelOffload("auto");
+          setRecKvPlacement("auto");
+        }
       })
       .catch(() => {
         if (cancelled) return;
@@ -1193,6 +1505,46 @@ export function HuggingFaceBrowserPage() {
     () => filesWithSize.filter((f) => f.isMmproj),
     [filesWithSize],
   );
+  const selectedRecommendedFile = useMemo(
+    () => recData?.files.find((file) => file.filename === recFile) ?? recData?.files[0] ?? null,
+    [recData, recFile],
+  );
+  const gpuOptionsEnabled = Boolean(recData?.supportsGpuOffload);
+  const recommendedMixedGpuLayers = useMemo(() => {
+    if (!recData || !selectedRecommendedFile) return null;
+    const totalLayers = recData.arch?.blockCount;
+    if (!totalLayers || totalLayers <= 0 || recData.availableVram <= 0) return null;
+
+    const bpv = KV_BPV[recKvType] || 2;
+    const maxAllowedContext = Math.max(
+      maxContextForBpv(
+        selectedRecommendedFile.size,
+        recData.kvBasePerToken,
+        bpv,
+        recData.totalAvailable,
+        recData.modelMaxContext,
+      ),
+      1024,
+    );
+    const clampedCtx = Math.min(Math.max(recContext, 1024), maxAllowedContext);
+    const effectiveKvCtx = recData.kvContextCap
+      ? Math.min(clampedCtx, recData.kvContextCap)
+      : clampedCtx;
+    const kvBytes = recData.kvBasePerToken ? recData.kvBasePerToken * bpv * effectiveKvCtx : 0;
+    const overhead = computeOverhead(selectedRecommendedFile.size);
+    const totalNeeded = selectedRecommendedFile.size + kvBytes + overhead;
+    const vramBudget = recData.availableVram * 0.9;
+
+    if (selectedRecommendedFile.size <= vramBudget) return totalLayers;
+    if (totalNeeded <= 0) return null;
+
+    const layerBudget =
+      recKvPlacement === "ram"
+        ? Math.max(vramBudget - overhead, 0)
+        : Math.max(vramBudget - Math.min(kvBytes, vramBudget * 0.25), 0);
+    const layers = Math.floor((layerBudget / totalNeeded) * totalLayers);
+    return Math.max(Math.min(layers, totalLayers), 1);
+  }, [recContext, recData, recFile, recKvPlacement, recKvType, selectedRecommendedFile]);
 
   useEffect(() => {
     if (!mmprojFilesWithSize.length) {
@@ -1332,6 +1684,17 @@ export function HuggingFaceBrowserPage() {
       const kvType = modelItem.kvType || "q8_0";
       const mmprojPath = mmprojItem?.resultPath ?? null;
       const hasImageSupport = !!mmprojPath;
+      const modelOffloadValue =
+        (modelItem.llamaModelOffloadMode as ModelOffload | null | undefined) ??
+        gpuLayersToModelOffload(modelItem.llamaGpuLayers ?? null, null);
+      const modelOffloadCopy = getModelOffloadCopy(modelOffloadValue);
+      const placementValue: KvPlacement =
+        modelItem.llamaOffloadKqv === true
+          ? "vram"
+          : modelItem.llamaOffloadKqv === false
+            ? "ram"
+            : "auto";
+      const placementCopy = getKvPlacementCopy(placementValue);
 
       try {
         const defaultAdvanced = createDefaultAdvancedModelSettings();
@@ -1346,6 +1709,9 @@ export function HuggingFaceBrowserPage() {
             ...defaultAdvanced,
             contextLength,
             llamaKvType: kvType as NonNullable<typeof defaultAdvanced.llamaKvType>,
+            llamaGpuLayers: modelItem.llamaGpuLayers == null ? null : modelItem.llamaGpuLayers,
+            llamaOffloadKqv:
+              modelItem.llamaOffloadKqv == null ? null : modelItem.llamaOffloadKqv,
             llamaMmprojPath: mmprojPath,
           },
         });
@@ -1353,8 +1719,8 @@ export function HuggingFaceBrowserPage() {
         toast.success(
           "Model installed",
           hasImageSupport
-            ? `${displayName} added with image support, ${contextLength.toLocaleString()} ctx, and ${kvType.toUpperCase()} KV cache.`
-            : `${displayName} added with ${contextLength.toLocaleString()} ctx and ${kvType.toUpperCase()} KV cache.`,
+            ? `${displayName} added with image support, ${contextLength.toLocaleString()} ctx, ${kvType.toUpperCase()} KV cache, ${modelOffloadCopy.label} model offload, and ${placementCopy.label} KV placement.`
+            : `${displayName} added with ${contextLength.toLocaleString()} ctx, ${kvType.toUpperCase()} KV cache, ${modelOffloadCopy.label} model offload, and ${placementCopy.label} KV placement.`,
         );
         setHasPersistedLocalModel(true);
 
@@ -1402,6 +1768,12 @@ export function HuggingFaceBrowserPage() {
     const installId = crypto.randomUUID();
     const displayName =
       extractFileDisplayName(selectedFile.filename) || extractModelShortName(modelInfo.modelId);
+    const requestedModelOffload = gpuOptionsEnabled ? recModelOffload : "auto";
+    const requestedGpuLayers = modelOffloadToGpuLayers(
+      requestedModelOffload,
+      recData.arch?.blockCount,
+      recommendedMixedGpuLayers,
+    );
 
     if (selectedMmproj) {
       const mmprojQueueId = await queueTrackedDownload(modelInfo.modelId, selectedMmproj.filename, {
@@ -1423,6 +1795,9 @@ export function HuggingFaceBrowserPage() {
       displayName,
       contextLength: requestedContext,
       kvType: recKvType,
+      llamaOffloadKqv: gpuOptionsEnabled ? kvPlacementToOffloadKqv(recKvPlacement) : null,
+      llamaGpuLayers: requestedGpuLayers,
+      llamaModelOffloadMode: requestedModelOffload,
       downloadRole: "model",
     });
     if (!modelQueueId && selectedMmproj) {
@@ -1438,14 +1813,27 @@ export function HuggingFaceBrowserPage() {
     recContext,
     recData,
     recFile,
+    recModelOffload,
     recImageSupport,
     recKvType,
+    recKvPlacement,
     recMmprojFile,
+    gpuOptionsEnabled,
+    recommendedMixedGpuLayers,
   ]);
 
   const queueFilesDownload = useCallback(
     async (file: HfModelFile) => {
       if (!modelInfo) return;
+      const fileRecommendation = recData?.files.find((item) => item.filename === file.filename) ?? null;
+      const requestedModelOffload = gpuOptionsEnabled ? recModelOffload : "auto";
+      const requestedGpuLayers = fileRecommendation
+        ? modelOffloadToGpuLayers(
+            requestedModelOffload,
+            recData?.arch?.blockCount,
+            recommendedMixedGpuLayers,
+          )
+        : null;
 
       const shouldCreateModel = Boolean(returnTo) && !file.isMmproj;
       const metadata = shouldCreateModel
@@ -1453,13 +1841,30 @@ export function HuggingFaceBrowserPage() {
             createModelWhenFinished: true,
             installId: crypto.randomUUID(),
             displayName: extractFileDisplayName(file.filename) || extractModelShortName(modelInfo.modelId),
+            contextLength: recContext,
+            kvType: recKvType,
+            llamaOffloadKqv: gpuOptionsEnabled ? kvPlacementToOffloadKqv(recKvPlacement) : null,
+            llamaGpuLayers: requestedGpuLayers,
+            llamaModelOffloadMode: requestedModelOffload,
             downloadRole: "model" as const,
           }
         : null;
 
       await queueTrackedDownload(modelInfo.modelId, file.filename, metadata);
     },
-    [modelInfo, queueTrackedDownload, returnTo],
+    [
+      gpuOptionsEnabled,
+      modelInfo,
+      queueTrackedDownload,
+      recContext,
+      recData?.arch?.blockCount,
+      recData?.files,
+      recKvPlacement,
+      recKvType,
+      recModelOffload,
+      recommendedMixedGpuLayers,
+      returnTo,
+    ],
   );
 
   useEffect(() => {
@@ -1960,50 +2365,45 @@ export function HuggingFaceBrowserPage() {
                                   const kvBytes = recData.kvBasePerToken
                                     ? recData.kvBasePerToken * bpvSel * effectiveKvCtx
                                     : 0;
-                                  const { score, label, gpuMode } = calcScore(
+                                  const { score, gpuMode } = calcScore(
                                     selFile.size,
                                     selFile.quantQuality,
                                     kvBytes,
+                                    recData.availableRam,
                                     totalAvail,
                                     recData.availableVram,
+                                    recModelOffload,
+                                    recKvPlacement,
+                                  );
+                                  const modeCopy = getRunabilityModeCopy(gpuMode);
+                                  const runStatus = getRunStatus(score);
+                                  const totalNeeded = selFile.size + kvBytes + computeOverhead(selFile.size);
+                                  const remainingHeadroom = Math.max(totalAvail - totalNeeded, 0);
+                                  const headroomStatus = getHeadroomStatus(
+                                    totalNeeded,
+                                    totalAvail,
+                                  );
+                                  const perfStatus = getPerformanceStatus(gpuMode);
+                                  const statusRow = (
+                                    labelText: string,
+                                    value: ReactNode,
+                                    tone?: string,
+                                  ) => (
+                                    <div className="flex items-center justify-between gap-3 py-1.5">
+                                      <span className="text-[12px] text-fg/45">{labelText}</span>
+                                      <span
+                                        className={cn(
+                                          "min-w-0 text-right text-[12px] font-medium",
+                                          tone || "text-fg/75",
+                                        )}
+                                      >
+                                        {value}
+                                      </span>
+                                    </div>
                                   );
 
-                                  const scoreColor =
-                                    label === "excellent"
-                                      ? "text-emerald-500"
-                                      : label === "good"
-                                        ? "text-blue-500"
-                                        : label === "marginal"
-                                          ? "text-amber-500"
-                                          : label === "poor"
-                                            ? "text-orange-500"
-                                            : "text-red-500";
-
-                                  const scoreBg =
-                                    label === "excellent"
-                                      ? "bg-emerald-400/15"
-                                      : label === "good"
-                                        ? "bg-blue-400/15"
-                                        : label === "marginal"
-                                          ? "bg-amber-400/15"
-                                          : label === "poor"
-                                            ? "bg-orange-400/15"
-                                            : "bg-red-400/15";
-
-                                  const gpuLabel =
-                                    {
-                                      full: t("hfBrowser.gpuFull"),
-                                      nearFull: t("hfBrowser.gpuNearFull"),
-                                      kvSpill: t("hfBrowser.gpuKvSpill"),
-                                      kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
-                                      mostLayers: t("hfBrowser.gpuMostLayers"),
-                                      halfLayers: t("hfBrowser.gpuHalfLayers"),
-                                      fewLayers: t("hfBrowser.gpuFewLayers"),
-                                      cpu: t("hfBrowser.gpuCpu"),
-                                    }[gpuMode] || t("hfBrowser.gpuCpu");
-
                                   const upgradeSuggestion = (() => {
-                                    if (selFile.quantQuality >= 90) return null; // already top tier
+                                    if (selFile.quantQuality >= 90) return null;
                                     const bpvVal = KV_BPV[recKvType] || 2;
                                     let best: { file: FileRecommendation; score: number } | null =
                                       null;
@@ -2032,8 +2432,11 @@ export function HuggingFaceBrowserPage() {
                                         f.size,
                                         f.quantQuality,
                                         fKv,
+                                        recData.availableRam,
                                         totalAvail,
                                         recData.availableVram,
+                                        recModelOffload,
+                                        recKvPlacement,
                                       );
                                       if (fScore < 70) continue;
                                       if (
@@ -2050,41 +2453,44 @@ export function HuggingFaceBrowserPage() {
 
                                   return (
                                     <div className="mt-2 space-y-2.5">
-                                      {/* Score hero */}
-                                      <div
-                                        className={cn(
-                                          "flex items-center justify-between rounded-lg px-3 py-2",
-                                          scoreBg,
-                                        )}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <span className={cn("text-xl font-bold", scoreColor)}>
-                                            {score}
-                                          </span>
-                                          <div className="leading-tight">
-                                            <span
-                                              className={cn(
-                                                "text-[13px] font-semibold",
-                                                scoreColor,
-                                              )}
-                                            >
-                                              {(
-                                                {
-                                                  excellent: t("hfBrowser.runabilityExcellent"),
-                                                  good: t("hfBrowser.runabilityGood"),
-                                                  marginal: t("hfBrowser.runabilityMarginal"),
-                                                  poor: t("hfBrowser.runabilityPoor"),
-                                                  unrunnable: t("hfBrowser.runabilityUnrunnable"),
-                                                } as Record<string, string>
-                                              )[label] || label}
-                                            </span>
-                                            <p className="text-[12px] text-fg/40 flex items-center gap-1">
-                                              <Monitor size={9} />
-                                              {gpuLabel}
+                                      <div className="rounded-lg border border-fg/10 bg-fg/[0.035] px-3 py-2.5">
+                                        <div className="flex items-start justify-between gap-3 border-b border-fg/8 pb-2">
+                                          <div className="min-w-0">
+                                            <div className="text-[14px] font-semibold text-fg">
+                                              {modeCopy.short}
+                                            </div>
+                                            <p className="mt-0.5 text-[12px] leading-snug text-fg/50">
+                                              {modeCopy.long}
                                             </p>
                                           </div>
+                                          <div className="text-right shrink-0">
+                                            <div className={cn("text-[13px] font-semibold", runStatus.tone)}>
+                                              {runStatus.label}
+                                            </div>
+                                            <div className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-fg/35">
+                                              <Monitor size={9} />
+                                              Will run
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-1.5 divide-y divide-fg/6">
+                                          {statusRow(
+                                            "Headroom",
+                                            `${headroomStatus.label} · ${formatBytes(remainingHeadroom)} left`,
+                                            headroomStatus.tone,
+                                          )}
+                                          {statusRow("Prefill", perfStatus.prefill.label, perfStatus.prefill.tone)}
+                                          {statusRow(
+                                            "Generation",
+                                            perfStatus.generation.label,
+                                            perfStatus.generation.tone,
+                                          )}
+                                          {statusRow("Confidence", `${score}/100`, runStatus.tone)}
                                         </div>
                                       </div>
+                                      <p className="text-[12px] leading-snug text-fg/45">
+                                        {headroomStatus.description}
+                                      </p>
 
                                       {/* Upgrade suggestion */}
                                       {upgradeSuggestion && (
@@ -2226,6 +2632,8 @@ export function HuggingFaceBrowserPage() {
                                       {/* Context length */}
                                       {(() => {
                                         const modelMax = recData.modelMaxContext;
+                                        const showGpuGuidance =
+                                          gpuOptionsEnabled && recModelOffload !== "cpu";
                                         // Max context for 100% GPU offload (model+KV+compute all in VRAM)
                                         const fullGpuCtx = computeGpuOptimalContext(
                                           selFile.size,
@@ -2274,7 +2682,9 @@ export function HuggingFaceBrowserPage() {
                                                     ((v - 1024) / (maxCtx - 1024)) * 100;
                                                   return (
                                                     <>
-                                                      {fullGpuCtx > 1024 && fullGpuCtx < maxCtx && (
+                                                      {showGpuGuidance &&
+                                                        fullGpuCtx > 1024 &&
+                                                        fullGpuCtx < maxCtx && (
                                                         <div
                                                           className="absolute bottom-0 w-0.5 bg-emerald-400 rounded-full pointer-events-none"
                                                           style={{
@@ -2305,9 +2715,11 @@ export function HuggingFaceBrowserPage() {
                                               <span>{maxCtx.toLocaleString()}</span>
                                             </div>
                                             {/* Clickable context presets */}
-                                            {(fullGpuCtx > 0 || ramCtx > 0) && (
+                                            {((showGpuGuidance && fullGpuCtx > 0) || ramCtx > 0) && (
                                               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-                                                {fullGpuCtx > 0 && fullGpuCtx < maxCtx && (
+                                                {showGpuGuidance &&
+                                                  fullGpuCtx > 0 &&
+                                                  fullGpuCtx < maxCtx && (
                                                   <button
                                                     type="button"
                                                     onClick={() =>
@@ -2338,7 +2750,8 @@ export function HuggingFaceBrowserPage() {
                                               </div>
                                             )}
                                             {/* Warning: exceeding GPU-optimal context */}
-                                            {fullGpuCtx > 0 &&
+                                            {showGpuGuidance &&
+                                              fullGpuCtx > 0 &&
                                               fullGpuCtx < maxCtx &&
                                               clampedCtx > fullGpuCtx && (
                                                 <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-amber-400/20 bg-amber-400/5 px-2.5 py-2">
@@ -2354,7 +2767,7 @@ export function HuggingFaceBrowserPage() {
                                                 </div>
                                               )}
                                             {/* State B: Model exceeds VRAM entirely */}
-                                            {fullGpuCtx === 0 && ramCtx > 0 && (
+                                            {showGpuGuidance && fullGpuCtx === 0 && ramCtx > 0 && (
                                               <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-blue-400/20 bg-blue-400/5 px-2.5 py-2">
                                                 <Info
                                                   size={13}
@@ -2402,6 +2815,78 @@ export function HuggingFaceBrowserPage() {
                                           <option value="q4_0">Q4_0 (memory saver)</option>
                                           <option value="iq4_nl">IQ4_NL (aggressive)</option>
                                         </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                                          Model offload
+                                        </label>
+                                        <div className="mt-1 grid grid-cols-4 gap-1 rounded-md border border-fg/10 bg-fg/5 p-1">
+                                          {(["auto", "cpu", "gpu", "mixed"] as const).map((value) => {
+                                            const active = recModelOffload === value;
+                                            const copy = getModelOffloadCopy(value);
+                                            return (
+                                              <button
+                                                key={value}
+                                                type="button"
+                                                disabled={!gpuOptionsEnabled}
+                                                onClick={() => setRecModelOffload(value)}
+                                                className={cn(
+                                                  "rounded-sm px-2 py-1.5 text-[11px] font-medium transition",
+                                                  !gpuOptionsEnabled
+                                                    ? "cursor-not-allowed text-fg/25"
+                                                    : active
+                                                      ? "bg-accent/15 text-accent"
+                                                      : "text-fg/50 hover:bg-fg/8 hover:text-fg/80",
+                                                )}
+                                                title={copy.description}
+                                              >
+                                                {copy.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        <p className="mt-1 text-[11px] leading-snug text-fg/40">
+                                          {gpuOptionsEnabled
+                                            ? getModelOffloadCopy(recModelOffload).description
+                                            : "GPU offload is unavailable on this backend. Model offload and KV placement stay on automatic CPU-safe defaults."}
+                                        </p>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                                          KV cache location
+                                        </label>
+                                        <div className="mt-1 grid grid-cols-3 gap-1 rounded-md border border-fg/10 bg-fg/5 p-1">
+                                          {(["auto", "ram", "vram"] as const).map((value) => {
+                                            const active = recKvPlacement === value;
+                                            const copy = getKvPlacementCopy(value);
+                                            return (
+                                              <button
+                                                key={value}
+                                                type="button"
+                                                disabled={!gpuOptionsEnabled}
+                                                onClick={() => setRecKvPlacement(value)}
+                                                className={cn(
+                                                  "rounded-sm px-2 py-1.5 text-[11px] font-medium transition",
+                                                  !gpuOptionsEnabled
+                                                    ? "cursor-not-allowed text-fg/25"
+                                                    : active
+                                                      ? "bg-accent/15 text-accent"
+                                                      : "text-fg/50 hover:bg-fg/8 hover:text-fg/80",
+                                                )}
+                                                title={copy.description}
+                                              >
+                                                {copy.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        <p className="mt-1 text-[11px] leading-snug text-fg/40">
+                                          {gpuOptionsEnabled
+                                            ? getKvPlacementCopy(recKvPlacement).description
+                                            : "KV cache placement is unavailable until a Vulkan or CUDA backend is detected."}
+                                        </p>
                                       </div>
 
                                       {/* Warning */}
@@ -2480,23 +2965,28 @@ export function HuggingFaceBrowserPage() {
                                       </span>
                                     )}
                                     {rs && (
-                                      <span
-                                        className={cn(
-                                          "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold",
-                                          rs.label === "excellent"
-                                            ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-500"
-                                            : rs.label === "good"
-                                              ? "border-blue-400/30 bg-blue-400/15 text-blue-500"
-                                              : rs.label === "marginal"
-                                                ? "border-amber-400/30 bg-amber-400/15 text-amber-500"
-                                                : rs.label === "poor"
-                                                  ? "border-orange-400/30 bg-orange-400/15 text-orange-500"
-                                                  : "border-red-400/30 bg-red-400/15 text-red-500",
-                                        )}
-                                        title={`Runability: ${rs.score}/100 (${rs.label})${rs.fitsInRam ? " · Fits in RAM" : ""}${rs.fitsInVram ? " · Fits in VRAM" : ""}`}
-                                      >
-                                        {rs.score}
-                                      </span>
+                                      <div className="flex flex-col gap-0.5">
+                                        <span
+                                          className={cn(
+                                            "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold w-fit",
+                                            rs.label === "excellent"
+                                              ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-500"
+                                              : rs.label === "good"
+                                                ? "border-blue-400/30 bg-blue-400/15 text-blue-500"
+                                                : rs.label === "marginal"
+                                                  ? "border-amber-400/30 bg-amber-400/15 text-amber-500"
+                                                  : rs.label === "poor"
+                                                    ? "border-orange-400/30 bg-orange-400/15 text-orange-500"
+                                                    : "border-red-400/30 bg-red-400/15 text-red-500",
+                                          )}
+                                          title={`Runability: ${rs.score}/100 (${rs.label}) · ${getRunabilityModeCopy(rs.gpuMode).long}${rs.fitsInRam ? " · Fits in RAM" : ""}${rs.fitsInVram ? " · Fits in VRAM" : ""}`}
+                                        >
+                                          {rs.score}
+                                        </span>
+                                        <span className="max-w-[220px] text-[10px] leading-tight text-fg/40">
+                                          {getRunabilityModeCopy(rs.gpuMode).short}
+                                        </span>
+                                      </div>
                                     )}
                                     <span className="text-[12px] text-fg/45">
                                       {formatBytes(file.size)}
@@ -2687,6 +3177,8 @@ export function HuggingFaceBrowserPage() {
                           recData={recData}
                           selectedFile={selectedFile}
                           kvType={selection.kvType}
+                          modelOffload={recModelOffload}
+                          kvPlacement={recKvPlacement}
                           contextLength={recContext}
                           t={t}
                         />
@@ -2716,6 +3208,8 @@ export function HuggingFaceBrowserPage() {
                 recData={recData}
                 selectedFile={selFile}
                 kvType={recKvType}
+                modelOffload={recModelOffload}
+                kvPlacement={recKvPlacement}
                 contextLength={recContext}
                 t={t}
               />

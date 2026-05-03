@@ -158,6 +158,9 @@ pub struct QueuedDownload {
     pub display_name: Option<String>,
     pub context_length: Option<u64>,
     pub kv_type: Option<String>,
+    pub llama_offload_kqv: Option<bool>,
+    pub llama_gpu_layers: Option<u32>,
+    pub llama_model_offload_mode: Option<String>,
     pub download_role: Option<String>,
     pub queue_kind: Option<String>,
     pub asset_root: Option<String>,
@@ -197,6 +200,12 @@ pub struct QueueDownloadMetadata {
     pub context_length: Option<u64>,
     #[serde(default)]
     pub kv_type: Option<String>,
+    #[serde(default)]
+    pub llama_offload_kqv: Option<bool>,
+    #[serde(default)]
+    pub llama_gpu_layers: Option<u32>,
+    #[serde(default)]
+    pub llama_model_offload_mode: Option<String>,
     #[serde(default)]
     pub download_role: Option<String>,
     #[serde(default)]
@@ -669,6 +678,7 @@ pub struct RunabilityScore {
     pub label: String,
     pub fits_in_ram: bool,
     pub fits_in_vram: bool,
+    pub gpu_mode: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -794,6 +804,7 @@ fn score_configuration(
     model_size: u64,
     quant_quality: f64,
     kv_cache_bytes: u64,
+    available_ram: u64,
     total_available: u64,
     available_vram: u64,
 ) -> (u32, bool, bool, u32, u32, u32, &'static str) {
@@ -802,6 +813,10 @@ fn score_configuration(
         .saturating_add(kv_cache_bytes)
         .saturating_add(overhead);
     let fits_in_ram = total_available > 0 && total_needed <= total_available;
+    let ram_budget = (available_ram as f64 * 0.90) as u64;
+    let vram_budget = (available_vram as f64 * 0.90) as u64;
+    let model_fits_ram = available_ram > 0 && model_size.saturating_add(overhead) <= ram_budget;
+    let kv_fits_vram = available_vram > 0 && kv_cache_bytes.saturating_add(overhead) <= vram_budget;
 
     // Memory fitness (25%)
     let memory_score = if total_available == 0 {
@@ -826,9 +841,9 @@ fn score_configuration(
     //   GPU acceleration (35%)
     //   1. Everything fits in VRAM → 100 (blazing fast)
     //   2. Model fits, KV/compute spills → 70-95 (fast inference, slow prefill)
-    //   3. Model spills to RAM → 10-70 (partial layer offload via -ngl)
+    //   3. Model fits in RAM but not VRAM → 62-92 (RAM-backed model with VRAM context)
+    //   4. Model spills to RAM → 10-70 (partial layer offload via -ngl)
     let (gpu_score, fits_in_vram, gpu_mode) = if available_vram > 0 {
-        let vram_budget = (available_vram as f64 * 0.90) as u64;
         if total_needed <= vram_budget {
             // Full offload: model + KV + compute all fit in VRAM
             (100.0, true, "full")
@@ -852,6 +867,25 @@ fn score_configuration(
             };
             // 70-95: good experience, layers all on GPU
             (70.0 + fit_ratio * 25.0, true, mode)
+        } else if model_fits_ram && kv_fits_vram {
+            let ram_fit_ratio = if model_size.saturating_add(overhead) > 0 {
+                (ram_budget as f64 / model_size.saturating_add(overhead) as f64).min(1.0)
+            } else {
+                1.0
+            };
+            let kv_fit_ratio = if kv_cache_bytes.saturating_add(overhead) > 0 {
+                (vram_budget as f64 / kv_cache_bytes.saturating_add(overhead) as f64).min(1.0)
+            } else {
+                1.0
+            };
+            (78.0 + ram_fit_ratio * 12.0 + kv_fit_ratio * 10.0, false, "ramModelVramCtx")
+        } else if model_fits_ram {
+            let ram_fit_ratio = if model_size.saturating_add(overhead) > 0 {
+                (ram_budget as f64 / model_size.saturating_add(overhead) as f64).min(1.0)
+            } else {
+                1.0
+            };
+            (62.0 + ram_fit_ratio * 18.0, false, "ramModelRamCtx")
         } else {
             // Model doesn't fit: partial layer offload
             let offload_ratio = (vram_budget as f64 / model_size as f64).min(1.0);
@@ -940,10 +974,11 @@ fn compute_scores(
     files
         .iter()
         .map(|file| {
-            let (score, fits_in_ram, fits_in_vram, ..) = score_configuration(
+            let (score, fits_in_ram, fits_in_vram, .., gpu_mode) = score_configuration(
                 file.size,
                 quant_quality_score(&file.quantization),
                 kv_8k,
+                ram,
                 total_available,
                 vram,
             );
@@ -953,6 +988,7 @@ fn compute_scores(
                 label: score_label(score),
                 fits_in_ram,
                 fits_in_vram,
+                gpu_mode: gpu_mode.to_string(),
             }
         })
         .collect()
@@ -1002,6 +1038,7 @@ impl From<&GgufModelMeta> for ModelArchInfo {
 pub struct RecommendationData {
     pub available_ram: u64,
     pub available_vram: u64,
+    pub supports_gpu_offload: bool,
     /// Whether RAM and VRAM share the same pool (Apple Silicon, iGPU)
     pub unified_memory: bool,
     /// Effective total memory (max or sum depending on unified)
@@ -1105,6 +1142,7 @@ fn build_recommendation(
     meta: Option<&GgufModelMeta>,
     available_ram: u64,
     available_vram: u64,
+    supports_gpu_offload: bool,
 ) -> RecommendationData {
     let unified = crate::llama_cpp::is_unified_memory();
     let total_available = resolve_total_available(available_ram, available_vram, unified);
@@ -1191,8 +1229,14 @@ fn build_recommendation(
                 .map(|b| (b * bpv * effective_ctx as f64) as u64)
                 .unwrap_or(0);
 
-            let (score, ..) =
-                score_configuration(file.size, qq, kv_bytes, total_available, available_vram);
+            let (score, ..) = score_configuration(
+                file.size,
+                qq,
+                kv_bytes,
+                available_ram,
+                total_available,
+                available_vram,
+            );
 
             if best.as_ref().is_none_or(|b| score > b.score) {
                 best = Some(BestRecommendation {
@@ -1235,6 +1279,7 @@ fn build_recommendation(
                     file.size,
                     quant_quality_score(&file.quantization),
                     kv_bytes,
+                    available_ram,
                     total_available,
                     available_vram,
                 );
@@ -1254,6 +1299,7 @@ fn build_recommendation(
     RecommendationData {
         available_ram,
         available_vram,
+        supports_gpu_offload,
         unified_memory: unified,
         total_available,
         kv_base_per_token: kv_base,
@@ -1561,6 +1607,9 @@ pub async fn hf_queue_download(
             display_name: metadata.display_name,
             context_length: metadata.context_length,
             kv_type: metadata.kv_type,
+            llama_offload_kqv: metadata.llama_offload_kqv,
+            llama_gpu_layers: metadata.llama_gpu_layers,
+            llama_model_offload_mode: metadata.llama_model_offload_mode,
             download_role: metadata.download_role,
             queue_kind: metadata.queue_kind,
             asset_root: metadata.asset_root,
@@ -2353,6 +2402,7 @@ pub async fn hf_compute_local_runability(
             file_size,
             quant_quality,
             kv_8k,
+            available_ram,
             total_available,
             available_vram,
         );
@@ -2384,6 +2434,7 @@ pub async fn hf_get_recommendation_data(
         return Ok(RecommendationData {
             available_ram: 0,
             available_vram: 0,
+            supports_gpu_offload: false,
             unified_memory: false,
             total_available: 0,
             kv_base_per_token: None,
@@ -2407,7 +2458,8 @@ pub async fn hf_get_recommendation_data(
 
     let meta = fetch_gguf_meta(&app, &model_id, &files).await;
     let available_ram = crate::llama_cpp::available_memory_bytes().unwrap_or(0);
-    let available_vram = if crate::llama_cpp::supports_gpu_offload() {
+    let supports_gpu_offload = crate::llama_cpp::supports_gpu_offload();
+    let available_vram = if supports_gpu_offload {
         crate::llama_cpp::available_vram_bytes().unwrap_or(0)
     } else {
         0
@@ -2418,5 +2470,6 @@ pub async fn hf_get_recommendation_data(
         meta.as_ref(),
         available_ram,
         available_vram,
+        supports_gpu_offload,
     ))
 }

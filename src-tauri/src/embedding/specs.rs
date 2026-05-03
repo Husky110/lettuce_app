@@ -6,8 +6,6 @@ pub(crate) const MODEL_FILES_V1: [&str; 3] = [
     "tokenizer.json",
 ];
 
-pub(crate) const MODEL_FILES_V2_REMOTE: [&str; 3] =
-    ["model.onnx", "model.onnx.data", "tokenizer.json"];
 pub(crate) const MODEL_FILES_V2_LOCAL: [&str; 3] =
     ["v2-model.onnx", "v2-model.onnx.data", "v2-tokenizer.json"];
 pub(crate) const MODEL_FILES_V2_LOCAL_LEGACY: [&str; 3] =
@@ -43,10 +41,6 @@ pub(crate) const COMPANION_ROUTER_MODEL_FILES_LOCAL: [&str; 3] = [
     "companion-router/config.json",
 ];
 
-pub(crate) const HUGGINGFACE_BASE_V1: &str =
-    "https://huggingface.co/Zeolit/lettuce-emb-512d-v1/resolve/main";
-pub(crate) const HUGGINGFACE_BASE_V2: &str =
-    "https://huggingface.co/Zeolit/lettuce-emb-512d-v2/resolve/main";
 pub(crate) const HUGGINGFACE_BASE_V3: &str =
     "https://huggingface.co/Zeolit/lettuce-emb-512d-v3/resolve/main";
 pub(crate) const HUGGINGFACE_BASE_V4: &str =

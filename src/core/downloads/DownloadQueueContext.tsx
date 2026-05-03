@@ -22,6 +22,9 @@ export interface QueuedDownload {
   displayName: string | null;
   contextLength: number | null;
   kvType: string | null;
+  llamaOffloadKqv: boolean | null;
+  llamaGpuLayers: number | null;
+  llamaModelOffloadMode: "auto" | "cpu" | "gpu" | "mixed" | null;
   downloadRole: "model" | "mmproj" | null;
   queueKind?: string | null;
   assetRoot?: string | null;
