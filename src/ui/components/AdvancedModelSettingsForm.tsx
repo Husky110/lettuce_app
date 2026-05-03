@@ -121,6 +121,7 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     llamaChatTemplatePreset: input.llamaChatTemplatePreset?.trim() || null,
     llamaRawCompletionFallback: input.llamaRawCompletionFallback ?? null,
     llamaStrictMode: input.llamaStrictMode ?? null,
+    llamaStreamingEnabled: input.llamaStreamingEnabled ?? null,
     llamaSamplerProfile: input.llamaSamplerProfile ?? null,
     llamaSamplerOrder: normalizeLlamaSamplerOrder(input.llamaSamplerOrder),
     llamaMinP: sanitize(input.llamaMinP, ADVANCED_OLLAMA_MIN_P_RANGE, false),
@@ -229,6 +230,10 @@ export function formatAdvancedModelSettingsSummary(
   // Prompt caching
   if (settings.promptCachingEnabled) {
     parts.push("Caching: On");
+  }
+
+  if (settings.llamaStreamingEnabled === false) {
+    parts.push("Streaming: Off");
   }
 
   return parts.length ? parts.join(" • ") : fallbackLabel;

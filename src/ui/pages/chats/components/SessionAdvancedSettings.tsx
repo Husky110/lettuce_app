@@ -495,8 +495,51 @@ export function SessionAdvancedSettings({
                                   <option value="disabled">Disabled</option>
                                 </select>
                               </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-fg/8 bg-fg/[0.02] p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 space-y-1.5">
+                              <div className="flex items-start gap-3">
+                                <div className="mt-0.5 shrink-0 text-accent/80">
+                                  <Info className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 space-y-1">
+                                  <span className="block text-[13px] font-medium text-fg/82">
+                                    Streaming
+                                  </span>
+                                  <span className="block text-[13px] leading-relaxed text-fg/48">
+                                    Disable incremental token streaming for this llama.cpp model.
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="block text-[12px] text-fg/42">
+                                When off, responses are delivered only after completion.
+                              </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-3">
+                              <span
+                                className={cn(
+                                  "text-[12px] font-medium transition",
+                                  draft.llamaStreamingEnabled !== false
+                                    ? "text-accent/80"
+                                    : "text-fg/42",
+                                )}
+                              >
+                                {draft.llamaStreamingEnabled !== false ? "On" : "Off"}
+                              </span>
+                              <Switch
+                                id="llama-streaming-enabled-session"
+                                checked={draft.llamaStreamingEnabled !== false}
+                                onChange={(next) =>
+                                  update({ llamaStreamingEnabled: next ? true : false })
+                                }
+                                aria-label="Toggle llama.cpp streaming"
+                              />
                             </div>
                           </div>
+                        </div>
 
                           {/* Sampling & Memory */}
                           <div className="rounded-xl border border-fg/8 bg-fg/[0.02] p-4">

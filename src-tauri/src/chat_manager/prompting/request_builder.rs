@@ -39,6 +39,20 @@ pub fn effective_streaming_enabled(credential: &ProviderCredential, should_strea
         && provider_streaming_enabled(credential)
 }
 
+pub fn effective_streaming_enabled_with_override(
+    credential: &ProviderCredential,
+    should_stream: bool,
+    llama_streaming_enabled: Option<bool>,
+) -> bool {
+    let stream_allowed = if credential.provider_id.eq_ignore_ascii_case("llamacpp") {
+        llama_streaming_enabled.unwrap_or(true)
+    } else {
+        true
+    };
+
+    effective_streaming_enabled(credential, should_stream) && stream_allowed
+}
+
 // ---------------------------------------------------------------------------
 // Prompt-caching helpers
 // ---------------------------------------------------------------------------
@@ -130,7 +144,12 @@ pub fn build_chat_request(
 ) -> BuiltRequest {
     let base_url = provider_base_url(credential);
     let adapter = adapter_for(credential);
-    let effective_stream = effective_streaming_enabled(credential, should_stream);
+    let llama_streaming_enabled = extra_body_fields
+        .as_ref()
+        .and_then(|fields| fields.get("llamaStreamingEnabled"))
+        .and_then(Value::as_bool);
+    let effective_stream =
+        effective_streaming_enabled_with_override(credential, should_stream, llama_streaming_enabled);
     let url = adapter.build_url(&base_url, model_name, api_key, effective_stream);
     let headers = adapter.headers(api_key, credential.headers.as_ref());
     let mut body = adapter.body(
@@ -243,7 +262,7 @@ pub fn build_chat_request(
 
     if let Some(map) = body.as_object_mut() {
         for (key, mut value) in extra_body_fields {
-            if key == "promptCachingTtl" {
+            if key == "promptCachingTtl" || key == "llamaStreamingEnabled" {
                 continue;
             }
             // OpenRouter sticky routing only applies to OpenRouter payloads.

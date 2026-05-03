@@ -40,6 +40,7 @@ const PARAMETER_LABELS: Record<keyof AdvancedModelSettings, string> = {
   llamaChatTemplatePreset: "llama.cpp Template Preset",
   llamaRawCompletionFallback: "llama.cpp Raw Fallback",
   llamaStrictMode: "llama.cpp Strict Mode",
+  llamaStreamingEnabled: "llama.cpp Streaming",
   llamaSamplerProfile: "llama.cpp Sampler Profile",
   llamaSamplerOrder: "llama.cpp Sampler Order",
   llamaMinP: "llama.cpp Min P",
@@ -98,6 +99,7 @@ const PARAMETER_DESCRIPTIONS: Record<keyof AdvancedModelSettings, string> = {
   llamaRawCompletionFallback: "Allow plain raw completion fallback if template resolution fails",
   llamaStrictMode:
     "Disable llama.cpp safety fallbacks that lower offload, context, or batch settings",
+  llamaStreamingEnabled: "Disable incremental token streaming for llama.cpp models",
   llamaSamplerProfile:
     "Preset local sampler defaults for chat, creativity, stability, or reasoning",
   llamaSamplerOrder: "Array of sampler stages executed in the saved order for local llama.cpp",

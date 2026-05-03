@@ -456,6 +456,7 @@ export function EditModelPage() {
     handleLlamaChatTemplatePresetChange,
     handleLlamaRawCompletionFallbackChange,
     handleLlamaStrictModeChange,
+    handleLlamaStreamingEnabledChange,
     handleOllamaNumCtxChange,
     handleOllamaNumPredictChange,
     handleOllamaNumKeepChange,
@@ -3905,12 +3906,12 @@ export function EditModelPage() {
                                           Disabled
                                         </option>
                                       </select>
-                                    </div>
                                   </div>
+                                </div>
 
-                                  <div className="rounded-xl border border-danger/20 bg-danger/6 p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="min-w-0 space-y-1.5">
+                                <div className="rounded-xl border border-danger/20 bg-danger/6 p-4">
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0 space-y-1.5">
                                         <div className="flex items-start gap-3">
                                           <div className="mt-0.5 shrink-0 text-danger/80">
                                             <AlertTriangle className="h-4 w-4" />
@@ -4714,6 +4715,54 @@ export function EditModelPage() {
                                 <HelpCircle size={14} />
                               </button>
                             </div>
+
+                            {editorModel?.providerId === "llamacpp" && (
+                              <div className="rounded-xl border border-fg/10 bg-fg/5 p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="min-w-0 space-y-1.5">
+                                    <div className="flex items-start gap-3">
+                                      <div className="mt-0.5 shrink-0 text-accent/80">
+                                        <Info className="h-4 w-4" />
+                                      </div>
+                                      <div className="min-w-0 space-y-1">
+                                        <span className="block text-[13px] font-medium text-fg/82">
+                                          Streaming
+                                        </span>
+                                        <span className="block text-[13px] leading-relaxed text-fg/48">
+                                          Disable incremental token streaming for this llama.cpp
+                                          model.
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <span className="block text-[12px] text-fg/42">
+                                      When off, responses are delivered only after completion.
+                                    </span>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-3">
+                                    <span
+                                      className={cn(
+                                        "text-[12px] font-medium transition",
+                                        modelAdvancedDraft.llamaStreamingEnabled !== false
+                                          ? "text-accent/80"
+                                          : "text-fg/42",
+                                      )}
+                                    >
+                                      {modelAdvancedDraft.llamaStreamingEnabled !== false
+                                        ? "On"
+                                        : "Off"}
+                                    </span>
+                                    <Switch
+                                      id="llama-streaming-enabled"
+                                      checked={modelAdvancedDraft.llamaStreamingEnabled !== false}
+                                      onChange={(next) =>
+                                        handleLlamaStreamingEnabledChange(next ? true : false)
+                                      }
+                                      aria-label="Toggle llama.cpp streaming"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                               <div className="space-y-3">

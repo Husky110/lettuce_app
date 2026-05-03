@@ -564,6 +564,24 @@ pub(super) fn resolve_llama_raw_completion_fallback(
             .llama_raw_completion_fallback)
 }
 
+pub(super) fn resolve_llama_streaming_enabled(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<bool> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_streaming_enabled)
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_streaming_enabled)
+        })
+        .or(settings.advanced_model_settings.llama_streaming_enabled)
+}
+
 pub(super) fn resolve_llama_strict_mode(
     session: &Session,
     model: &Model,
