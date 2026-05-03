@@ -11,6 +11,7 @@ import {
   type KokoroSupportedVariant,
 } from "../../../../core/storage/audioProviders";
 import { BottomMenu } from "../../../components/BottomMenu";
+import { useI18n } from "../../../../core/i18n/context";
 
 interface AudioProviderEditorProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export function AudioProviderEditor({
   onClose,
   onSave,
 }: AudioProviderEditorProps) {
+  const { t } = useI18n();
   const [formData, setFormData] = useState<AudioProvider | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -85,11 +87,11 @@ export function AudioProviderEditor({
 
     if (formData.providerType === "kokoro") {
       if (!formData.kokoroVariant) {
-        setValidationError("Choose a model variant");
+        setValidationError(t("providers.audioEditor.errors.chooseModelVariant"));
         return;
       }
       if (!formData.assetRoot?.trim()) {
-        setValidationError("Asset root is required");
+        setValidationError(t("providers.audioEditor.errors.assetRootRequired"));
         return;
       }
       setIsSaving(true);
@@ -97,7 +99,7 @@ export function AudioProviderEditor({
       try {
         await onSave(formData);
       } catch (e) {
-        setValidationError(e instanceof Error ? e.message : "Save failed");
+        setValidationError(e instanceof Error ? e.message : t("providers.audioEditor.errors.saveFailed"));
       } finally {
         setIsSaving(false);
       }
@@ -105,17 +107,17 @@ export function AudioProviderEditor({
     }
 
     if (!formData.apiKey?.trim()) {
-      setValidationError("API key is required");
+      setValidationError(t("providers.audioEditor.errors.apiKeyRequired"));
       return;
     }
 
     if (formData.providerType === "gemini_tts" && !formData.projectId?.trim()) {
-      setValidationError("Project ID is required for Gemini TTS");
+      setValidationError(t("providers.audioEditor.errors.projectIdRequired"));
       return;
     }
 
     if (formData.providerType === "openai_tts" && !formData.baseUrl?.trim()) {
-      setValidationError("Base URL is required for OpenAI-compatible TTS");
+      setValidationError(t("providers.audioEditor.errors.baseUrlRequired"));
       return;
     }
 
@@ -130,13 +132,15 @@ export function AudioProviderEditor({
       );
 
       if (!isValid) {
-        setValidationError("Invalid API key or credentials");
+        setValidationError(t("providers.audioEditor.errors.invalidCredentials"));
         return;
       }
 
       await onSave(formData);
     } catch (e) {
-      setValidationError(e instanceof Error ? e.message : "Verification failed");
+      setValidationError(
+        e instanceof Error ? e.message : t("providers.audioEditor.errors.verificationFailed"),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -148,11 +152,17 @@ export function AudioProviderEditor({
     <BottomMenu
       isOpen={isOpen}
       onClose={onClose}
-      title={formData.id ? "Edit Provider" : "Add Audio Provider"}
+      title={
+        formData.id
+          ? t("providers.audioEditor.titleEdit")
+          : t("providers.audioEditor.titleCreate")
+      }
     >
       <div className="space-y-4 pb-2">
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Provider Type</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("providers.audioEditor.fields.providerType")}
+          </label>
           <select
             value={formData.providerType}
             onChange={(e) => {
@@ -176,33 +186,35 @@ export function AudioProviderEditor({
               ElevenLabs
             </option>
             <option value="gemini_tts" className="bg-surface-el">
-              Gemini TTS (Google)
+              {t("providers.audioEditor.types.gemini")}
             </option>
             <option value="openai_tts" className="bg-surface-el">
-              OpenAI-Compatible TTS
+              {t("providers.audioEditor.types.openai")}
             </option>
             {isKokoro && (
               <option value="kokoro" className="bg-surface-el">
-                Kokoro (Local)
+                {t("providers.audioEditor.types.kokoro")}
               </option>
             )}
           </select>
         </div>
 
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Label</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("providers.audioEditor.fields.label")}
+          </label>
           <input
             type="text"
             value={formData.label}
             onChange={(e) => setFormData({ ...formData, label: e.target.value })}
             placeholder={
               formData.providerType === "gemini_tts"
-                ? "My Gemini TTS"
+                ? t("providers.audioEditor.placeholders.labelGemini")
                 : formData.providerType === "openai_tts"
-                  ? "My Compatible TTS"
+                  ? t("providers.audioEditor.placeholders.labelOpenai")
                   : formData.providerType === "kokoro"
-                    ? "Kokoro Local"
-                    : "My ElevenLabs"
+                    ? t("providers.audioEditor.placeholders.labelKokoro")
+                    : t("providers.audioEditor.placeholders.labelElevenlabs")
             }
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
           />
@@ -210,7 +222,9 @@ export function AudioProviderEditor({
 
         {!isKokoro && (
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-fg/70">API Key</label>
+            <label className="mb-1 block text-[11px] font-medium text-fg/70">
+              {t("providers.audioEditor.fields.apiKey")}
+            </label>
             <input
               type="password"
               value={formData.apiKey ?? ""}
@@ -218,7 +232,7 @@ export function AudioProviderEditor({
                 setFormData({ ...formData, apiKey: e.target.value });
                 if (validationError) setValidationError(null);
               }}
-              placeholder="Enter your API key"
+              placeholder={t("providers.audioEditor.placeholders.apiKey")}
               className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
             />
           </div>
@@ -227,7 +241,9 @@ export function AudioProviderEditor({
         {isKokoro && (
           <>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-fg/70">Model Variant</label>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">
+                {t("providers.audioEditor.fields.modelVariant")}
+              </label>
               <select
                 value={formData.kokoroVariant ?? ""}
                 onChange={(e) => {
@@ -242,7 +258,7 @@ export function AudioProviderEditor({
               >
                 {variantOptions.length === 0 ? (
                   <option value="" className="bg-surface-el">
-                    Loading variants...
+                    {t("providers.audioEditor.loadingVariants")}
                   </option>
                 ) : (
                   variantOptions.map((variant) => (
@@ -253,12 +269,13 @@ export function AudioProviderEditor({
                 )}
               </select>
               <p className="mt-1 text-[10px] text-fg/40">
-                Mobile builds only support int8. Install the model from the Kokoro Studio after
-                saving.
+                {t("providers.audioEditor.kokoroVariantHint")}
               </p>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-fg/70">Asset Root</label>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">
+                {t("providers.audioEditor.fields.assetRoot")}
+              </label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -267,7 +284,7 @@ export function AudioProviderEditor({
                     setFormData({ ...formData, assetRoot: e.target.value });
                     if (validationError) setValidationError(null);
                   }}
-                  placeholder={managedRoot || "/path/to/kokoro"}
+                  placeholder={managedRoot || t("providers.audioEditor.placeholders.assetRoot")}
                   className="min-w-0 flex-1 rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                 />
                 <button
@@ -275,7 +292,7 @@ export function AudioProviderEditor({
                   onClick={() => void browseAssetRoot()}
                   className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-xs text-fg/70 transition hover:border-fg/20 hover:bg-fg/10"
                 >
-                  Browse
+                  {t("common.buttons.browseFiles")}
                 </button>
                 {managedRoot && (
                   <button
@@ -283,12 +300,14 @@ export function AudioProviderEditor({
                     onClick={() => setFormData({ ...formData, assetRoot: managedRoot })}
                     className="rounded-lg border border-info/25 bg-info/10 px-3 py-2 text-xs text-info/85 transition hover:border-info/40 hover:bg-info/15"
                   >
-                    Managed
+                    {t("providers.audioEditor.managed")}
                   </button>
                 )}
               </div>
               {managedRoot && (
-                <p className="mt-1 break-all text-[10px] text-fg/40">Managed: {managedRoot}</p>
+                <p className="mt-1 break-all text-[10px] text-fg/40">
+                  {t("providers.audioEditor.managedPath", { path: managedRoot })}
+                </p>
               )}
             </div>
           </>
@@ -298,7 +317,7 @@ export function AudioProviderEditor({
           <>
             <div>
               <label className="mb-1 block text-[11px] font-medium text-fg/70">
-                Google Cloud Project ID
+                {t("providers.audioEditor.fields.projectId")}
               </label>
               <input
                 type="text"
@@ -307,19 +326,19 @@ export function AudioProviderEditor({
                   setFormData({ ...formData, projectId: e.target.value });
                   if (validationError) setValidationError(null);
                 }}
-                placeholder="your-project-id"
+                placeholder={t("providers.audioEditor.placeholders.projectId")}
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-medium text-fg/70">
-                Region (optional)
+                {t("providers.audioEditor.fields.region")}
               </label>
               <input
                 type="text"
                 value={formData.location ?? ""}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                placeholder="us-central1"
+                placeholder={t("providers.audioEditor.placeholders.region")}
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
             </div>
@@ -329,7 +348,9 @@ export function AudioProviderEditor({
         {formData.providerType === "openai_tts" && (
           <>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-fg/70">Base URL</label>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">
+                {t("providers.audioEditor.fields.baseUrl")}
+              </label>
               <input
                 type="text"
                 value={formData.baseUrl ?? ""}
@@ -337,12 +358,14 @@ export function AudioProviderEditor({
                   setFormData({ ...formData, baseUrl: e.target.value });
                   if (validationError) setValidationError(null);
                 }}
-                placeholder="https://api.example.com"
+                placeholder={t("providers.audioEditor.placeholders.baseUrl")}
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-fg/70">Request Path</label>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">
+                {t("providers.audioEditor.fields.requestPath")}
+              </label>
               <input
                 type="text"
                 value={formData.requestPath ?? "/v1/audio/speech"}
@@ -351,7 +374,7 @@ export function AudioProviderEditor({
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
               <p className="mt-1 text-[10px] text-fg/40">
-                Use the provider path if it differs from the OpenAI default
+                {t("providers.audioEditor.requestPathHint")}
               </p>
             </div>
           </>
@@ -364,14 +387,14 @@ export function AudioProviderEditor({
             onClick={onClose}
             className="flex-1 rounded-lg border border-fg/10 bg-fg/5 px-4 py-2 text-sm font-medium text-fg/70 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
           >
-            Cancel
+            {t("common.buttons.cancel")}
           </button>
           <button
             onClick={() => void handleSave()}
             disabled={isSaving || !formData.label.trim()}
             className="flex-1 rounded-lg border border-accent/40 bg-accent/20 px-4 py-2 text-sm font-semibold text-accent/90 transition hover:border-accent/60 hover:bg-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? "Verifying..." : "Save"}
+            {isSaving ? t("providers.audioEditor.verifying") : t("common.buttons.save")}
           </button>
         </div>
       </div>

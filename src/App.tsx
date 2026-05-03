@@ -937,15 +937,15 @@ function AppContent() {
             }
             titleOverride={
               isAvatarLibraryPickerRoute
-                ? "Select from library"
+                ? t("common.nav.library")
                 : location.pathname === "/settings/models/installed"
-                  ? "Installed Models"
+                  ? t("installedModels.title")
                   : /^\/settings\/voices\/kokoro\/[^/]+\/blend$/.test(location.pathname)
-                    ? "New blend"
+                    ? t("voices.extra.kokoro.newBlend")
                     : /^\/settings\/voices\/kokoro\/[^/]+\/blend\/.+$/.test(location.pathname)
-                      ? "Edit blend"
+                      ? t("voices.extra.kokoro.editBlend")
                       : /^\/settings\/voices\/kokoro\/[^/]+$/.test(location.pathname)
-                        ? "Kokoro Studio"
+                        ? t("voices.extra.kokoro.title")
                         : undefined
             }
           />

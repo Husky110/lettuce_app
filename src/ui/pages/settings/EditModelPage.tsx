@@ -138,30 +138,38 @@ function formatRuntimeRate(value?: number | null): string | null {
   return `${value.toFixed(value >= 10 ? 1 : 2)} tok/s`;
 }
 
-function getLlamaRuntimeHeadline(report: LlamaLastRuntimeReport): string {
-  if (report.status === "succeeded") {
-    return "The last local run completed successfully.";
-  }
+function getLlamaRuntimeHeadlineKey(
+  report: LlamaLastRuntimeReport,
+):
+  | "editModel.runtime.headline.succeeded"
+  | "editModel.runtime.headline.cpuFallbackSucceeded"
+  | "editModel.runtime.headline.cpuFallbackFailed"
+  | "editModel.runtime.headline.failed" {
+  if (report.status === "succeeded") return "editModel.runtime.headline.succeeded";
   if (report.status === "cpuFallbackSucceeded") {
-    return "GPU load failed, then the model recovered on CPU.";
+    return "editModel.runtime.headline.cpuFallbackSucceeded";
   }
   if (report.status === "cpuFallbackFailed") {
-    return "GPU load failed and the CPU fallback still did not complete.";
+    return "editModel.runtime.headline.cpuFallbackFailed";
   }
-  return "The last local run failed before llama.cpp could complete.";
+  return "editModel.runtime.headline.failed";
 }
 
-function getLlamaRuntimeDetail(report: LlamaLastRuntimeReport): string {
-  if (report.status === "succeeded") {
-    return "This report also seeds the smart offload cache so future runs can reuse the last stable GPU setup.";
-  }
+function getLlamaRuntimeDetailKey(
+  report: LlamaLastRuntimeReport,
+):
+  | "editModel.runtime.detail.succeeded"
+  | "editModel.runtime.detail.cpuFallbackSucceeded"
+  | "editModel.runtime.detail.cpuFallbackFailed"
+  | "editModel.runtime.detail.failed" {
+  if (report.status === "succeeded") return "editModel.runtime.detail.succeeded";
   if (report.status === "cpuFallbackSucceeded") {
-    return "We stored the CPU-safe context and batch that did run so you can reuse them.";
+    return "editModel.runtime.detail.cpuFallbackSucceeded";
   }
   if (report.status === "cpuFallbackFailed") {
-    return "The model was retried on CPU, but the recovered configuration still failed.";
+    return "editModel.runtime.detail.cpuFallbackFailed";
   }
-  return "This report keeps the last known runtime state so you can inspect what happened.";
+  return "editModel.runtime.detail.failed";
 }
 
 type EditorViewMode = "simple" | "advanced";
@@ -486,83 +494,83 @@ export function EditModelPage() {
       return [];
     }
     const fields = [
-      ["Updated", formatRuntimeDate(llamaRuntimeReport.updatedAt)],
-      ["Model path", llamaRuntimeReport.modelPath],
-      ["Backend used", llamaRuntimeReport.backendPathUsed ?? null],
-      ["Failure stage", llamaRuntimeReport.failureStage ?? null],
-      ["Requested context", formatRuntimeNumber(llamaRuntimeReport.requestedContext)],
-      ["Recommended context", formatRuntimeNumber(llamaRuntimeReport.recommendedContext)],
-      ["Initial context", formatRuntimeNumber(llamaRuntimeReport.initialContextCandidate)],
-      ["Actual context", formatRuntimeNumber(llamaRuntimeReport.actualContextUsed)],
-      ["Requested GPU layers", formatRuntimeNumber(llamaRuntimeReport.requestedGpuLayers)],
-      ["Actual GPU layers", formatRuntimeNumber(llamaRuntimeReport.actualGpuLayersUsed)],
-      ["Requested batch", formatRuntimeNumber(llamaRuntimeReport.requestedBatchLimit)],
-      ["Initial batch", formatRuntimeNumber(llamaRuntimeReport.initialBatchCandidate)],
-      ["Actual batch", formatRuntimeNumber(llamaRuntimeReport.actualBatchUsed)],
+      [t("editModel.runtimeFacts.updated"), formatRuntimeDate(llamaRuntimeReport.updatedAt)],
+      [t("editModel.runtimeFacts.modelPath"), llamaRuntimeReport.modelPath],
+      [t("editModel.runtimeFacts.backendUsed"), llamaRuntimeReport.backendPathUsed ?? null],
+      [t("editModel.runtimeFacts.failureStage"), llamaRuntimeReport.failureStage ?? null],
+      [t("editModel.runtimeFacts.requestedContext"), formatRuntimeNumber(llamaRuntimeReport.requestedContext)],
+      [t("editModel.runtimeFacts.recommendedContext"), formatRuntimeNumber(llamaRuntimeReport.recommendedContext)],
+      [t("editModel.runtimeFacts.initialContext"), formatRuntimeNumber(llamaRuntimeReport.initialContextCandidate)],
+      [t("editModel.runtimeFacts.actualContext"), formatRuntimeNumber(llamaRuntimeReport.actualContextUsed)],
+      [t("editModel.runtimeFacts.requestedGpuLayers"), formatRuntimeNumber(llamaRuntimeReport.requestedGpuLayers)],
+      [t("editModel.runtimeFacts.actualGpuLayers"), formatRuntimeNumber(llamaRuntimeReport.actualGpuLayersUsed)],
+      [t("editModel.runtimeFacts.requestedBatch"), formatRuntimeNumber(llamaRuntimeReport.requestedBatchLimit)],
+      [t("editModel.runtimeFacts.initialBatch"), formatRuntimeNumber(llamaRuntimeReport.initialBatchCandidate)],
+      [t("editModel.runtimeFacts.actualBatch"), formatRuntimeNumber(llamaRuntimeReport.actualBatchUsed)],
       [
-        "Smart offload fallback",
+        t("editModel.runtimeFacts.smartOffloadFallback"),
         llamaRuntimeReport.smartGpuLayerFallbackActivated == null
           ? null
           : llamaRuntimeReport.smartGpuLayerFallbackActivated
-            ? "Active"
-            : "Not needed",
+            ? t("editModel.runtimeFacts.active")
+            : t("editModel.runtimeFacts.notNeeded"),
       ],
       [
-        "KQV fallback",
+        t("editModel.runtimeFacts.kqvFallback"),
         llamaRuntimeReport.kqvFallbackActivated == null
           ? null
           : llamaRuntimeReport.kqvFallbackActivated
-            ? "Moved to RAM"
-            : "Not needed",
+            ? t("editModel.runtimeFacts.movedToRam")
+            : t("editModel.runtimeFacts.notNeeded"),
       ],
       [
-        "Smart offload estimate",
+        t("editModel.runtimeFacts.smartOffloadEstimate"),
         formatRuntimeNumber(llamaRuntimeReport.smartOffloadEstimatedGpuLayers),
       ],
       [
-        "Smart offload candidates",
+        t("editModel.runtimeFacts.smartOffloadCandidates"),
         llamaRuntimeReport.smartOffloadCandidateLayers?.length
           ? llamaRuntimeReport.smartOffloadCandidateLayers.join(", ")
           : null,
       ],
-      ["KV cache", llamaRuntimeReport.actualKvTypeUsed ?? null],
-      ["KQV offload", llamaRuntimeReport.actualOffloadKqvMode ?? null],
-      ["Flash attention", llamaRuntimeReport.flashAttentionPolicy ?? null],
+      [t("editModel.runtimeFacts.kvCache"), llamaRuntimeReport.actualKvTypeUsed ?? null],
+      [t("editModel.runtimeFacts.kqvOffload"), llamaRuntimeReport.actualOffloadKqvMode ?? null],
+      [t("editModel.runtimeFacts.flashAttention"), llamaRuntimeReport.flashAttentionPolicy ?? null],
       [
-        "GPU backends",
+        t("editModel.runtimeFacts.gpuBackends"),
         llamaRuntimeReport.compiledGpuBackends?.length
           ? llamaRuntimeReport.compiledGpuBackends.join(", ")
           : null,
       ],
       [
-        "Available RAM",
+        t("editModel.runtimeFacts.availableRam"),
         llamaRuntimeReport.availableMemoryBytes
           ? formatBytes(llamaRuntimeReport.availableMemoryBytes)
           : null,
       ],
       [
-        "Available VRAM",
+        t("editModel.runtimeFacts.availableVram"),
         llamaRuntimeReport.availableVramBytes
           ? formatBytes(llamaRuntimeReport.availableVramBytes)
           : null,
       ],
       [
-        "Model size",
+        t("editModel.runtimeFacts.modelSize"),
         llamaRuntimeReport.modelSizeBytes ? formatBytes(llamaRuntimeReport.modelSizeBytes) : null,
       ],
-      ["Prompt tokens", formatRuntimeNumber(llamaRuntimeReport.promptTokens)],
-      ["Prompt positions", formatRuntimeNumber(llamaRuntimeReport.promptPositions)],
-      ["Target new tokens", formatRuntimeNumber(llamaRuntimeReport.targetNewTokens)],
-      ["Completion tokens", formatRuntimeNumber(llamaRuntimeReport.completionTokens)],
-      ["Finish reason", llamaRuntimeReport.finishReason ?? null],
+      [t("editModel.runtimeFacts.promptTokens"), formatRuntimeNumber(llamaRuntimeReport.promptTokens)],
+      [t("editModel.runtimeFacts.promptPositions"), formatRuntimeNumber(llamaRuntimeReport.promptPositions)],
+      [t("editModel.runtimeFacts.targetNewTokens"), formatRuntimeNumber(llamaRuntimeReport.targetNewTokens)],
+      [t("editModel.runtimeFacts.completionTokens"), formatRuntimeNumber(llamaRuntimeReport.completionTokens)],
+      [t("editModel.runtimeFacts.finishReason"), llamaRuntimeReport.finishReason ?? null],
       [
-        "First token",
+        t("editModel.runtimeFacts.firstToken"),
         llamaRuntimeReport.firstTokenMs
           ? `${formatRuntimeNumber(llamaRuntimeReport.firstTokenMs)} ms`
           : null,
       ],
-      ["Throughput", formatRuntimeRate(llamaRuntimeReport.tokensPerSecond)],
-      ["Prompt template", llamaRuntimeReport.promptTemplateSource ?? null],
+      [t("editModel.runtimeFacts.throughput"), formatRuntimeRate(llamaRuntimeReport.tokensPerSecond)],
+      [t("editModel.runtimeFacts.promptTemplate"), llamaRuntimeReport.promptTemplateSource ?? null],
     ] as const;
     return fields.filter(([, value]) => value).map(([label, value]) => ({ label, value: value! }));
   }, [llamaRuntimeReport]);
@@ -570,8 +578,8 @@ export function EditModelPage() {
     const applied = await applyLlamaRuntimeSuggestion();
     if (applied) {
       toast.success(
-        "Runtime config applied",
-        "Future local runs will reuse the last CPU-safe context and batch.",
+        t("editModel.toasts.runtimeConfigApplied"),
+        t("editModel.toasts.runtimeConfigAppliedDescription"),
       );
     }
   };
@@ -790,8 +798,8 @@ export function EditModelPage() {
 
     if (!editorModel?.name?.trim()) {
       toast.warning(
-        "Model path required",
-        "Select a GGUF model path before reading the embedded template.",
+        t("editModel.toasts.modelPathRequired"),
+        t("editModel.toasts.modelPathRequiredDescription"),
       );
       return;
     }
@@ -817,7 +825,7 @@ export function EditModelPage() {
     if (!embeddedTemplateText.trim()) return;
     setTemplateOverlayDraft(embeddedTemplateText);
     setShowEmbeddedTemplateViewer(false);
-    toast.success("Embedded template pasted into editor");
+    toast.success(t("editModel.toasts.embeddedTemplatePasted"));
   };
 
   const openTemplateOverlay = () => {
@@ -1150,8 +1158,11 @@ export function EditModelPage() {
     isOpenRouterProvider,
     showOnlyFreeModels,
   ]);
-  const modelIdLabel = isLocalModel ? "Model Path (GGUF)" : "Model ID";
-  const modelIdPlaceholder = isLocalModel ? "/path/to/model.gguf" : "e.g. gpt-4o";
+  const modelIdLabel =
+    isLocalModel ? t("editModel.fields.modelPath") : t("editModel.fields.modelId");
+  const modelIdPlaceholder = isLocalModel
+    ? t("editModel.placeholders.modelPath")
+    : t("editModel.placeholders.modelId");
   const mmprojLibraryModels = useMemo(
     () =>
       downloadedModels.filter(
@@ -1162,14 +1173,16 @@ export function EditModelPage() {
   const localLibraryModels =
     localLibraryPickerMode === "mmproj" ? mmprojLibraryModels : downloadedModels;
   const localLibraryTitle =
-    localLibraryPickerMode === "mmproj" ? "Downloaded MMProj Files" : t("hfBrowser.libraryTitle");
+    localLibraryPickerMode === "mmproj"
+      ? t("editModel.localLibrary.mmprojTitle")
+      : t("hfBrowser.libraryTitle");
   const localLibraryEmptyLabel =
     localLibraryPickerMode === "mmproj"
-      ? "No downloaded mmproj files yet"
+      ? t("editModel.localLibrary.mmprojEmpty")
       : t("hfBrowser.libraryEmpty");
   const localLibraryEmptyHint =
     localLibraryPickerMode === "mmproj"
-      ? "Download a multimodal projector from the Model Browser, or enter a path manually."
+      ? t("editModel.localLibrary.mmprojEmptyHint")
       : t("hfBrowser.libraryEmptyHint");
   const isAutomatic1111Provider = editorModel?.providerId === "automatic1111";
 
@@ -1189,12 +1202,12 @@ export function EditModelPage() {
   const promptCachingTtlOptions =
     editorModel?.providerId === "openai"
       ? [
-          { value: "in_memory", label: "In-memory" },
-          { value: "24h", label: "24 hr" },
+          { value: "in_memory", label: t("editModel.promptCaching.ttl.inMemory") },
+          { value: "24h", label: t("editModel.promptCaching.ttl.24h") },
         ]
       : [
-          { value: "5min", label: "5 min" },
-          { value: "1h", label: "1 hr" },
+          { value: "5min", label: t("editModel.promptCaching.ttl.5min") },
+          { value: "1h", label: t("editModel.promptCaching.ttl.1h") },
         ];
   const selectedPromptCachingTtl =
     modelAdvancedDraft.promptCachingTtl ??
@@ -1252,12 +1265,12 @@ export function EditModelPage() {
   const isCpuOnlyLlamaBackend = isLocalModel && supportsLlamaGpuOffload === false;
   const contextCacheLocationLabel =
     isCpuOnlyLlamaBackend
-      ? "RAM"
+      ? t("editModel.runtimeSummary.ram")
       : modelAdvancedDraft.llamaOffloadKqv === true
-      ? "VRAM"
+      ? t("editModel.runtimeSummary.vram")
       : modelAdvancedDraft.llamaOffloadKqv === false
-        ? "RAM"
-        : "Auto";
+        ? t("editModel.runtimeSummary.ram")
+        : t("common.labels.auto");
   const selectedSamplerProfile = modelAdvancedDraft.llamaSamplerProfile ?? "balanced";
   const ollamaStopText = (modelAdvancedDraft.ollamaStop ?? []).join("\n");
   const selectedFetchedModel = fetchedModels.find((model) => model.id === editorModel?.name);
@@ -1265,9 +1278,13 @@ export function EditModelPage() {
     selectedProviderCredential?.label ||
     editorModel?.providerLabel ||
     editorModel?.providerId ||
-    "Select platform";
+    t("editModel.setup.selectPlatform");
   const hasRuntimePanel = isLocalModel || isOllamaModel;
-  const runtimePanelTitle = isLocalModel ? "llama.cpp" : isOllamaModel ? "Ollama" : "Runtime";
+  const runtimePanelTitle = isLocalModel
+    ? "llama.cpp"
+    : isOllamaModel
+      ? "Ollama"
+      : t("editModel.sections.runtime");
   const effectiveEditorViewMode: EditorViewMode = isMobile ? "simple" : editorViewMode;
   const activeDetailPanel =
     effectiveEditorViewMode === "advanced" ? activeAdvancedPanel : activeSimplePanel;
@@ -1293,7 +1310,7 @@ export function EditModelPage() {
         modelAdvancedDraft.sdSize ? modelAdvancedDraft.sdSize : null,
       ]
         .filter(Boolean)
-        .join(" • ") || "Stable Diffusion sampler, CFG, seed, and size defaults"
+        .join(" • ") || t("editModel.summaries.generationAutomatic1111")
     : [
         modelAdvancedDraft.temperature != null
           ? `Temp ${modelAdvancedDraft.temperature.toFixed(2)}`
@@ -1304,7 +1321,7 @@ export function EditModelPage() {
           : null,
       ]
         .filter(Boolean)
-        .join(" • ") || "Default sampling and output limits";
+        .join(" • ") || t("editModel.summaries.generationDefault");
   const runtimeSummary = isLocalModel
     ? [
         modelAdvancedDraft.llamaBatchSize != null
@@ -1312,13 +1329,13 @@ export function EditModelPage() {
           : null,
         modelAdvancedDraft.llamaKvType ? `KV ${modelAdvancedDraft.llamaKvType}` : null,
         modelAdvancedDraft.llamaOffloadKqv === true
-          ? "KV cache in VRAM"
+          ? t("editModel.runtimeSummary.kvCacheInVram")
           : modelAdvancedDraft.llamaOffloadKqv === false
-            ? "KV cache in RAM"
+            ? t("editModel.runtimeSummary.kvCacheInRam")
             : null,
       ]
         .filter(Boolean)
-        .join(" • ") || "Execution, memory, and hardware defaults"
+        .join(" • ") || t("editModel.summaries.runtimeLlama")
     : isOllamaModel
       ? [
           modelAdvancedDraft.ollamaNumCtx != null
@@ -1332,14 +1349,16 @@ export function EditModelPage() {
             : null,
         ]
           .filter(Boolean)
-          .join(" • ") || "Ollama runtime defaults"
+          .join(" • ") || t("editModel.summaries.runtimeOllama")
       : "";
   const reasoningSummary = isAutoReasoning
-    ? "Always enabled for this provider"
+    ? t("editModel.summaries.reasoningAlwaysEnabled")
     : modelAdvancedDraft.reasoningEnabled === false
-      ? "Reasoning disabled"
+      ? t("editModel.summaries.reasoningDisabled")
       : [
-          modelAdvancedDraft.reasoningEnabled ? "Enabled" : "Provider default",
+          modelAdvancedDraft.reasoningEnabled
+            ? t("editModel.reasoning.enabled")
+            : t("editModel.reasoning.providerDefault"),
           modelAdvancedDraft.reasoningEffort
             ? `Effort ${modelAdvancedDraft.reasoningEffort}`
             : null,
@@ -1348,7 +1367,7 @@ export function EditModelPage() {
             : null,
         ]
           .filter(Boolean)
-          .join(" • ") || "Thinking controls stay on provider defaults";
+          .join(" • ") || t("editModel.summaries.reasoningDefault");
   const inputCapabilitySummary = (editorModel?.inputScopes ?? [])
     .filter((scope) => scope !== "text")
     .map((scope) => scope[0].toUpperCase() + scope.slice(1))
@@ -1357,7 +1376,10 @@ export function EditModelPage() {
     .filter((scope) => scope !== "text")
     .map((scope) => scope[0].toUpperCase() + scope.slice(1))
     .join(", ");
-  const capabilitiesSummary = `Input: ${inputCapabilitySummary || "Text only"} • Output: ${outputCapabilitySummary || "Text only"}`;
+  const capabilitiesSummary = t("editModel.summaries.capabilities", {
+    input: inputCapabilitySummary || t("editModel.summaries.textOnly"),
+    output: outputCapabilitySummary || t("editModel.summaries.textOnly"),
+  });
   const simpleDetailOrder =
     activeSimplePanel === "generation"
       ? 15
@@ -1618,8 +1640,8 @@ export function EditModelPage() {
           <div className="relative">
             <div className="w-full space-y-6">
               <EditorPanel
-                title="Model setup"
-                description="Choose the platform, give this entry a readable name, and connect it to the model identifier or file you want to use."
+                title={t("editModel.setup.title")}
+                description={t("editModel.setup.description")}
               >
                 <div className="space-y-6">
                   {isLocalModel && llamaRuntimeReport && (
@@ -1650,7 +1672,7 @@ export function EditModelPage() {
                           <div className="min-w-0 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-[13px] font-medium text-fg">
-                                Last runtime report
+                                {t("editModel.runtime.lastReport")}
                               </span>
                               <span
                                 className={cn(
@@ -1663,19 +1685,19 @@ export function EditModelPage() {
                                 )}
                               >
                                 {llamaRuntimeReport.status === "succeeded"
-                                  ? "Run succeeded"
+                                  ? t("editModel.runtime.badges.succeeded")
                                   : llamaRuntimeReport.status === "cpuFallbackSucceeded"
-                                    ? "CPU fallback recovered"
+                                    ? t("editModel.runtime.badges.cpuFallbackSucceeded")
                                     : llamaRuntimeReport.status === "cpuFallbackFailed"
-                                      ? "CPU fallback failed"
-                                      : "Run failed"}
+                                      ? t("editModel.runtime.badges.cpuFallbackFailed")
+                                      : t("editModel.runtime.badges.failed")}
                               </span>
                             </div>
                             <p className="text-[13px] leading-relaxed text-fg/72">
-                              {getLlamaRuntimeHeadline(llamaRuntimeReport)}
+                              {t(getLlamaRuntimeHeadlineKey(llamaRuntimeReport))}
                             </p>
                             <p className="text-[12px] leading-relaxed text-fg/48">
-                              {getLlamaRuntimeDetail(llamaRuntimeReport)}
+                              {t(getLlamaRuntimeDetailKey(llamaRuntimeReport))}
                             </p>
                           </div>
                         </div>
@@ -1702,7 +1724,7 @@ export function EditModelPage() {
                                   {llamaRuntimeReport.gpuFallbackReason && (
                                     <div className="rounded-lg border border-warning/25 bg-warning/8 px-3 py-2.5">
                                       <div className="text-[11px] font-medium uppercase tracking-wide text-warning/90">
-                                        GPU fallback reason
+                                        {t("editModel.runtime.gpuFallbackReason")}
                                       </div>
                                       <p className="mt-1 text-[13px] leading-relaxed text-fg/78">
                                         {llamaRuntimeReport.gpuFallbackReason}
@@ -1712,7 +1734,7 @@ export function EditModelPage() {
                                   {llamaRuntimeReport.errorMessage && (
                                     <div className="rounded-lg border border-danger/25 bg-danger/8 px-3 py-2.5">
                                       <div className="text-[11px] font-medium uppercase tracking-wide text-danger/90">
-                                        Final error
+                                        {t("editModel.runtime.finalError")}
                                       </div>
                                       <p className="mt-1 text-[13px] leading-relaxed text-fg/78">
                                         {llamaRuntimeReport.errorMessage}
@@ -1741,17 +1763,17 @@ export function EditModelPage() {
                                   <div className="flex flex-col gap-3 rounded-lg border border-fg/10 bg-surface-el/18 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-1">
                                       <div className="text-[13px] font-medium text-fg">
-                                        Working recovery config
+                                        {t("editModel.runtime.workingRecoveryConfig")}
                                       </div>
                                       <p className="text-[12px] text-fg/52">
-                                        Context{" "}
+                                        {t("editModel.runtime.context")}{" "}
                                         {formatRuntimeNumber(
                                           llamaRuntimeReport.suggestedSettings.contextLength,
-                                        ) ?? "n/a"}
-                                        {" • "}Batch{" "}
+                                        ) ?? t("editModel.runtime.na")}
+                                        {" • "}{t("editModel.runtime.batch")}{" "}
                                         {formatRuntimeNumber(
                                           llamaRuntimeReport.suggestedSettings.llamaBatchSize,
-                                        ) ?? "n/a"}
+                                        ) ?? t("editModel.runtime.na")}
                                       </p>
                                     </div>
                                     <button
@@ -1760,7 +1782,7 @@ export function EditModelPage() {
                                       disabled={saving}
                                       className="rounded-lg border border-warning/30 bg-warning/12 px-3 py-2 text-[13px] font-medium text-warning transition hover:bg-warning/18 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
-                                      Apply working config
+                                      {t("editModel.runtime.applyWorkingConfig")}
                                     </button>
                                   </div>
                                 )}
@@ -1771,7 +1793,7 @@ export function EditModelPage() {
                     </div>
                   )}
 
-                  <FieldBlock label="Platform">
+                  <FieldBlock label={t("editModel.fields.platform")}>
                     {providers.length === 0 ? (
                       <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-[13px] text-warning">
                         {t("settings.items.providers.subtitle")}
@@ -1797,7 +1819,7 @@ export function EditModelPage() {
                         <BottomMenu
                           isOpen={showPlatformSelector}
                           onClose={() => setShowPlatformSelector(false)}
-                          title="Select Platform"
+                          title={t("editModel.setup.selectPlatform")}
                         >
                           <MenuSection>
                             {providers.map((prov) => {
@@ -1840,12 +1862,12 @@ export function EditModelPage() {
 
                   {isLocalModel ? (
                     <div className="grid items-start grid-cols-1 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <FieldBlock label="Display name">
+                      <FieldBlock label={t("editModel.fields.displayName")}>
                         <input
                           type="text"
                           value={editorModel.displayName}
                           onChange={(e) => handleDisplayNameChange(e.target.value)}
-                          placeholder="e.g. My Favorite ChatGPT"
+                          placeholder={t("editModel.placeholders.displayName")}
                           className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-4 py-3 text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none"
                         />
                       </FieldBlock>
@@ -1867,7 +1889,7 @@ export function EditModelPage() {
                               onClick={() => void handleBrowseLocalModel()}
                               className="rounded-md border border-fg/10 px-2.5 py-1.5 text-[12px] font-medium text-fg/65 transition hover:border-fg/20 hover:bg-fg/5 hover:text-fg/90"
                             >
-                              Browse files
+                              {t("common.buttons.browseFiles")}
                             </button>
                           </div>
                         }
@@ -1881,7 +1903,7 @@ export function EditModelPage() {
                             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-4 py-3 font-mono text-[13px] text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none"
                           />
                           <p className="text-[13px] leading-relaxed text-fg/45">
-                            Use the full file path to a local GGUF model.
+                            {t("editModel.localLibrary.localPathHelp")}
                           </p>
 
                           <BottomMenu
@@ -1935,12 +1957,12 @@ export function EditModelPage() {
                     </div>
                   ) : (
                     <div className="grid items-start grid-cols-1 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <FieldBlock label="Display name">
+                      <FieldBlock label={t("editModel.fields.displayName")}>
                         <input
                           type="text"
                           value={editorModel.displayName}
                           onChange={(e) => handleDisplayNameChange(e.target.value)}
-                          placeholder="e.g. My Favorite ChatGPT"
+                          placeholder={t("editModel.placeholders.displayName")}
                           className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-4 py-3 text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none"
                         />
                       </FieldBlock>
@@ -1955,7 +1977,9 @@ export function EditModelPage() {
                                 onClick={() => setIsManualInput(!isManualInput)}
                                 className="rounded-md border border-fg/10 px-2.5 py-1 text-[13px] text-fg/65 transition hover:border-fg/20 hover:bg-fg/5 hover:text-fg/90"
                               >
-                                {isManualInput ? "Use catalog" : "Enter manually"}
+                                {isManualInput
+                                  ? t("editModel.modelSource.useCatalog")
+                                  : t("editModel.modelSource.enterManually")}
                               </button>
                             )}
                             {modelFetchEnabledForSelectedProvider && (
@@ -1964,7 +1988,7 @@ export function EditModelPage() {
                                 onClick={fetchModels}
                                 disabled={fetchingModels || !editorModel?.providerId}
                                 className="rounded-md border border-fg/10 p-1.5 text-fg/45 transition hover:border-fg/20 hover:bg-fg/5 hover:text-fg/85 disabled:opacity-30"
-                                title="Refresh model list"
+                                title={t("editModel.modelSource.refreshModelList")}
                               >
                                 <RefreshCw
                                   className={cn("h-3.5 w-3.5", fetchingModels && "animate-spin")}
@@ -1991,7 +2015,7 @@ export function EditModelPage() {
                               >
                                 {selectedFetchedModel?.displayName ||
                                   editorModel.name ||
-                                  "Select a model"}
+                                  t("components.modelSelector.placeholder")}
                               </span>
                               <ChevronDown className="h-4 w-4 text-fg/40" />
                             </button>
@@ -1999,18 +2023,18 @@ export function EditModelPage() {
                             <ModelSelectionBottomMenu
                               isOpen={showModelSelector}
                               onClose={() => setShowModelSelector(false)}
-                              title="Select Model"
+                              title={t("components.modelSelector.title")}
                               models={filteredModels as any}
                               selectedModelIds={editorModel.name ? [editorModel.name] : []}
                               searchQuery={searchQuery}
                               onSearchChange={setSearchQuery}
-                              searchPlaceholder="Search models..."
+                              searchPlaceholder={t("components.modelSelector.searchPlaceholder")}
                               filterModels={false}
                               rightAction={
                                 isOpenRouterProvider ? (
                                   <span className="flex items-center gap-2">
                                     <span className="text-[13px] text-fg/70 whitespace-nowrap">
-                                      only free models
+                                      {t("editModel.modelSource.onlyFreeModels")}
                                     </span>
                                     <Switch
                                       checked={showOnlyFreeModels}
@@ -2029,7 +2053,9 @@ export function EditModelPage() {
                                   </p>
                                   {didYouMeanSuggestions.length > 0 && (
                                     <div className="mt-4">
-                                      <p className="mb-2 text-[13px] text-fg/50">Did you mean:</p>
+                                      <p className="mb-2 text-[13px] text-fg/50">
+                                        {t("editModel.search.didYouMean")}
+                                      </p>
                                       <div className="flex flex-wrap justify-center gap-2">
                                         {didYouMeanSuggestions.map((model) => (
                                           <button
@@ -2065,9 +2091,7 @@ export function EditModelPage() {
                               (selectedProviderCredential?.providerId === "custom" ||
                                 selectedProviderCredential?.providerId === "custom-anthropic") && (
                                 <p className="text-[13px] leading-relaxed text-fg/45">
-                                  Model fetching is disabled for this custom endpoint. Enable it in
-                                  Provider settings and set a Models Endpoint if you want model list
-                                  discovery.
+                                  {t("editModel.modelSource.customEndpointFetchDisabled")}
                                 </p>
                               )}
                           </>
@@ -2080,7 +2104,7 @@ export function EditModelPage() {
                 <BottomMenu
                   isOpen={showMovePrompt}
                   onClose={handleSkipMove}
-                  title="Move Model File"
+                  title={t("editModel.moveModel.title")}
                 >
                   <div className="px-4 pb-2">
                     <p className="text-[13px] leading-relaxed text-fg/70">
@@ -2131,9 +2155,11 @@ export function EditModelPage() {
                   {!isMobile && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="text-[13px] font-medium text-fg/78">Editor mode</div>
+                        <div className="text-[13px] font-medium text-fg/78">
+                          {t("editModel.editorMode.title")}
+                        </div>
                         <div className="mt-1 text-[13px] text-fg/45">
-                          Simple starts collapsed. Advanced keeps the current full editor.
+                          {t("editModel.editorMode.description")}
                         </div>
                       </div>
                       <div className="inline-flex rounded-lg border border-fg/10 bg-fg/4 p-1">
@@ -2147,7 +2173,7 @@ export function EditModelPage() {
                               : "text-fg/55 hover:text-fg/82",
                           )}
                         >
-                          Simple
+                          {t("editModel.editorMode.simple")}
                         </button>
                         <button
                           type="button"
@@ -2159,7 +2185,7 @@ export function EditModelPage() {
                               : "text-fg/55 hover:text-fg/82",
                           )}
                         >
-                          Advanced
+                          {t("editModel.editorMode.advanced")}
                         </button>
                       </div>
                     </div>
@@ -2177,11 +2203,13 @@ export function EditModelPage() {
                             : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
                         )}
                       >
-                        <div className="text-[13px] font-medium">Generation Parameters</div>
+                        <div className="text-[13px] font-medium">
+                          {t("editModel.sections.generation")}
+                        </div>
                         <div className="mt-1 text-[13px] text-fg/45">
                           {isAutomatic1111Provider
-                            ? "Sampler, CFG, seed, negative prompt, denoise, and size defaults."
-                            : "Temperature, sampling, penalties, and output limits."}
+                            ? t("editModel.sectionDescriptions.generationAutomatic1111")
+                            : t("editModel.sectionDescriptions.generation")}
                         </div>
                       </button>
 
@@ -2196,9 +2224,13 @@ export function EditModelPage() {
                               : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
                           )}
                         >
-                          <div className="text-[13px] font-medium">Runtime</div>
+                          <div className="text-[13px] font-medium">
+                            {t("editModel.sections.runtime")}
+                          </div>
                           <div className="mt-1 text-[13px] text-fg/45">
-                            {runtimePanelTitle} execution, memory, and hardware controls.
+                            {t("editModel.sectionDescriptions.runtime", {
+                              runtime: runtimePanelTitle,
+                            })}
                           </div>
                         </button>
                       )}
@@ -2214,9 +2246,11 @@ export function EditModelPage() {
                               : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
                           )}
                         >
-                          <div className="text-[13px] font-medium">Reasoning</div>
+                          <div className="text-[13px] font-medium">
+                            {t("editModel.sections.reasoning")}
+                          </div>
                           <div className="mt-1 text-[13px] text-fg/45">
-                            Thinking mode, effort, and token budget controls.
+                            {t("editModel.sectionDescriptions.reasoning")}
                           </div>
                         </button>
                       )}
@@ -2232,9 +2266,11 @@ export function EditModelPage() {
                               : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
                           )}
                         >
-                          <div className="text-[13px] font-medium">Prompt Caching</div>
+                          <div className="text-[13px] font-medium">
+                            {t("editModel.sections.promptCaching")}
+                          </div>
                           <div className="mt-1 text-[13px] text-fg/45">
-                            Context reuse and prefix caching behavior.
+                            {t("editModel.sectionDescriptions.promptCaching")}
                           </div>
                         </button>
                       )}
@@ -2249,9 +2285,11 @@ export function EditModelPage() {
                             : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
                         )}
                       >
-                        <div className="text-[13px] font-medium">Capabilities</div>
+                        <div className="text-[13px] font-medium">
+                          {t("editModel.sections.capabilities")}
+                        </div>
                         <div className="mt-1 text-[13px] text-fg/45">
-                          Input and output modalities this model supports.
+                          {t("editModel.sectionDescriptions.capabilities")}
                         </div>
                       </button>
                     </div>
@@ -2259,11 +2297,11 @@ export function EditModelPage() {
                     <>
                       <div style={{ order: 10 }}>
                         <CollapsedEditorSectionButton
-                          title="Generation Parameters"
+                          title={t("editModel.sections.generation")}
                           description={
                             isAutomatic1111Provider
-                              ? "Sampler, CFG, seed, negative prompt, denoise, and size defaults."
-                              : "Temperature, sampling, penalties, and output limits."
+                              ? t("editModel.sectionDescriptions.generationAutomatic1111")
+                              : t("editModel.sectionDescriptions.generation")
                           }
                           summary={generationSummary}
                           isOpen={activeSimplePanel === "generation"}
@@ -2273,8 +2311,10 @@ export function EditModelPage() {
                       {hasRuntimePanel && (
                         <div style={{ order: 20 }}>
                           <CollapsedEditorSectionButton
-                            title="Runtime"
-                            description={`${runtimePanelTitle} execution, memory, and hardware controls.`}
+                            title={t("editModel.sections.runtime")}
+                            description={t("editModel.sectionDescriptions.runtime", {
+                              runtime: runtimePanelTitle,
+                            })}
                             summary={runtimeSummary}
                             isOpen={activeSimplePanel === "runtime"}
                             onClick={() => toggleSimplePanel("runtime")}
@@ -2284,8 +2324,8 @@ export function EditModelPage() {
                       {showReasoningSection && (
                         <div style={{ order: 30 }}>
                           <CollapsedEditorSectionButton
-                            title="Reasoning"
-                            description="Thinking mode, effort, and token budget controls."
+                            title={t("editModel.sections.reasoning")}
+                            description={t("editModel.sectionDescriptions.reasoning")}
                             summary={reasoningSummary}
                             isOpen={activeSimplePanel === "reasoning"}
                             onClick={() => toggleSimplePanel("reasoning")}
@@ -2294,8 +2334,8 @@ export function EditModelPage() {
                       )}
                       <div style={{ order: 40 }}>
                         <CollapsedEditorSectionButton
-                          title="Capabilities"
-                          description="Mark which modalities this model accepts and what it can produce."
+                          title={t("editModel.sections.capabilities")}
+                          description={t("editModel.sectionDescriptions.capabilitiesSimple")}
                           summary={capabilitiesSummary}
                           isOpen={activeSimplePanel === "capabilities"}
                           onClick={() => toggleSimplePanel("capabilities")}
@@ -2322,7 +2362,7 @@ export function EditModelPage() {
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <label className="text-[13px] font-bold tracking-wider text-fg/50 uppercase">
-                                Generation Parameters
+                                {t("editModel.sections.generation")}
                               </label>
                               <button
                                 type="button"
@@ -2336,9 +2376,7 @@ export function EditModelPage() {
                             {isAutomatic1111Provider ? (
                               <div className="space-y-5">
                                 <div className="rounded-xl border border-accent/20 bg-accent/8 px-4 py-3 text-[13px] leading-relaxed text-fg/72">
-                                  AUTOMATIC1111 uses Stable Diffusion controls here. These values
-                                  become the default sampler settings for avatars, scene images, and
-                                  other local diffusion requests.
+                                  {t("editModel.generation.automatic1111Help")}
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3 xl:gap-x-8">
@@ -2349,7 +2387,7 @@ export function EditModelPage() {
                                           Steps
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Diffusion sampling steps
+                                          {t("editModel.generationDescriptions.sdSteps")}
                                         </span>
                                       </div>
                                       <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
@@ -2373,7 +2411,7 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="28"
+                                      placeholder={t("editModel.placeholders.sdSteps")}
                                       className={numberInputClassName}
                                     />
                                     <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2389,7 +2427,7 @@ export function EditModelPage() {
                                           CFG Scale
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Prompt guidance strength
+                                          {t("editModel.generationDescriptions.sdCfgScale")}
                                         </span>
                                       </div>
                                       <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
@@ -2410,7 +2448,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="6.5"
+                                      placeholder={t("editModel.placeholders.sdCfgScale")}
                                       className={numberInputClassName}
                                     />
                                     <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2426,7 +2464,7 @@ export function EditModelPage() {
                                           Default Size
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Used when the request does not override size
+                                          {t("editModel.generationDescriptions.sdSize")}
                                         </span>
                                       </div>
                                       <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
@@ -2437,11 +2475,11 @@ export function EditModelPage() {
                                       type="text"
                                       value={modelAdvancedDraft.sdSize ?? ""}
                                       onChange={(e) => updateSdSetting("sdSize", e.target.value)}
-                                      placeholder="1024x1024"
+                                      placeholder={t("editModel.placeholders.sdSize")}
                                       className={numberInputClassName}
                                     />
                                     <div className="text-[13px] text-fg/30 px-0.5 mt-1">
-                                      Format: width x height
+                                      {t("editModel.generation.formatWidthHeight")}
                                     </div>
                                   </div>
 
@@ -2451,14 +2489,14 @@ export function EditModelPage() {
                                         Sampler
                                       </span>
                                       <span className="block text-[13px] text-fg/40">
-                                        Sampler name sent to A1111
+                                        {t("editModel.generationDescriptions.sdSampler")}
                                       </span>
                                     </div>
                                     <input
                                       type="text"
                                       value={modelAdvancedDraft.sdSampler ?? ""}
                                       onChange={(e) => updateSdSetting("sdSampler", e.target.value)}
-                                      placeholder="DPM++ 2M Karras"
+                                      placeholder={t("editModel.placeholders.sdSampler")}
                                       className={selectInputClassName}
                                     />
                                   </div>
@@ -2470,11 +2508,11 @@ export function EditModelPage() {
                                           Seed
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Leave blank for random generations
+                                          {t("editModel.generationDescriptions.sdSeed")}
                                         </span>
                                       </div>
                                       <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                        {modelAdvancedDraft.sdSeed ?? "Random"}
+                                        {modelAdvancedDraft.sdSeed ?? t("editModel.placeholders.random")}
                                       </span>
                                     </div>
                                     <input
@@ -2494,11 +2532,11 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Random"
+                                      placeholder={t("editModel.placeholders.random")}
                                       className={numberInputClassName}
                                     />
                                     <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                      <span>Random</span>
+                                      <span>{t("editModel.placeholders.random")}</span>
                                       <span>{ADVANCED_SD_SEED_RANGE.max.toLocaleString()}</span>
                                     </div>
                                   </div>
@@ -2510,7 +2548,7 @@ export function EditModelPage() {
                                           Img2img Denoise
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Edit strength for reference-based generations
+                                          {t("editModel.generationDescriptions.sdDenoise")}
                                         </span>
                                       </div>
                                       <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
@@ -2532,7 +2570,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="0.75"
+                                      placeholder={t("editModel.placeholders.sdDenoise")}
                                       className={numberInputClassName}
                                     />
                                     <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2548,7 +2586,7 @@ export function EditModelPage() {
                                       Negative Prompt
                                     </span>
                                     <span className="block text-[13px] text-fg/40">
-                                      Applied to every AUTOMATIC1111 request for this model
+                                      {t("editModel.generationDescriptions.sdNegativePrompt")}
                                     </span>
                                   </div>
                                   <textarea
@@ -2556,7 +2594,7 @@ export function EditModelPage() {
                                     onChange={(e) =>
                                       updateSdSetting("sdNegativePrompt", e.target.value)
                                     }
-                                    placeholder="blurry, low quality, bad anatomy, extra fingers"
+                                    placeholder={t("editModel.placeholders.sdNegativePrompt")}
                                     rows={4}
                                     className={textAreaInputClassName}
                                   />
@@ -2573,14 +2611,14 @@ export function EditModelPage() {
                                           Temperature
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Higher = more creative
+                                          {t("editModel.generationDescriptions.temperature")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "temperature")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with temperature"
+                                        aria-label={t("editModel.help.temperature")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2600,7 +2638,7 @@ export function EditModelPage() {
                                       const raw = e.target.value;
                                       handleTemperatureChange(raw === "" ? null : Number(raw));
                                     }}
-                                    placeholder="0.70"
+                                    placeholder={t("editModel.placeholders.temperature")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2618,14 +2656,14 @@ export function EditModelPage() {
                                           Top P
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Lower = more focused
+                                          {t("editModel.generationDescriptions.topP")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "top-p")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with top p"
+                                        aria-label={t("editModel.help.topP")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2645,7 +2683,7 @@ export function EditModelPage() {
                                       const raw = e.target.value;
                                       handleTopPChange(raw === "" ? null : Number(raw));
                                     }}
-                                    placeholder="1.00"
+                                    placeholder={t("editModel.placeholders.topP")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2663,14 +2701,14 @@ export function EditModelPage() {
                                           Max Output Tokens
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Limit response length
+                                          {t("editModel.generationDescriptions.maxOutputTokens")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "max-output-tokens")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with max output tokens"
+                                        aria-label={t("editModel.help.maxOutputTokens")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2678,7 +2716,7 @@ export function EditModelPage() {
                                     <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
                                       {modelAdvancedDraft.maxOutputTokens
                                         ? modelAdvancedDraft.maxOutputTokens.toLocaleString()
-                                        : "Auto"}
+                                        : t("common.labels.auto")}
                                     </span>
                                   </div>
                                   <input
@@ -2697,11 +2735,11 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Auto"
+                                    placeholder={t("common.labels.auto")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                    <span>Auto</span>
+                                    <span>{t("common.labels.auto")}</span>
                                     <span>{ADVANCED_MAX_TOKENS_RANGE.max.toLocaleString()}</span>
                                   </div>
                                 </div>
@@ -2715,14 +2753,14 @@ export function EditModelPage() {
                                           Top K
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Sample from top K tokens
+                                          {t("editModel.generationDescriptions.topK")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "top-k-if-supported")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with top k"
+                                        aria-label={t("editModel.help.topK")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2747,11 +2785,11 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Auto"
+                                    placeholder={t("common.labels.auto")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                    <span>Auto</span>
+                                    <span>{t("common.labels.auto")}</span>
                                     <span>{ADVANCED_TOP_K_RANGE.max}</span>
                                   </div>
                                 </div>
@@ -2765,14 +2803,14 @@ export function EditModelPage() {
                                           Frequency Penalty
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Reduce word repetition
+                                          {t("editModel.generationDescriptions.frequencyPenalty")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "frequency-penalty")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with frequency penalty"
+                                        aria-label={t("editModel.help.frequencyPenalty")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2792,7 +2830,7 @@ export function EditModelPage() {
                                       const raw = e.target.value;
                                       handleFrequencyPenaltyChange(raw === "" ? null : Number(raw));
                                     }}
-                                    placeholder="0.00"
+                                    placeholder={t("editModel.placeholders.zero")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2810,14 +2848,14 @@ export function EditModelPage() {
                                           Presence Penalty
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Encourage new topics
+                                          {t("editModel.generationDescriptions.presencePenalty")}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => openDocs("models", "presence-penalty")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with presence penalty"
+                                        aria-label={t("editModel.help.presencePenalty")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2837,7 +2875,7 @@ export function EditModelPage() {
                                       const raw = e.target.value;
                                       handlePresencePenaltyChange(raw === "" ? null : Number(raw));
                                     }}
-                                    placeholder="0.00"
+                                    placeholder={t("editModel.placeholders.zero")}
                                     className={numberInputClassName}
                                   />
                                   <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
@@ -2887,7 +2925,7 @@ export function EditModelPage() {
                                         type="button"
                                         onClick={() => openDocs("models", "context-length")}
                                         className="text-fg/30 hover:text-fg/60 transition"
-                                        aria-label="Help with context length"
+                                        aria-label={t("editModel.help.contextLength")}
                                       >
                                         <HelpCircle size={12} />
                                       </button>
@@ -2915,11 +2953,11 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                     <div className="mt-1 flex justify-between px-0.5 text-[13px] text-fg/30">
-                                      <span>Auto</span>
+                                      <span>{t("common.labels.auto")}</span>
                                       <span>{contextLimit.toLocaleString()}</span>
                                     </div>
                                     {llamaContextLoading && (
@@ -3038,7 +3076,9 @@ export function EditModelPage() {
                                           modelSizeGiB) && (
                                           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px] leading-5 text-fg/52 sm:grid-cols-3 lg:grid-cols-6">
                                             <div>
-                                              <div className="text-fg/38">Max supported</div>
+                                              <div className="text-fg/38">
+                                                {t("editModel.contextInfo.maxSupported")}
+                                              </div>
                                               <div className="font-mono text-fg/78">
                                                 {llamaContextInfo
                                                   ? llamaContextInfo.maxContextLength.toLocaleString()
@@ -3047,7 +3087,9 @@ export function EditModelPage() {
                                             </div>
                                             {recommendedContextLength !== null && (
                                               <div>
-                                                <div className="text-fg/38">Recommended</div>
+                                                <div className="text-fg/38">
+                                                  {t("editModel.contextInfo.recommended")}
+                                                </div>
                                                 <div className="font-mono text-fg/78">
                                                   {recommendedContextLength.toLocaleString()}
                                                 </div>
@@ -3055,7 +3097,9 @@ export function EditModelPage() {
                                             )}
                                             {availableRamGiB && (
                                               <div>
-                                                <div className="text-fg/38">Available RAM</div>
+                                                <div className="text-fg/38">
+                                                  {t("editModel.contextInfo.availableRam")}
+                                                </div>
                                                 <div className="font-mono text-fg/78">
                                                   {availableRamGiB} GB
                                                 </div>
@@ -3063,7 +3107,9 @@ export function EditModelPage() {
                                             )}
                                             {availableVramGiB && (
                                               <div>
-                                                <div className="text-fg/38">Available VRAM</div>
+                                                <div className="text-fg/38">
+                                                  {t("editModel.contextInfo.availableVram")}
+                                                </div>
                                                 <div className="font-mono text-fg/78">
                                                   {availableVramGiB} GB
                                                 </div>
@@ -3071,14 +3117,18 @@ export function EditModelPage() {
                                             )}
                                             {modelSizeGiB && (
                                               <div>
-                                                <div className="text-fg/38">Model size</div>
+                                                <div className="text-fg/38">
+                                                  {t("editModel.contextInfo.modelSize")}
+                                                </div>
                                                 <div className="font-mono text-fg/78">
                                                   {modelSizeGiB} GB
                                                 </div>
                                               </div>
                                             )}
                                             <div>
-                                              <div className="text-fg/38">Context cache</div>
+                                              <div className="text-fg/38">
+                                                {t("editModel.contextInfo.contextCache")}
+                                              </div>
                                               <div className="font-mono text-fg/78">
                                                 {contextCacheLocationLabel}
                                               </div>
@@ -3101,22 +3151,22 @@ export function EditModelPage() {
                                               {(
                                                 [
                                                   {
-                                                    label: "Memory Fitness",
+                                                    label: t("editModel.contextInfo.memoryFitness"),
                                                     value: runabilityScore.memoryScore,
                                                     weight: 0.25,
                                                   },
                                                   {
-                                                    label: "GPU Acceleration",
+                                                    label: t("editModel.contextInfo.gpuAcceleration"),
                                                     value: runabilityScore.gpuScore,
                                                     weight: 0.35,
                                                   },
                                                   {
-                                                    label: "KV Headroom",
+                                                    label: t("editModel.contextInfo.kvHeadroom"),
                                                     value: runabilityScore.kvScore,
                                                     weight: 0.15,
                                                   },
                                                   {
-                                                    label: "Quant Quality",
+                                                    label: t("editModel.contextInfo.quantQuality"),
                                                     value: runabilityScore.quantScore,
                                                     weight: 0.25,
                                                   },
@@ -3285,7 +3335,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -3312,7 +3362,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -3422,7 +3472,7 @@ export function EditModelPage() {
                                         );
                                       }}
                                       disabled={isCpuOnlyLlamaBackend}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={cn(
                                         numberInputClassName,
                                         isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
@@ -3456,7 +3506,7 @@ export function EditModelPage() {
                                               : Math.trunc(next),
                                           );
                                         }}
-                                        placeholder="Auto"
+                                        placeholder={t("common.labels.auto")}
                                         className={numberInputClassName}
                                       />
                                     </div>
@@ -3486,7 +3536,7 @@ export function EditModelPage() {
                                               : Math.trunc(next),
                                           );
                                         }}
-                                        placeholder="Auto"
+                                        placeholder={t("common.labels.auto")}
                                         className={numberInputClassName}
                                       />
                                     </div>
@@ -3518,7 +3568,7 @@ export function EditModelPage() {
                                               : Math.trunc(next),
                                           );
                                         }}
-                                        placeholder="512"
+                                        placeholder={t("editModel.placeholders.batch512")}
                                         className={numberInputClassName}
                                       />
                                     </div>
@@ -3642,7 +3692,7 @@ export function EditModelPage() {
                                         const raw = e.target.value.trim();
                                         handleLlamaMinPChange(raw === "" ? null : Number(raw));
                                       }}
-                                      placeholder="Default"
+                                      placeholder={t("editModel.placeholders.default")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -3667,7 +3717,7 @@ export function EditModelPage() {
                                         const raw = e.target.value.trim();
                                         handleLlamaTypicalPChange(raw === "" ? null : Number(raw));
                                       }}
-                                      placeholder="Default"
+                                      placeholder={t("editModel.placeholders.default")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -3698,7 +3748,7 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Random"
+                                    placeholder={t("editModel.placeholders.random")}
                                     className={numberInputClassName}
                                   />
                                 </div>
@@ -3782,7 +3832,7 @@ export function EditModelPage() {
                                         handleLlamaMmprojPathChange(nextValue);
                                         syncImageInputScope(nextValue);
                                       }}
-                                      placeholder="/path/to/mmproj.gguf"
+                                      placeholder={t("editModel.placeholders.mmprojPath")}
                                       className={selectInputClassName}
                                       spellCheck={false}
                                     />
@@ -3901,7 +3951,7 @@ export function EditModelPage() {
                                           onChange={(next) =>
                                             handleLlamaStrictModeChange(next ? true : null)
                                           }
-                                          aria-label="Toggle llama strict mode"
+                                          aria-label={t("editModel.llama.toggleStrictMode")}
                                         />
                                       </div>
                                     </div>
@@ -3934,7 +3984,9 @@ export function EditModelPage() {
                                       <span className="block text-[13px] font-medium text-fg/70">
                                         Context Length
                                       </span>
-                                      <span className="block text-[13px] text-fg/40">Num Ctx</span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        {t("editModel.ollama.numCtxShort")}
+                                      </span>
                                     </div>
                                     <input
                                       type="number"
@@ -3952,7 +4004,7 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -3982,7 +4034,7 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4013,7 +4065,7 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Auto"
+                                    placeholder={t("common.labels.auto")}
                                     className={numberInputClassName}
                                   />
                                 </div>
@@ -4053,7 +4105,7 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4083,7 +4135,7 @@ export function EditModelPage() {
                                             : Math.trunc(next),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4114,7 +4166,7 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Auto"
+                                    placeholder={t("common.labels.auto")}
                                     className={numberInputClassName}
                                   />
                                 </div>
@@ -4149,7 +4201,7 @@ export function EditModelPage() {
                                         const raw = e.target.value;
                                         handleOllamaTfsZChange(raw === "" ? null : Number(raw));
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4176,7 +4228,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4203,7 +4255,7 @@ export function EditModelPage() {
                                         const raw = e.target.value;
                                         handleOllamaMinPChange(raw === "" ? null : Number(raw));
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4228,7 +4280,7 @@ export function EditModelPage() {
                                         const raw = e.target.value;
                                         handleOllamaTypicalPChange(raw === "" ? null : Number(raw));
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4296,7 +4348,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4323,7 +4375,7 @@ export function EditModelPage() {
                                           raw === "" ? null : Number(raw),
                                         );
                                       }}
-                                      placeholder="Auto"
+                                      placeholder={t("common.labels.auto")}
                                       className={numberInputClassName}
                                     />
                                   </div>
@@ -4354,7 +4406,7 @@ export function EditModelPage() {
                                           : Math.trunc(next),
                                       );
                                     }}
-                                    placeholder="Random"
+                                    placeholder={t("editModel.placeholders.random")}
                                     className={numberInputClassName}
                                   />
                                 </div>
@@ -4377,7 +4429,7 @@ export function EditModelPage() {
                                       .filter((s) => s.length > 0);
                                     handleOllamaStopChange(next.length > 0 ? next : null);
                                   }}
-                                  placeholder="e.g. \n\n###\nUser:\n"
+                                  placeholder={t("editModel.placeholders.stopSequences")}
                                   rows={2}
                                   className={textAreaInputClassName}
                                 />
@@ -4390,7 +4442,7 @@ export function EditModelPage() {
                         {activeDetailPanel === "reasoning" && showReasoningSection && (
                           <div className="space-y-4">
                             <label className="text-[13px] font-bold tracking-wider text-fg/50 uppercase">
-                              Reasoning (Thinking)
+                              {t("editModel.sections.reasoningThinking")}
                             </label>
 
                             <div className="space-y-6">
@@ -4399,17 +4451,17 @@ export function EditModelPage() {
                                   <Brain size={14} className="text-warning" />
                                   <div className="space-y-0.5">
                                     <span className="block text-[13px] font-medium text-fg/70">
-                                      Enabled
+                                      {t("editModel.reasoning.enabled")}
                                     </span>
                                     <span className="block text-[13px] text-fg/40">
-                                      Show thinking process
+                                      {t("editModel.reasoning.enabledDescription")}
                                     </span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() => openDocs("models", "reasoning-mode")}
                                     className="text-fg/30 hover:text-fg/60 transition"
-                                    aria-label="Help with reasoning mode"
+                                    aria-label={t("editModel.reasoning.helpLabel")}
                                   >
                                     <HelpCircle size={12} />
                                   </button>
@@ -4427,7 +4479,7 @@ export function EditModelPage() {
                                   {showEffortOptions && (
                                     <div className="space-y-3">
                                       <span className="text-[13px] font-bold text-fg/30 uppercase tracking-wider">
-                                        Reasoning Effort
+                                        {t("editModel.reasoning.effort")}
                                       </span>
                                       <div className="grid grid-cols-4 gap-2">
                                         {([null, "low", "medium", "high"] as const).map((level) => (
@@ -4442,7 +4494,7 @@ export function EditModelPage() {
                                                 : "bg-fg/5 text-fg/30 border border-transparent hover:text-fg/50",
                                             )}
                                           >
-                                            {level || "auto"}
+                                            {level || t("common.labels.auto")}
                                           </button>
                                         ))}
                                       </div>
@@ -4454,12 +4506,12 @@ export function EditModelPage() {
                                     <div className="space-y-4">
                                       <div className="flex items-center justify-between">
                                         <span className="text-[13px] font-bold text-fg/30 uppercase tracking-wider">
-                                          Budget Tokens
+                                          {t("editModel.reasoning.budgetTokens")}
                                         </span>
                                         <span className="font-mono text-[13px] text-warning">
                                           {modelAdvancedDraft.reasoningBudgetTokens
                                             ? modelAdvancedDraft.reasoningBudgetTokens.toLocaleString()
-                                            : "Auto"}
+                                            : t("common.labels.auto")}
                                         </span>
                                       </div>
                                       <input
@@ -4478,7 +4530,7 @@ export function EditModelPage() {
                                               : Math.trunc(next),
                                           );
                                         }}
-                                        placeholder="Auto"
+                                        placeholder={t("common.labels.auto")}
                                         className={numberInputClassName}
                                       />
                                     </div>
@@ -4494,13 +4546,13 @@ export function EditModelPage() {
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <label className="text-[13px] font-bold tracking-wider text-fg/50 uppercase">
-                                Prompt Caching
+                                {t("editModel.sections.promptCaching")}
                               </label>
                               <button
                                 type="button"
                                 onClick={() => setShowParameterSupport(true)}
                                 className="text-fg/40 hover:text-fg/60 transition"
-                                title="View Parameter Support"
+                                title={t("editModel.parameterSupport.title")}
                               >
                                 <Info size={14} />
                               </button>
@@ -4514,11 +4566,10 @@ export function EditModelPage() {
                                       <HardDrive size={16} className="mt-0.5 text-accent/80" />
                                       <div className="space-y-1">
                                         <span className="block text-[13px] font-medium text-fg/70">
-                                          Automatic Provider Caching
+                                          {t("editModel.promptCaching.automatic.title")}
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          This provider handles prompt caching automatically on the
-                                          upstream API. There is no app-side toggle to send.
+                                          {t("editModel.promptCaching.automatic.description")}
                                         </span>
                                       </div>
                                     </div>
@@ -4527,17 +4578,19 @@ export function EditModelPage() {
                                   <div className="rounded-lg border border-fg/10 bg-fg/4 px-4 py-3 text-[13px] leading-relaxed text-fg/65">
                                     {editorModel?.providerId === "groq" && (
                                       <>
-                                        <strong className="text-fg/80">Groq:</strong> caching is
-                                        automatic on supported models only. This app does not force
-                                        or tune it per request.
+                                        <strong className="text-fg/80">
+                                          {t("editModel.promptCaching.groqLabel")}
+                                        </strong>{" "}
+                                        {t("editModel.promptCaching.groqDescription")}
                                       </>
                                     )}
                                     {(editorModel?.providerId === "gemini" ||
                                       editorModel?.providerId === "google") && (
                                       <>
-                                        <strong className="text-fg/80">Gemini:</strong> implicit
-                                        caching is automatic for supported models. Explicit cached
-                                        content resources are not created by this app yet.
+                                        <strong className="text-fg/80">
+                                          {t("editModel.promptCaching.geminiLabel")}
+                                        </strong>{" "}
+                                        {t("editModel.promptCaching.geminiDescription")}
                                       </>
                                     )}
                                   </div>
@@ -4550,11 +4603,10 @@ export function EditModelPage() {
                                       <HardDrive size={16} className="text-accent/80" />
                                       <div className="space-y-0.5">
                                         <span className="block text-[13px] font-medium text-fg/70">
-                                          Enable Context Caching
+                                          {t("editModel.promptCaching.enableTitle")}
                                         </span>
                                         <span className="block text-[13px] text-fg/40">
-                                          Preserve static system prompts and document context across
-                                          interactions.
+                                          {t("editModel.promptCaching.enableDescription")}
                                         </span>
                                       </div>
                                     </div>
@@ -4572,11 +4624,10 @@ export function EditModelPage() {
                                         <div className="flex items-center gap-3 border-l-2 border-fg/10 pl-3">
                                           <div className="space-y-0.5">
                                             <span className="block text-[13px] font-medium text-fg/70">
-                                              Cache TTL
+                                              {t("editModel.promptCaching.ttlTitle")}
                                             </span>
                                             <span className="block text-[13px] text-fg/40">
-                                              How long cached prefixes remain valid between
-                                              requests.
+                                              {t("editModel.promptCaching.ttlDescription")}
                                             </span>
                                           </div>
                                         </div>
@@ -4623,23 +4674,20 @@ export function EditModelPage() {
 
                                       {/* ── Pricing / TTL notes ── */}
                                       <div className="rounded-lg border border-fg/10 bg-fg/4 px-4 py-3 text-[13px] leading-relaxed text-fg/65">
-                                        <strong className="text-fg/80">Note on pricing:</strong>{" "}
-                                        While caching reduces the cost of repeated input tokens, the
-                                        initial write to the cache may incur a slight premium
-                                        depending on the selected provider.
+                                        <strong className="text-fg/80">
+                                          {t("editModel.promptCaching.pricingTitle")}
+                                        </strong>{" "}
+                                        {t("editModel.promptCaching.pricingDescription")}
                                         {editorModel?.providerId !== "openai" &&
                                           modelAdvancedDraft.promptCachingTtl === "1h" && (
                                             <span className="mt-1.5 block text-fg/50">
-                                              Extended 1-hour TTL may not be honoured by all
-                                              providers. Falls back to the provider's default cache
-                                              lifetime when unsupported.
+                                              {t("editModel.promptCaching.oneHourNote")}
                                             </span>
                                           )}
                                         {editorModel?.providerId === "openai" &&
                                           selectedPromptCachingTtl === "24h" && (
                                             <span className="mt-1.5 block text-fg/50">
-                                              OpenAI uses `in_memory` and `24h` retention policies
-                                              rather than a 1-hour TTL.
+                                              {t("editModel.promptCaching.openai24hNote")}
                                             </span>
                                           )}
                                       </div>
@@ -4655,13 +4703,13 @@ export function EditModelPage() {
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <label className="text-[13px] font-bold tracking-wider text-fg/50 uppercase">
-                                Capabilities
+                                {t("editModel.sections.capabilities")}
                               </label>
                               <button
                                 type="button"
                                 onClick={() => openDocs("imagegen", "model-capabilities")}
                                 className="text-fg/40 transition hover:text-fg/60"
-                                aria-label="Help with capabilities"
+                                aria-label={t("editModel.capabilities.helpLabel")}
                               >
                                 <HelpCircle size={14} />
                               </button>
@@ -4669,7 +4717,9 @@ export function EditModelPage() {
 
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                               <div className="space-y-3">
-                                <p className="text-[13px] font-medium text-fg/72">Input</p>
+                                <p className="text-[13px] font-medium text-fg/72">
+                                  {t("editModel.capabilities.input")}
+                                </p>
                                 {["image", "audio"].map((scope) => (
                                   <button
                                     key={scope}
@@ -4699,7 +4749,9 @@ export function EditModelPage() {
                               </div>
 
                               <div className="space-y-3">
-                                <p className="text-[13px] font-medium text-fg/72">Output</p>
+                                <p className="text-[13px] font-medium text-fg/72">
+                                  {t("editModel.capabilities.output")}
+                                </p>
                                 {["image", "audio"].map((scope) => (
                                   <button
                                     key={scope}
@@ -4730,8 +4782,7 @@ export function EditModelPage() {
                             </div>
                             {isAutomatic1111Provider && (
                               <p className="text-[12px] leading-relaxed text-fg/45">
-                                AUTOMATIC1111 models are fixed to text + image input and image
-                                output.
+                                {t("editModel.capabilities.automatic1111Fixed")}
                               </p>
                             )}
                           </div>
@@ -4743,8 +4794,7 @@ export function EditModelPage() {
                       className="rounded-lg border border-dashed border-fg/10 px-4 py-6 text-[13px] text-fg/45"
                       style={{ order: 50 }}
                     >
-                      Open a section to adjust its settings. The advanced editor stays available
-                      when you need the full form.
+                      {t("editModel.editorMode.emptyState")}
                     </div>
                   ) : null}
                 </motion.div>
@@ -4758,7 +4808,7 @@ export function EditModelPage() {
       <BottomMenu
         isOpen={showParameterSupport}
         onClose={() => setShowParameterSupport(false)}
-        title="Parameter Support"
+        title={t("editModel.parameterSupport.title")}
       >
         <div className="px-4 pb-8">
           <ProviderParameterSupportInfo providerId={editorModel?.providerId || "openai"} />
@@ -4776,7 +4826,9 @@ export function EditModelPage() {
             transition={{ duration: 0.2 }}
           >
             <div className="flex items-center justify-between border-b border-fg/10 px-4 py-3">
-              <div className="text-base font-semibold text-fg">Template Override</div>
+              <div className="text-base font-semibold text-fg">
+                {t("editModel.templateOverride.title")}
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -4789,14 +4841,16 @@ export function EditModelPage() {
                   )}
                 >
                   <CopyCheck className="h-3 w-3" />
-                  {showEmbeddedTemplateViewer ? "Hide Embedded" : "Show Embedded"}
+                  {showEmbeddedTemplateViewer
+                    ? t("editModel.templateOverride.hideEmbedded")
+                    : t("editModel.templateOverride.showEmbedded")}
                 </button>
                 <button
                   type="button"
                   onClick={cancelTemplateOverlay}
                   className="rounded-full border border-fg/10 px-3 py-1.5 text-xs font-medium text-fg/70 transition hover:bg-fg/10 hover:text-fg"
                 >
-                  Close
+                  {t("editModel.templateOverride.close")}
                 </button>
                 <button
                   type="button"
@@ -4807,7 +4861,7 @@ export function EditModelPage() {
                     "hover:from-accent/80 hover:to-accent/60",
                   )}
                 >
-                  Save
+                  {t("common.buttons.save")}
                 </button>
               </div>
             </div>
@@ -4819,12 +4873,12 @@ export function EditModelPage() {
                     {embeddedTemplateLoading ? (
                       <div className="flex h-40 items-center justify-center text-[12px] text-fg/50">
                         <Loader className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Reading embedded template...
+                        {t("editModel.templateOverride.readingEmbedded")}
                       </div>
                     ) : embeddedTemplateError ? (
                       <div className="space-y-1 p-3">
                         <div className="text-[12px] font-medium text-danger">
-                          Could not read embedded template
+                          {t("editModel.templateOverride.readEmbeddedFailed")}
                         </div>
                         <div className="whitespace-pre-wrap wrap-break-word text-[12px] text-fg/50">
                           {embeddedTemplateError}
@@ -4843,12 +4897,12 @@ export function EditModelPage() {
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(embeddedTemplateText);
-                              toast.success("Copied to clipboard");
+                              toast.success(t("editModel.templateOverride.copiedToClipboard"));
                             }}
                             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-fg/50 transition hover:bg-fg/8 hover:text-fg/70"
                           >
                             <Copy className="h-3 w-3" />
-                            Copy
+                            {t("common.buttons.copy")}
                           </button>
                           <button
                             type="button"
@@ -4857,7 +4911,7 @@ export function EditModelPage() {
                             className="inline-flex items-center gap-1.5 rounded-md bg-accent/12 px-2.5 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <CopyCheck className="h-3 w-3" />
-                            Paste into Editor
+                            {t("editModel.templateOverride.pasteIntoEditor")}
                           </button>
                         </div>
                       </>
@@ -4866,12 +4920,14 @@ export function EditModelPage() {
                 )}
 
                 <div className="space-y-2">
-                  <div className="text-sm font-medium text-fg/80">Jinja Template</div>
+                  <div className="text-sm font-medium text-fg/80">
+                    {t("editModel.templateOverride.jinjaTemplate")}
+                  </div>
                   <textarea
                     value={templateOverlayDraft}
                     onChange={(e) => setTemplateOverlayDraft(e.target.value)}
                     className="min-h-[50vh] w-full resize-none rounded-2xl border border-fg/10 bg-surface-el/40 px-4 py-4 font-mono text-[12px] leading-relaxed text-fg placeholder-fg/40 transition focus:border-fg/20 focus:outline-none"
-                    placeholder="Enter a Jinja chat template or an internal template name..."
+                    placeholder={t("editModel.templateOverride.placeholder")}
                     spellCheck={false}
                   />
                 </div>
@@ -4907,8 +4963,8 @@ export function EditModelPage() {
               )}
             >
               {isOnboardingReturnFlow || canContinueWithCurrentModel
-                ? "Continue Setup"
-                : "Save a model to continue"}
+                ? t("editModel.continueSetup.continue")
+                : t("editModel.continueSetup.saveToContinue")}
               <ArrowRight size={16} />
             </button>
           </div>

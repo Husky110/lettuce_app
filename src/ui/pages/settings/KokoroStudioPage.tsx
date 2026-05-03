@@ -54,6 +54,7 @@ import {
   type QueuedDownload,
 } from "../../../core/downloads/DownloadQueueContext";
 import { BottomMenu, MenuButton } from "../../components/BottomMenu";
+import { useI18n } from "../../../core/i18n/context";
 import { cn, typography } from "../../design-tokens";
 
 
@@ -317,6 +318,7 @@ function base64ToBlobUrl(base64: string, format: string): string {
 }
 
 export function KokoroStudioPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { providerId } = useParams<{ providerId: string }>();
   const [provider, setProvider] = useState<AudioProvider | null>(null);
@@ -342,11 +344,11 @@ export function KokoroStudioPage() {
   const [actionBlend, setActionBlend] = useState<UserVoice | null>(null);
   const [engineSheetOpen, setEngineSheetOpen] = useState(false);
   const [tryingVoiceId, setTryingVoiceId] = useState<string | null>(null);
-  const [tryText, setTryText] = useState("Hello! This is a quick test of how I sound.");
+  const [tryText, setTryText] = useState(t("voices.extra.kokoro.tryText"));
 
   const [experimentSourceId, setExperimentSourceId] = useState<string>("");
   const [experimentText, setExperimentText] = useState(
-    "Hello! This is how I sound when speaking. I can read longer passages with warmth, clarity, and emotion.",
+    t("voices.extra.kokoro.experimentDefaultText"),
   );
   const [experimentSpeed, setExperimentSpeed] = useState(1);
   const [isExperimenting, setIsExperimenting] = useState(false);
@@ -750,7 +752,7 @@ export function KokoroStudioPage() {
     await playSynth(
       `try:${voiceId}`,
       voiceDisplayName(voiceId),
-      "Live preview",
+      t("voices.extra.kokoro.livePreview"),
       [{ voiceId, weight: 1 }],
       tryText,
       1,
@@ -765,9 +767,9 @@ export function KokoroStudioPage() {
     await playSynth(
       `blend:${blend.id}`,
       blend.name,
-      "Saved blend",
+      t("voices.extra.kokoro.savedBlend"),
       entries,
-      "Hello! This is a quick preview of how this voice sounds.",
+      t("voices.extra.kokoro.defaultPreviewText"),
       speed,
     );
   };
@@ -790,7 +792,7 @@ export function KokoroStudioPage() {
       await playSynth(
         `experiment:${experimentSourceId}:${Date.now()}`,
         label,
-        "Experiment",
+        t("voices.extra.kokoro.experiment"),
         blend,
         experimentText,
         experimentSpeed,
@@ -829,12 +831,12 @@ export function KokoroStudioPage() {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3">
         <AlertTriangle className="h-10 w-10 text-warning/60" />
-        <p className="text-sm text-fg/60">Kokoro provider not found</p>
+        <p className="text-sm text-fg/60">{t("voices.extra.kokoro.providerNotFound")}</p>
         <button
           onClick={() => navigate("/settings/providers?tab=audio")}
           className="rounded-lg border border-fg/10 bg-fg/5 px-4 py-2 text-sm text-fg/70 transition hover:border-fg/20 hover:bg-fg/10"
         >
-          Back to providers
+          {t("voices.extra.kokoro.backToProviders")}
         </button>
       </div>
     );
@@ -848,20 +850,18 @@ export function KokoroStudioPage() {
       <div className="border-b border-fg/10 bg-surface-el/30 px-4 py-2 backdrop-blur">
         <div className="flex flex-wrap items-center gap-2">
           <Pill icon={<Cpu className="h-3 w-3 text-fg/50" />}>
-            <span>{variantInfo?.label ?? variant ?? "Variant unset"}</span>
+            <span>{variantInfo?.label ?? variant ?? t("voices.extra.kokoro.variantUnset")}</span>
             <span className="text-fg/30">·</span>
             <span className="text-fg/55">
               {storageStats ? formatBytes(storageStats.modelBytes) : variantInfo ? `${variantInfo.sizeMb} MB` : "—"}
             </span>
           </Pill>
           <Pill tone={modelInstalled ? "accent" : "warning"} dot={modelInstalled}>
-            {modelInstalled ? "Ready" : "Model not installed"}
+            {modelInstalled ? t("voices.extra.kokoro.ready") : t("voices.extra.kokoro.modelNotInstalled")}
           </Pill>
           {storageStats && storageStats.voiceCount > 0 && (
             <Pill icon={<HardDrive className="h-3 w-3 text-fg/45" />}>
-              <span>
-                {storageStats.voiceCount} voice{storageStats.voiceCount === 1 ? "" : "s"}
-              </span>
+              <span>{t("voices.extra.kokoro.voiceCount", { count: storageStats.voiceCount })}</span>
               <span className="text-fg/30">·</span>
               <span className="text-fg/55">{formatBytes(storageStats.voicesBytes)}</span>
             </Pill>
@@ -873,12 +873,12 @@ export function KokoroStudioPage() {
               className="flex items-center gap-1 rounded-full border border-fg/10 bg-fg/5 px-2.5 py-1 text-[11px] font-medium text-fg/65 transition hover:border-fg/20 hover:bg-fg/10 disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
-              Refresh
+              {t("common.buttons.refresh")}
             </button>
             <button
               onClick={() => setEngineSheetOpen(true)}
               className="flex h-7 items-center justify-center rounded-full border border-fg/10 bg-fg/5 px-2 text-fg/65 transition hover:border-fg/20 hover:bg-fg/10"
-              aria-label="Engine actions"
+              aria-label={t("voices.extra.kokoro.engineActions")}
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </button>
@@ -901,7 +901,7 @@ export function KokoroStudioPage() {
             <button
               onClick={() => setError(null)}
               className="text-danger/60 transition hover:text-danger"
-              aria-label="Dismiss"
+              aria-label={t("common.buttons.discard")}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -934,16 +934,18 @@ export function KokoroStudioPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold text-fg">
-                {!modelInstalled ? "Engine not installed" : "Install at least one voice"}
+                {!modelInstalled
+                  ? t("voices.extra.kokoro.engineNotInstalled")
+                  : t("voices.extra.kokoro.installAtLeastOneVoice")}
               </p>
               <p className="mt-0.5 truncate text-[11px] text-fg/55">
                 {!modelInstalled
-                  ? "Continue setup to install the Kokoro model."
-                  : "Pick a voice or grab the starter pack to begin."}
+                  ? t("voices.extra.kokoro.continueSetup")
+                  : t("voices.extra.kokoro.pickVoiceOrStarter")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] font-semibold text-fg/65 group-hover:text-fg/90">
-              Continue →
+              {t("common.buttons.continue")} →
             </span>
           </button>
         )}
@@ -954,15 +956,15 @@ export function KokoroStudioPage() {
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-danger/90">
-                  {failedQueue.length} download{failedQueue.length === 1 ? "" : "s"} failed
+                  {t("voices.extra.kokoro.downloadsFailed", { count: failedQueue.length })}
                 </p>
-                <p className="text-[11px] text-danger/65">Retry individually or dismiss all.</p>
+                <p className="text-[11px] text-danger/65">{t("voices.extra.kokoro.retryOrDismissAll")}</p>
               </div>
               <button
                 onClick={() => void handleDismissFailed()}
                 className="shrink-0 rounded-full border border-fg/10 bg-fg/5 px-2.5 py-1 text-[11px] text-fg/65 transition hover:border-fg/20 hover:bg-fg/10"
               >
-                Dismiss all
+                {t("voices.extra.kokoro.dismissAll")}
               </button>
             </div>
             <div className="space-y-1">
@@ -974,8 +976,8 @@ export function KokoroStudioPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[11px] text-fg/85">
                       {item.installKind === "model"
-                        ? `Model · ${item.variant ?? ""}`
-                        : `Voice · ${voiceDisplayName(item.voiceId ?? "")}`}
+                        ? `${t("voices.extra.kokoro.model")} · ${item.variant ?? ""}`
+                        : `${t("voices.extra.kokoro.voice")} · ${voiceDisplayName(item.voiceId ?? "")}`}
                     </p>
                     {item.error && (
                       <p className="truncate text-[10px] text-danger/65">{item.error}</p>
@@ -1004,13 +1006,13 @@ export function KokoroStudioPage() {
         {groupedActiveQueue.length > 0 && (
           <section>
             <SectionHeader
-              label="Downloads"
+              label={t("voices.extra.kokoro.downloads")}
               right={
                 <button
                   onClick={() => void Promise.all(activeQueue.map((i) => cancelItem(i.id)))}
                   className="rounded-full border border-fg/10 bg-fg/5 px-2.5 py-1 text-[11px] text-fg/65 transition hover:border-fg/20 hover:bg-fg/10"
                 >
-                  Cancel all
+                  {t("voices.extra.kokoro.cancelAll")}
                 </button>
               }
             />
@@ -1032,13 +1034,13 @@ export function KokoroStudioPage() {
         {/* Experiment */}
         {modelInstalled && experimentOptions.length > 0 && (
           <section>
-            <SectionHeader label="Experiment" />
+            <SectionHeader label={t("voices.extra.kokoro.experiment")} />
             <div className="overflow-hidden rounded-xl border border-fg/10 bg-fg/4">
               <textarea
                 value={experimentText}
                 onChange={(e) => setExperimentText(e.target.value)}
                 rows={3}
-                placeholder="Type a phrase to hear it spoken…"
+                placeholder={t("voices.extra.kokoro.experimentPlaceholder")}
                 className="w-full resize-none border-0 bg-transparent px-4 pt-3 pb-1 text-[13px] leading-relaxed text-fg placeholder-fg/35 focus:outline-none"
               />
               <div className="flex flex-wrap items-center gap-2 border-t border-fg/10 bg-fg/2 px-3 py-2">
@@ -1051,19 +1053,19 @@ export function KokoroStudioPage() {
                     .filter((o) => o.kind === "blend")
                     .map((o) => (
                       <option key={o.key} value={o.key} className="bg-surface-el">
-                        Blend · {o.label}
+                        {t("voices.extra.kokoro.blend")} · {o.label}
                       </option>
                     ))}
                   {experimentOptions
                     .filter((o) => o.kind === "voice")
                     .map((o) => (
                       <option key={o.key} value={o.key} className="bg-surface-el">
-                        Voice · {o.label}
+                        {t("voices.extra.kokoro.voice")} · {o.label}
                       </option>
                     ))}
                 </select>
                 <div className="flex flex-1 items-center gap-2 rounded-full border border-fg/10 bg-fg/5 px-3 py-1">
-                  <span className="text-[10px] uppercase tracking-wider text-fg/40">Speed</span>
+                  <span className="text-[10px] uppercase tracking-wider text-fg/40">{t("voices.extra.kokoro.speed")}</span>
                   <input
                     type="range"
                     min={0.5}
@@ -1087,7 +1089,7 @@ export function KokoroStudioPage() {
                   ) : (
                     <Play className="h-3 w-3" fill="currentColor" />
                   )}
-                  Speak
+                  {t("voices.extra.kokoro.speak")}
                 </button>
               </div>
             </div>
@@ -1097,7 +1099,7 @@ export function KokoroStudioPage() {
         {/* Saved blends */}
         <section>
           <SectionHeader
-            label="Your blends"
+            label={t("voices.extra.kokoro.yourBlends")}
             right={
               <button
                 onClick={() => navigate(`/settings/voices/kokoro/${providerId}/blend`)}
@@ -1105,15 +1107,15 @@ export function KokoroStudioPage() {
                 className="flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent/85 transition hover:border-accent/50 hover:bg-accent/15 disabled:opacity-40"
               >
                 <Plus className="h-3 w-3" />
-                New blend
+                {t("voices.extra.kokoro.newBlend")}
               </button>
             }
           />
           {savedBlends.length === 0 ? (
             <div className="rounded-xl border border-dashed border-fg/15 bg-fg/2.5 px-4 py-6 text-center text-[12px] text-fg/55">
               {modelInstalled && hasVoices
-                ? "No saved blends yet."
-                : "Install the model and a voice first."}
+                ? t("voices.extra.kokoro.noSavedBlends")
+                : t("voices.extra.kokoro.installModelAndVoiceFirst")}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -1139,7 +1141,7 @@ export function KokoroStudioPage() {
         {/* Featured voices */}
         {modelInstalled && featuredVoices.length > 0 && (
           <section>
-            <SectionHeader label="Featured" />
+            <SectionHeader label={t("voices.extra.kokoro.featured")} />
             <div className="-mx-4 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0">
               <div className="flex gap-1.5">
                 {featuredVoices.map((voice) => {
@@ -1167,7 +1169,7 @@ export function KokoroStudioPage() {
                             ? "bg-accent text-bg shadow-[0_0_0_3px_rgba(52,211,153,0.15)]"
                             : "bg-fg/10 text-fg/85 group-hover:bg-fg/20",
                         )}
-                        aria-label={isPlayingSample ? "Stop" : "Sample"}
+                        aria-label={isPlayingSample ? t("voices.extra.kokoro.stop") : t("voices.extra.kokoro.sample")}
                       >
                         {isPlayingSample ? (
                           <Square className="h-3 w-3" fill="currentColor" />
@@ -1192,7 +1194,7 @@ export function KokoroStudioPage() {
                           disabled={isQueued}
                           className="shrink-0 rounded-full border border-info/25 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info transition hover:border-info/40 hover:bg-info/15 disabled:opacity-60"
                         >
-                          {isQueued ? <Loader2 className="h-3 w-3 animate-spin" /> : "Install"}
+                          {isQueued ? <Loader2 className="h-3 w-3 animate-spin" /> : t("common.buttons.install")}
                         </button>
                       )}
                     </div>
@@ -1206,7 +1208,7 @@ export function KokoroStudioPage() {
         {/* Voice library */}
         <section>
           <SectionHeader
-            label="Voice library"
+            label={t("voices.extra.kokoro.voiceLibrary")}
             right={
               modelInstalled && (
                 <div className="flex items-center gap-1.5">
@@ -1216,7 +1218,7 @@ export function KokoroStudioPage() {
                       className="flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent/85 transition hover:border-accent/50 hover:bg-accent/15"
                     >
                       <Sparkles className="h-3 w-3" />
-                      Starter pack
+                      {t("voices.extra.kokoro.starterPack")}
                     </button>
                   )}
                   {selectMode ? (
@@ -1227,14 +1229,14 @@ export function KokoroStudioPage() {
                       }}
                       className="rounded-full border border-fg/10 bg-fg/5 px-2.5 py-1 text-[11px] text-fg/65 transition hover:border-fg/20 hover:bg-fg/10"
                     >
-                      Cancel
+                      {t("common.buttons.cancel")}
                     </button>
                   ) : (
                     <button
                       onClick={() => setSelectMode(true)}
                       className="rounded-full border border-fg/10 bg-fg/5 px-2.5 py-1 text-[11px] text-fg/65 transition hover:border-fg/20 hover:bg-fg/10"
                     >
-                      Select
+                      {t("voices.extra.kokoro.select")}
                     </button>
                   )}
                 </div>
@@ -1249,7 +1251,7 @@ export function KokoroStudioPage() {
                 value={voiceSearch}
                 onChange={(e) => setVoiceSearch(e.target.value)}
                 disabled={!modelInstalled}
-                placeholder="Search voices"
+                placeholder={t("characters.description.searchVoicesPlaceholder")}
                 className="w-full rounded-full border border-fg/10 bg-fg/5 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder-fg/35 focus:border-fg/25 focus:outline-none disabled:opacity-50"
               />
             </div>
@@ -1257,13 +1259,13 @@ export function KokoroStudioPage() {
               <FilterPill
                 active={voiceFilter === "all"}
                 onClick={() => setVoiceFilter("all")}
-                label="All"
+                label={t("voices.extra.kokoro.all")}
                 count={availableVoices.length}
               />
               <FilterPill
                 active={voiceFilter === "installed"}
                 onClick={() => setVoiceFilter("installed")}
-                label="Installed"
+                label={t("voices.extra.kokoro.installed")}
                 count={installedVoices.length}
               />
             </div>
@@ -1271,13 +1273,13 @@ export function KokoroStudioPage() {
 
           {!modelInstalled ? (
             <div className="rounded-xl border border-dashed border-fg/15 bg-fg/2.5 px-4 py-6 text-center text-[12px] text-fg/55">
-              Install the model to browse voices.
+              {t("voices.extra.kokoro.installModelToBrowse")}
             </div>
           ) : groupedVoices.length === 0 ? (
             <div className="rounded-xl border border-dashed border-fg/15 bg-fg/2.5 px-4 py-6 text-center text-[12px] text-fg/55">
               {availableVoices.length === 0
-                ? "No voices in catalog. Tap Refresh."
-                : "No voices match your filters."}
+                ? t("voices.extra.kokoro.noVoicesInCatalog")
+                : t("voices.extra.kokoro.noVoicesMatch")}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -1342,8 +1344,8 @@ export function KokoroStudioPage() {
                     className="mt-1 w-full rounded-full border border-fg/10 bg-fg/5 py-1 text-[11px] text-fg/55 transition hover:border-fg/20 hover:bg-fg/10"
                   >
                     {groupedVoices.every((g) => expandedGroups.has(g.meta.key))
-                      ? "Collapse all"
-                      : "Expand all"}
+                      ? t("voices.extra.kokoro.collapseAll")
+                      : t("voices.extra.kokoro.expandAll")}
                   </button>
                 )}
             </div>
@@ -1366,7 +1368,7 @@ export function KokoroStudioPage() {
         >
           <div className="mx-auto flex max-w-md items-center gap-2 rounded-full border border-fg/15 bg-surface-el/90 px-3 py-2 shadow-lg backdrop-blur">
             <span className="text-[12px] font-medium text-fg/85">
-              {selectedVoiceIds.size} selected
+              {t("voices.extra.kokoro.selectedCount", { count: selectedVoiceIds.size })}
             </span>
             <span className="ml-auto text-[10px] text-fg/45">
               {[...selectedVoiceIds]
@@ -1379,7 +1381,7 @@ export function KokoroStudioPage() {
               onClick={() => void handleInstallSelected()}
               className="rounded-full border border-accent/40 bg-accent/20 px-3 py-1 text-[11px] font-semibold text-accent transition hover:border-accent/60 hover:bg-accent/30"
             >
-              Install
+              {t("common.buttons.install")}
             </button>
           </div>
         </div>
@@ -1401,12 +1403,12 @@ export function KokoroStudioPage() {
       <BottomMenu
         isOpen={engineSheetOpen}
         onClose={() => setEngineSheetOpen(false)}
-        title="Kokoro engine"
+        title={t("voices.extra.kokoro.engineTitle")}
       >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-3 rounded-lg border border-fg/10 bg-fg/5 px-3 py-2">
-              <span className="text-[11px] text-fg/45">Variant</span>
+              <span className="text-[11px] text-fg/45">{t("voices.extra.kokoro.variant")}</span>
               <select
                 value={variant ?? ""}
                 onChange={(e) =>
@@ -1423,40 +1425,40 @@ export function KokoroStudioPage() {
               </select>
             </div>
             <DetailRow
-              label="Status"
+              label={t("voices.extra.kokoro.status")}
               value={
                 modelInstalled ? (
                   <span className="inline-flex items-center gap-1 text-accent/85">
                     <CheckCircle2 className="h-3 w-3" />
-                    Installed
+                    {t("voices.extra.kokoro.installed")}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-warning/85">
                     <AlertTriangle className="h-3 w-3" />
-                    Not installed
+                    {t("voices.extra.kokoro.notInstalled")}
                   </span>
                 )
               }
             />
-            <DetailRow label="File" value={variantInfo?.filename ?? "—"} mono />
+            <DetailRow label={t("voices.extra.kokoro.file")} value={variantInfo?.filename ?? "—"} mono />
             {storageStats && (
               <>
                 <DetailRow
-                  label="Model size"
+                  label={t("voices.extra.kokoro.modelSize")}
                   value={formatBytes(storageStats.modelBytes)}
                 />
                 <DetailRow
-                  label="Voices size"
+                  label={t("voices.extra.kokoro.voicesSize")}
                   value={`${storageStats.voiceCount} · ${formatBytes(storageStats.voicesBytes)}`}
                 />
-                <DetailRow label="Total" value={formatBytes(storageStats.totalBytes)} />
+                <DetailRow label={t("voices.extra.kokoro.total")} value={formatBytes(storageStats.totalBytes)} />
               </>
             )}
-            <DetailRow label="Asset root" value={assetRoot || "—"} mono />
+            <DetailRow label={t("voices.extra.kokoro.assetRoot")} value={assetRoot || "—"} mono />
           </div>
           <MenuButton
             icon={Download}
-            title={modelInstalled ? "Reinstall model" : "Install model"}
+            title={modelInstalled ? t("voices.extra.kokoro.reinstallModel") : t("voices.extra.kokoro.installModel")}
             description={variantInfo ? `${variantInfo.label} · ${variantInfo.sizeMb} MB` : ""}
             onClick={() => {
               setEngineSheetOpen(false);
@@ -1468,8 +1470,8 @@ export function KokoroStudioPage() {
           {modelInstalled && (
             <MenuButton
               icon={Trash2}
-              title="Delete model"
-              description="Frees up disk; voices are kept."
+              title={t("voices.extra.kokoro.deleteModel")}
+              description={t("voices.extra.kokoro.deleteModelDescription")}
               onClick={() => {
                 setEngineSheetOpen(false);
                 void handleDeleteModel();
@@ -1485,14 +1487,14 @@ export function KokoroStudioPage() {
       <BottomMenu
         isOpen={!!actionBlend}
         onClose={() => setActionBlend(null)}
-        title={actionBlend?.name || "Blend"}
+        title={actionBlend?.name || t("voices.extra.kokoro.blend")}
       >
         {actionBlend && (
           <div className="space-y-3">
             <MenuButton
               icon={Play}
-              title="Preview"
-              description="Quick listen with default text"
+              title={t("common.labels.preview")}
+              description={t("voices.extra.kokoro.previewDescription")}
               onClick={() => {
                 const blend = actionBlend;
                 setActionBlend(null);
@@ -1502,8 +1504,8 @@ export function KokoroStudioPage() {
             />
             <MenuButton
               icon={Volume2}
-              title="Edit blend"
-              description="Adjust voices, weights, and speed"
+              title={t("voices.extra.kokoro.editBlend")}
+              description={t("voices.extra.kokoro.editBlendDescription")}
               onClick={() => {
                 const id = actionBlend.id;
                 setActionBlend(null);
@@ -1513,8 +1515,8 @@ export function KokoroStudioPage() {
             />
             <MenuButton
               icon={Trash2}
-              title="Delete"
-              description="Remove this saved voice"
+              title={t("common.buttons.delete")}
+              description={t("voices.extra.kokoro.deleteBlendDescription")}
               onClick={() => void handleDeleteBlend(actionBlend.id)}
               color="from-danger to-danger/80"
             />
@@ -1526,7 +1528,7 @@ export function KokoroStudioPage() {
       <BottomMenu
         isOpen={setupOpen}
         onClose={() => setSetupOpen(false)}
-        title="Set up Kokoro"
+        title={t("voices.extra.kokoro.setupTitle")}
       >
         {!modelInstalled ? (
           <SetupModelStep
@@ -1552,15 +1554,15 @@ export function KokoroStudioPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-accent/30 bg-accent/15">
               <CheckCircle2 className="h-6 w-6 text-accent" />
             </div>
-            <p className="text-[14px] font-semibold text-fg">All set</p>
+            <p className="text-[14px] font-semibold text-fg">{t("voices.extra.kokoro.allSet")}</p>
             <p className="text-[12px] text-fg/55">
-              Browse voices, design blends, or test in the experiment area.
+              {t("voices.extra.kokoro.allSetDescription")}
             </p>
             <button
               onClick={() => setSetupOpen(false)}
               className="mt-1 rounded-full bg-accent px-5 py-1.5 text-[12px] font-semibold text-bg transition hover:brightness-110"
             >
-              Done
+              {t("common.buttons.done")}
             </button>
           </div>
         )}

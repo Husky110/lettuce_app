@@ -532,8 +532,8 @@ export function GroupChatFooter({
                     "hover:bg-fg/10 hover:text-fg",
                     "disabled:cursor-not-allowed disabled:opacity-40",
                   )}
-                  title="Record voice"
-                  aria-label="Record voice"
+                  title={t("groupChats.footerExtra.recordVoice")}
+                  aria-label={t("groupChats.footerExtra.recordVoice")}
                 >
                   <Mic size={18} strokeWidth={2} />
                 </button>

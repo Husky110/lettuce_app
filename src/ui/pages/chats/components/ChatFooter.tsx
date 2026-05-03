@@ -433,8 +433,8 @@ export function ChatFooter({
                   "hover:bg-fg/10 hover:text-fg",
                   "disabled:cursor-not-allowed disabled:opacity-40",
                 )}
-                title="Record voice"
-                aria-label="Record voice"
+                title={t("chats.footer.recordVoice")}
+                aria-label={t("chats.footer.recordVoice")}
               >
                 <Mic size={18} strokeWidth={2} />
               </button>

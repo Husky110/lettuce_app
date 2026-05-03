@@ -60,7 +60,9 @@ export function UsageActivityPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-32 gap-4">
             <Loader2 className="h-10 w-10 animate-spin text-accent" />
-            <p className={cn(typography.body.size, "text-fg/40")}>Loading your activity...</p>
+            <p className={cn(typography.body.size, "text-fg/40")}>
+              {t("usageAnalytics.activity.loading")}
+            </p>
           </div>
         ) : (
           <motion.div 
@@ -75,18 +77,21 @@ export function UsageActivityPage() {
             )}>
               <div>
                 <h2 className={cn(typography.h2.size, typography.h2.weight, "text-fg")}>
-                  Recent Activity
+                  {t("usageAnalytics.activity.title")}
                 </h2>
                 <p className={cn(typography.bodySmall.size, "mt-0.5 text-fg/40")}>
-                  {records.length.toLocaleString()} usage record{records.length === 1 ? "" : "s"}
+                  {t("usageAnalytics.activity.recordsCount", { count: records.length.toLocaleString() })}
                 </p>
               </div>
               
               {records.length > PAGE_SIZE && (
                 <div className="flex items-center gap-3">
                   <div className={cn(typography.caption.size, "text-fg/40")}>
-                    {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, records.length)} of{" "}
-                    {records.length}
+                    {t("usageAnalytics.activity.rangeOfTotal", {
+                      start: (page - 1) * PAGE_SIZE + 1,
+                      end: Math.min(page * PAGE_SIZE, records.length),
+                      total: records.length,
+                    })}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
@@ -152,10 +157,10 @@ export function UsageActivityPage() {
                   )}
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Previous
+                  {t("usageAnalytics.activity.previous")}
                 </button>
                 <div className={cn(typography.caption.size, "font-medium text-fg/40")}>
-                  Page {page} of {totalPages}
+                  {t("usageAnalytics.activity.pageOf", { page, total: totalPages })}
                 </div>
                 <button
                   type="button"
@@ -166,7 +171,7 @@ export function UsageActivityPage() {
                     "hover:bg-fg/5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30"
                   )}
                 >
-                  Next
+                  {t("usageAnalytics.activity.next")}
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>

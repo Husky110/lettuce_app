@@ -542,7 +542,7 @@ export function UsagePage() {
       if (csv) {
         const fileName = `usage-${datePreset}-${new Date().toISOString().split("T")[0]}.csv`;
         const path = await saveCSV(csv, fileName);
-        if (path) alert(`Exported to: ${path}`);
+        if (path) alert(t("usageAnalytics.page.exportedTo", { path }));
       }
     } catch (e) {
       console.error("Export failed:", e);
@@ -565,7 +565,7 @@ export function UsagePage() {
       <BottomMenu
         isOpen={showFilters}
         onClose={() => setShowFilters(false)}
-        title="Filters"
+        title={t("usageAnalytics.page.filters")}
         includeExitIcon={false}
       >
         <div className="space-y-6 pb-8">
@@ -576,7 +576,7 @@ export function UsagePage() {
               typography.overline.tracking,
               "text-fg/40 ml-1 mb-3 block"
             )}>
-              Model
+              {t("usageAnalytics.page.model")}
             </label>
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {modelOptions.slice(0, 12).map((m) => (
@@ -605,7 +605,7 @@ export function UsagePage() {
               typography.overline.tracking,
               "text-fg/40 ml-1 mb-3 block"
             )}>
-              Character
+              {t("usageAnalytics.page.character")}
             </label>
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {characterOptions.slice(0, 12).map((c) => (
@@ -639,7 +639,7 @@ export function UsagePage() {
                 "hover:bg-fg/5"
               )}
             >
-              Clear All
+              {t("usageAnalytics.page.clearAll")}
             </button>
             <button
               onClick={() => setShowFilters(false)}
@@ -649,7 +649,7 @@ export function UsagePage() {
                 "hover:brightness-110 shadow-lg shadow-accent/20"
               )}
             >
-              Apply Filters
+              {t("usageAnalytics.page.applyFilters")}
             </button>
           </div>
         </div>
@@ -658,7 +658,7 @@ export function UsagePage() {
       <BottomMenu
         isOpen={showAllActivity}
         onClose={() => setShowAllActivity(false)}
-        title="Recent Activity"
+        title={t("usageAnalytics.page.recentActivity")}
         includeExitIcon={false}
       >
         <div className="space-y-0.5 pb-8 max-h-[65vh] overflow-y-auto pr-1">
@@ -677,13 +677,13 @@ export function UsagePage() {
       <BottomMenu
         isOpen={showCustomDatePicker}
         onClose={() => setShowCustomDatePicker(false)}
-        title="Custom Range"
+        title={t("usageAnalytics.page.customRange")}
         includeExitIcon={false}
       >
         <div className="space-y-6 pb-8">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>Start Date</label>
+              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>{t("usageAnalytics.page.startDate")}</label>
               <input
                 type="date"
                 value={customStartDate.toISOString().split("T")[0]}
@@ -701,7 +701,7 @@ export function UsagePage() {
               />
             </div>
             <div>
-              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>End Date</label>
+              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>{t("usageAnalytics.page.endDate")}</label>
               <input
                 type="date"
                 value={customEndDate.toISOString().split("T")[0]}
@@ -730,7 +730,7 @@ export function UsagePage() {
                 "hover:bg-fg/5"
               )}
             >
-              Cancel
+              {t("common.buttons.cancel")}
             </button>
             <button
               onClick={() => {
@@ -747,7 +747,7 @@ export function UsagePage() {
                 "hover:brightness-110"
               )}
             >
-              Apply Range
+              {t("usageAnalytics.page.applyRange")}
             </button>
           </div>
         </div>
@@ -772,7 +772,7 @@ export function UsagePage() {
                 )}
               >
                 <Activity className="h-3.5 w-3.5" />
-                DASHBOARD
+                {t("usageAnalytics.page.dashboard")}
               </button>
               <button
                 onClick={() => setViewMode("appTime")}
@@ -786,7 +786,7 @@ export function UsagePage() {
                 )}
               >
                 <Clock className="h-3.5 w-3.5" />
-                APP TIME
+                {t("usageAnalytics.page.appTime")}
               </button>
             </div>
           </div>
@@ -804,11 +804,11 @@ export function UsagePage() {
                     radius.lg
                   )}>
                     {[
-                      { key: "today", label: "Today" },
-                      { key: "week", label: "7 Days" },
-                      { key: "month", label: "30 Days" },
-                      { key: "all", label: "All" },
-                      { key: "custom", label: "Custom" },
+                      { key: "today", label: t("usageAnalytics.page.today") },
+                      { key: "week", label: t("usageAnalytics.page.last7Days") },
+                      { key: "month", label: t("usageAnalytics.page.last30Days") },
+                      { key: "all", label: t("usageAnalytics.page.all") },
+                      { key: "custom", label: t("usageAnalytics.page.custom") },
                     ].map(({ key, label }) => (
                       <button
                         key={key}
@@ -845,7 +845,11 @@ export function UsagePage() {
                       )}
                     >
                       <Filter className="h-3.5 w-3.5" />
-                      <span className={typography.caption.size}>{activeFilterCount > 0 ? `${activeFilterCount} Filters` : "Filters"}</span>
+                      <span className={typography.caption.size}>
+                        {activeFilterCount > 0
+                          ? t("usageAnalytics.page.filtersCount", { count: activeFilterCount })
+                          : t("usageAnalytics.page.filters")}
+                      </span>
                     </button>
                     <button
                       onClick={handleExport}
@@ -864,31 +868,31 @@ export function UsagePage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard
                     icon={DollarSign}
-                    label="Total Cost"
+                    label={t("usageAnalytics.page.totalCost")}
                     value={formatCurrency(displayStats.cost)}
                     highlight
                   />
                   <StatCard
                     icon={Zap}
-                    label="Tokens"
+                    label={t("usageAnalytics.page.tokens")}
                     value={formatNumber(displayStats.tokens)}
-                    subValue={`${formatNumber(Math.round(displayStats.avgPerRequest))} avg`}
+                    subValue={t("usageAnalytics.page.avgShort", { value: formatNumber(Math.round(displayStats.avgPerRequest)) })}
                   />
                   <StatCard
                     icon={Activity}
-                    label="Requests"
+                    label={t("usageAnalytics.page.requests")}
                     value={displayStats.requests.toLocaleString()}
                   />
                   <StatCard
                     icon={Clock}
-                    label="Period"
+                    label={t("usageAnalytics.page.period")}
                     value={
-                      datePreset === "today" ? "Today" : 
-                      datePreset === "week" ? "Last 7d" : 
-                      datePreset === "month" ? "Last 30d" : 
-                      datePreset === "custom" ? "Custom" : "All Time"
+                      datePreset === "today" ? t("usageAnalytics.page.today") : 
+                      datePreset === "week" ? t("usageAnalytics.page.last7d") : 
+                      datePreset === "month" ? t("usageAnalytics.page.last30d") : 
+                      datePreset === "custom" ? t("usageAnalytics.page.custom") : t("usageAnalytics.page.allTime")
                     }
-                    subValue={`${filteredRecords.length} records`}
+                    subValue={t("usageAnalytics.page.recordsCount", { count: filteredRecords.length })}
                   />
                 </div>
 
@@ -900,17 +904,17 @@ export function UsagePage() {
                   )}>
                     <div className="flex items-center justify-between mb-8">
                       <div>
-                        <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>Usage Trend</h3>
-                        <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>Token consumption over time</p>
+                        <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>{t("usageAnalytics.page.usageTrend")}</h3>
+                        <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>{t("usageAnalytics.page.tokenConsumptionOverTime")}</p>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-info" />
-                          <span className={cn(typography.overline.size, "text-fg/40")}>Input</span>
+                          <span className={cn(typography.overline.size, "text-fg/40")}>{t("usageAnalytics.page.input")}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-accent" />
-                          <span className={cn(typography.overline.size, "text-fg/40")}>Output</span>
+                          <span className={cn(typography.overline.size, "text-fg/40")}>{t("usageAnalytics.page.output")}</span>
                         </div>
                       </div>
                     </div>
@@ -947,7 +951,7 @@ export function UsagePage() {
                           <Area
                             type="monotone"
                             dataKey="input"
-                            name="Input"
+                            name={t("usageAnalytics.page.input")}
                             stroke="var(--color-info)"
                             fill="url(#inputGrad)"
                             strokeWidth={2.5}
@@ -956,7 +960,7 @@ export function UsagePage() {
                           <Area
                             type="monotone"
                             dataKey="output"
-                            name="Output"
+                            name={t("usageAnalytics.page.output")}
                             stroke="var(--color-accent)"
                             fill="url(#outputGrad)"
                             strokeWidth={2.5}
@@ -975,11 +979,11 @@ export function UsagePage() {
                       components.card.base,
                       "bg-fg/5 border-fg/10"
                     )}>
-                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>By Model</h3>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>{t("usageAnalytics.page.byModel")}</h3>
                       <div className="flex items-center gap-6">
                         <div className="w-32 h-32 shrink-0 relative">
                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>Top</span>
+                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>{t("usageAnalytics.page.top")}</span>
                               <span className={cn(typography.h2.size, typography.h2.weight, "text-fg")}>{topModels.length}</span>
                            </div>
                           <ResponsiveContainer width="100%" height="100%">
@@ -1026,11 +1030,11 @@ export function UsagePage() {
                       components.card.base,
                       "bg-fg/5 border-fg/10"
                     )}>
-                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>By Character</h3>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>{t("usageAnalytics.page.byCharacter")}</h3>
                       <div className="flex items-center gap-6">
                         <div className="w-32 h-32 shrink-0 relative">
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>Active</span>
+                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>{t("usageAnalytics.page.active")}</span>
                               <span className={cn(typography.h2.size, typography.h2.weight, "text-fg")}>{characterOptions.length}</span>
                            </div>
                           <ResponsiveContainer width="100%" height="100%">
@@ -1078,14 +1082,14 @@ export function UsagePage() {
                   "bg-fg/5 border-fg/10"
                 )}>
                   <div className="flex items-center justify-between px-5 py-4 border-b border-fg/10 bg-fg/5">
-                    <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>Recent Activity</h3>
+                    <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>{t("usageAnalytics.page.recentActivity")}</h3>
                     {filteredRecords.length > 5 && (
                       <div className="flex items-center gap-4">
                         <button
                           onClick={() => setShowAllActivity(true)}
                           className={cn(typography.caption.size, typography.caption.weight, "text-fg/40 hover:text-fg/60 transition-colors")}
                         >
-                          Quick View
+                          {t("usageAnalytics.page.quickView")}
                         </button>
                         <button
                           onClick={() => navigate("/settings/usage/activity")}
@@ -1096,7 +1100,7 @@ export function UsagePage() {
                             "text-accent hover:opacity-80"
                           )}
                         >
-                          View All
+                          {t("usageAnalytics.page.viewAll")}
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -1110,7 +1114,7 @@ export function UsagePage() {
                       <div className="py-20 text-center">
                         <Calendar className="h-10 w-10 text-fg/10 mx-auto mb-4" />
                         <p className={cn(typography.body.size, "text-fg/40")}>{t("common.labels.none")}</p>
-                        <p className={cn(typography.caption.size, "text-fg/30 mt-1.5")}>Start chatting to see usage data</p>
+                        <p className={cn(typography.caption.size, "text-fg/30 mt-1.5")}>{t("usageAnalytics.page.startChatting")}</p>
                       </div>
                     )}
                   </div>
@@ -1127,11 +1131,11 @@ export function UsagePage() {
                   radius.lg
                 )}>
                   {[
-                    { key: "today", label: "Today" },
-                    { key: "week", label: "7 Days" },
-                    { key: "month", label: "30 Days" },
-                    { key: "all", label: "All" },
-                    { key: "custom", label: "Custom" },
+                    { key: "today", label: t("usageAnalytics.page.today") },
+                    { key: "week", label: t("usageAnalytics.page.last7Days") },
+                    { key: "month", label: t("usageAnalytics.page.last30Days") },
+                    { key: "all", label: t("usageAnalytics.page.all") },
+                    { key: "custom", label: t("usageAnalytics.page.custom") },
                   ].map(({ key, label }) => (
                     <button
                       key={key}
@@ -1159,9 +1163,9 @@ export function UsagePage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <StatCard
                     icon={Clock}
-                    label="Period Total"
+                    label={t("usageAnalytics.page.periodTotal")}
                     value={formatDurationMs(appTimeStats.rangeTotalMs)}
-                    subValue={`${appTimeStats.selectedDays} days active`}
+                    subValue={t("usageAnalytics.page.daysActive", { count: appTimeStats.selectedDays })}
                     trend={{
                       value: appTimeStats.rangeDeltaPct,
                       isUp: appTimeStats.rangeDeltaPct >= 0,
@@ -1170,19 +1174,19 @@ export function UsagePage() {
                   />
                   <StatCard
                     icon={Activity}
-                    label="Daily Avg"
+                    label={t("usageAnalytics.page.dailyAvg")}
                     value={formatDurationMs(appTimeStats.dailyAvgInRangeMs)}
-                    subValue="selected period"
+                    subValue={t("usageAnalytics.page.selectedPeriod")}
                   />
                   <StatCard
                     icon={Activity}
-                    label="Today"
+                    label={t("usageAnalytics.page.today")}
                     value={formatDurationMs(appTimeStats.todayMs)}
-                    subValue={`Yesterday ${formatDurationMs(appTimeStats.yesterdayMs)}`}
+                    subValue={t("usageAnalytics.page.yesterdayValue", { value: formatDurationMs(appTimeStats.yesterdayMs) })}
                   />
                   <StatCard
                     icon={Activity}
-                    label="30-Day Avg"
+                    label={t("usageAnalytics.page.thirtyDayAvg")}
                     value={formatDurationMs(appTimeStats.avg30Ms)}
                   />
                 </div>
@@ -1194,11 +1198,11 @@ export function UsagePage() {
                 )}>
                   <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>App Time Trend</h3>
-                      <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>Usage duration per day</p>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>{t("usageAnalytics.page.appTimeTrend")}</h3>
+                      <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>{t("usageAnalytics.page.usageDurationPerDay")}</p>
                     </div>
                     <div className={cn(typography.caption.size, "font-bold text-fg/50 px-3 py-1 bg-fg/5 rounded-full border border-fg/5")}>
-                      Total {formatDurationMs(appTimeStats.rangeTotalMs)}
+                      {t("usageAnalytics.page.totalValue", { value: formatDurationMs(appTimeStats.rangeTotalMs) })}
                     </div>
                   </div>
                   <div className="h-64">
@@ -1230,7 +1234,7 @@ export function UsagePage() {
                         <Area
                           type="monotone"
                           dataKey="ms"
-                          name="Active Time"
+                          name={t("usageAnalytics.page.activeTime")}
                           stroke="var(--color-accent)"
                           fill="url(#appTimeGrad)"
                           strokeWidth={2.5}

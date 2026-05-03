@@ -35,9 +35,9 @@ import { Switch } from "../../components/Switch";
 
 const AUDIO_PROVIDER_TYPE_LABEL: Record<AudioProviderType, string> = {
   elevenlabs: "ElevenLabs",
-  gemini_tts: "Gemini TTS",
-  openai_tts: "OpenAI-Compatible TTS",
-  kokoro: "Kokoro (Local)",
+  gemini_tts: "geminiTts",
+  openai_tts: "openaiTts",
+  kokoro: "kokoro",
 };
 
 type ProviderTab = "llm" | "audio";
@@ -231,15 +231,17 @@ export function ProvidersPage() {
   const AudioEmptyState = ({ onCreate }: { onCreate: () => void }) => (
     <div className="flex h-64 flex-col items-center justify-center">
       <Mic className="mb-3 h-12 w-12 text-fg/20" />
-      <h3 className="mb-1 text-lg font-medium text-fg">No audio providers</h3>
+      <h3 className="mb-1 text-lg font-medium text-fg">
+        {t("providers.extra.audioEmpty.title")}
+      </h3>
       <p className="mb-4 text-center text-sm text-fg/50">
-        Add a TTS provider to generate voices for your characters.
+        {t("providers.extra.audioEmpty.description")}
       </p>
       <button
         onClick={onCreate}
         className="rounded-full border border-accent/40 bg-accent/20 px-6 py-2 text-sm font-medium text-accent/90 transition hover:bg-accent/30 active:scale-[0.99]"
       >
-        Add Provider
+        {t("providers.extra.audioEmpty.addButton")}
       </button>
     </div>
   );
@@ -317,7 +319,11 @@ export function ProvidersPage() {
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 text-[11px] text-fg/50">
                       <span className="truncate">
-                        {AUDIO_PROVIDER_TYPE_LABEL[provider.providerType]}
+                              {provider.providerType === "elevenlabs"
+                                ? AUDIO_PROVIDER_TYPE_LABEL[provider.providerType]
+                                : t(
+                                    `providers.extra.audioProviderLabel.${AUDIO_PROVIDER_TYPE_LABEL[provider.providerType]}` as const,
+                                  )}
                       </span>
                       {provider.baseUrl && (
                         <>

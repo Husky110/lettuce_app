@@ -29,6 +29,7 @@ import {
 } from "./modelEditorReducer";
 import { Routes, useNavigationManager } from "../../../navigation";
 import { getPlatform } from "../../../../core/utils/platform";
+import { useI18n } from "../../../../core/i18n/context";
 
 type ControllerReturn = {
   state: ModelEditorState;
@@ -124,6 +125,7 @@ function cloneSnapshot<T>(value: T): T {
 }
 
 export function useModelEditorController(): ControllerReturn {
+  const { t } = useI18n();
   const { toModelsList, backOrReplace } = useNavigationManager();
   const { modelId } = useParams<{ modelId: string }>();
   const [searchParams] = useSearchParams();
@@ -315,7 +317,7 @@ export function useModelEditorController(): ControllerReturn {
         if (!cancelled) {
           dispatch({
             type: "set_error",
-            payload: "Failed to load model settings",
+            payload: t("editModel.errors.loadFailed"),
           });
           dispatch({ type: "set_loading", payload: false });
         }

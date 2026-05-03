@@ -66,9 +66,9 @@ export function VoicesPage() {
   );
 
   const getProviderBadge = (providerType: AudioProviderType) => {
-    if (providerType === "gemini_tts") return "G";
-    if (providerType === "openai_tts") return "API";
-    return "11";
+    if (providerType === "gemini_tts") return t("voices.extra.badge.gemini");
+    if (providerType === "openai_tts") return t("voices.extra.badge.openai");
+    return t("voices.extra.badge.elevenlabs");
   };
 
   // Separate custom voices (cloned, generated) from premade library voices
@@ -199,8 +199,12 @@ export function VoicesPage() {
               <EthernetPort className="h-4 w-4 text-fg/60" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium text-fg">No audio providers</p>
-              <p className="text-xs text-fg/50">Add one in Providers → Audio to get started</p>
+              <p className="truncate text-sm font-medium text-fg">
+                {t("providers.extra.audioEmpty.title")}
+              </p>
+              <p className="text-xs text-fg/50">
+                {t("voices.extra.page.noAudioProvidersHint")}
+              </p>
             </div>
             <ChevronRight className="h-4 w-4 text-fg/30 group-hover:text-fg/60" />
           </div>
@@ -219,7 +223,7 @@ export function VoicesPage() {
               className="flex items-center gap-1 rounded-lg border border-fg/10 bg-fg/5 px-2 py-1 text-xs text-fg/70 transition hover:border-fg/20 hover:bg-fg/10"
             >
               <Plus className="h-3 w-3" />
-              Create
+              {t("common.buttons.create")}
             </button>
           )}
         </div>
@@ -227,11 +231,11 @@ export function VoicesPage() {
         {userVoices.length === 0 && customProviderVoices.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-fg/10 py-8">
             <Volume2 className="mb-2 h-8 w-8 text-fg/20" />
-            <p className="text-sm text-fg/50">No voices created yet</p>
+            <p className="text-sm text-fg/50">{t("voices.extra.page.noVoicesTitle")}</p>
             <p className="text-xs text-fg/30">
               {editableProviders.length > 0
-                ? "Create voices with custom prompts for your characters"
-                : "Add an audio provider first"}
+                ? t("voices.extra.page.noVoicesDescription")
+                : t("voices.extra.page.addProviderFirst")}
             </p>
           </div>
         ) : (
@@ -253,7 +257,9 @@ export function VoicesPage() {
                       <p className="truncate text-sm font-medium text-fg">{voice.name}</p>
                       <p className="truncate text-xs text-fg/50">
                         {provider?.label} •{" "}
-                        {voice.prompt ? `"${voice.prompt.slice(0, 30)}..."` : "No prompt"}
+                        {voice.prompt
+                          ? `"${voice.prompt.slice(0, 30)}..."`
+                          : t("voices.extra.page.noPrompt")}
                       </p>
                     </div>
                     <ChevronRight className="h-4 w-4 text-fg/30 group-hover:text-fg/60" />
@@ -277,7 +283,9 @@ export function VoicesPage() {
                     <p className="truncate text-sm font-medium text-fg">{voice.name}</p>
                     <p className="truncate text-xs text-fg/50">
                       {voice.provider.label} •{" "}
-                      <span className="capitalize">{voice.labels?.category || "custom"}</span>
+                      <span className="capitalize">
+                        {voice.labels?.category || t("common.labels.custom")}
+                      </span>
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-fg/30 group-hover:text-fg/60" />
@@ -293,7 +301,7 @@ export function VoicesPage() {
         <section>
           <div className="mb-2 px-1">
             <h2 className="text-xs font-medium uppercase tracking-wider text-fg/40">
-              Provider Voices
+              {t("voices.extra.providerVoices")}
             </h2>
           </div>
 
@@ -322,7 +330,7 @@ export function VoicesPage() {
                       className="flex items-center gap-1 rounded-lg border border-fg/10 bg-fg/5 px-2 py-1 text-[10px] text-fg/60 transition hover:border-fg/20 hover:bg-fg/10 disabled:opacity-50"
                     >
                       <RefreshCw className={`h-3 w-3 ${isLoadingThis ? "animate-spin" : ""}`} />
-                      Refresh
+                      {t("common.buttons.refresh")}
                     </button>
                   </div>
 
@@ -332,7 +340,7 @@ export function VoicesPage() {
                     </div>
                   ) : voices.length === 0 ? (
                     <p className="py-2 text-center text-xs text-fg/40">
-                      No voices found. Click Refresh to fetch voices.
+                      {t("voices.extra.page.noProviderVoices")}
                     </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
@@ -370,7 +378,9 @@ export function VoicesPage() {
                       }
                       className="mt-2 w-full rounded-lg border border-fg/10 bg-fg/5 py-1.5 text-[11px] text-fg/60 transition hover:border-fg/20 hover:bg-fg/10"
                     >
-                      {isExpanded ? "Show Less" : `Show All ${voices.length} Voices`}
+                      {isExpanded
+                        ? t("voices.extra.page.showLess")
+                        : t("voices.extra.page.showAllVoices", { count: voices.length })}
                     </button>
                   )}
                 </div>
@@ -383,7 +393,9 @@ export function VoicesPage() {
       {/* TTS Audio Cache Section */}
       <section>
         <div className="mb-2 px-1">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-fg/40">Audio Cache</h2>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-fg/40">
+            {t("voices.extra.cache.section")}
+          </h2>
         </div>
         <div className="rounded-xl border border-fg/10 bg-fg/5 p-4">
           <div className="flex items-start gap-3">
@@ -391,9 +403,9 @@ export function VoicesPage() {
               <HardDrive className="h-4 w-4 text-fg/70" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-fg">TTS Audio Cache</p>
+              <p className="text-sm font-medium text-fg">{t("voices.extra.cache.title")}</p>
               <p className="text-xs text-fg/50 mt-0.5">
-                Generated voice audio is cached to reduce regenerations
+                {t("voices.extra.cache.description")}
               </p>
               {cacheStats && (
                 <div className="mt-2 flex items-center gap-3 text-xs text-fg/60">
@@ -426,12 +438,12 @@ export function VoicesPage() {
             {isClearingCache ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Clearing...
+                {t("voices.extra.cache.clearing")}
               </>
             ) : (
               <>
                 <Trash2 className="h-3 w-3" />
-                Clear Cache
+                {t("voices.extra.cache.clear")}
               </>
             )}
           </button>
@@ -442,21 +454,21 @@ export function VoicesPage() {
       <BottomMenu
         isOpen={!!selectedVoice}
         onClose={() => setSelectedVoice(null)}
-        title={selectedVoice?.name || "Voice"}
+        title={selectedVoice?.name || t("voices.extra.page.voiceFallbackTitle")}
       >
         {selectedVoice && (
           <div className="space-y-4">
             <MenuButton
               icon={Edit3}
-              title="Edit"
-              description="Modify this voice"
+              title={t("common.buttons.edit")}
+              description={t("voices.extra.menu.editDescription")}
               onClick={() => handleEditVoice(selectedVoice)}
               color="from-info to-info/80"
             />
             <MenuButton
               icon={Trash2}
-              title="Delete"
-              description="Remove this voice"
+              title={t("common.buttons.delete")}
+              description={t("voices.extra.menu.deleteDescription")}
               onClick={() => void handleDeleteVoice(selectedVoice.id)}
               color="from-danger to-danger/80"
             />
@@ -468,28 +480,28 @@ export function VoicesPage() {
       <BottomMenu
         isOpen={!!selectedCustomVoice}
         onClose={() => setSelectedCustomVoice(null)}
-        title={selectedCustomVoice?.name || "Voice"}
+        title={selectedCustomVoice?.name || t("voices.extra.page.voiceFallbackTitle")}
       >
         {selectedCustomVoice && (
           <div className="space-y-4">
             <div className="rounded-lg border border-fg/10 bg-fg/5 p-3">
-              <p className="text-xs text-fg/50">Provider</p>
+              <p className="text-xs text-fg/50">{t("voices.extra.menu.provider")}</p>
               <p className="text-sm text-fg">{selectedCustomVoice.provider.label}</p>
-              <p className="mt-2 text-xs text-fg/50">Category</p>
+              <p className="mt-2 text-xs text-fg/50">{t("voices.extra.menu.category")}</p>
               <p className="text-sm capitalize text-fg">
-                {selectedCustomVoice.labels?.category || "custom"}
+                {selectedCustomVoice.labels?.category || t("common.labels.custom")}
               </p>
               {selectedCustomVoice.labels?.description && (
                 <>
-                  <p className="mt-2 text-xs text-fg/50">Description</p>
+                  <p className="mt-2 text-xs text-fg/50">{t("common.labels.description")}</p>
                   <p className="text-sm text-fg">{selectedCustomVoice.labels.description}</p>
                 </>
               )}
             </div>
             <MenuButton
               icon={Plus}
-              title="Create Voice Config"
-              description="Use this voice with custom settings"
+              title={t("voices.extra.menu.createVoiceConfig")}
+              description={t("voices.extra.menu.createVoiceConfigDescription")}
               onClick={() => {
                 setEditingVoice({
                   id: "",
@@ -545,6 +557,7 @@ interface VoiceEditorProps {
 }
 
 function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorProps) {
+  const { t } = useI18n();
   const [formData, setFormData] = useState<UserVoice | null>(null);
   const [models, setModels] = useState<AudioModel[]>([]);
   const [providerVoices, setProviderVoices] = useState<CachedVoice[]>([]);
@@ -554,7 +567,7 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
 
   const [generatedPreviewId, setGeneratedPreviewId] = useState<string | null>(null);
   const [textSample, setTextSample] = useState(
-    "Hello! This is how I sound when speaking. I can read longer passages with warmth, clarity, and emotion so you can judge my tone and pace.",
+    t("voices.extra.editor.defaultSample"),
   );
   const [previewError, setPreviewError] = useState<string | null>(null);
   const minVoiceDesignChars = 100;
@@ -576,7 +589,7 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
       }
       setGeneratedPreviewId(null);
       setTextSample(
-        "Hello! This is how I sound when speaking. I can read longer passages with warmth, clarity, and emotion so you can judge my tone and pace.",
+        t("voices.extra.editor.defaultSample"),
       );
       setPreviewError(null);
       setProviderVoices([]);
@@ -795,24 +808,28 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
     <BottomMenu
       isOpen={isOpen}
       onClose={onClose}
-      title={formData.id ? "Edit Voice" : "Create Voice"}
+      title={formData.id ? t("voices.extra.editor.editTitle") : t("voices.extra.editor.createTitle")}
     >
       <div className="space-y-4 pb-2">
         {/* Voice Name */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Voice Name</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("voices.extra.editor.voiceName")}
+          </label>
           <input
             type="text"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="My Character Voice"
+            placeholder={t("voices.extra.editor.voiceNamePlaceholder")}
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
           />
         </div>
 
         {/* Provider Selection */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Provider</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("voices.extra.editor.provider")}
+          </label>
           <select
             value={formData.providerId}
             onChange={(e) => setFormData({ ...formData, providerId: e.target.value, modelId: "" })}
@@ -828,18 +845,20 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
 
         {/* Model Selection */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Model</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("voices.extra.editor.model")}
+          </label>
           {activeProvider?.providerType === "openai_tts" ? (
             <>
               <input
                 type="text"
                 value={formData.modelId}
                 onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
-                placeholder="gpt-4o-mini-tts"
+                placeholder={t("voices.extra.editor.modelIdPlaceholder")}
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
               <p className="mt-1 text-[10px] text-fg/40">
-                Enter the exact model ID your compatible endpoint expects
+                {t("voices.extra.editor.modelIdHint")}
               </p>
             </>
           ) : (
@@ -851,7 +870,7 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
             >
               {models.length === 0 ? (
                 <option value="" className="bg-surface-el">
-                  Loading models...
+                  {t("characters.description.loadingModels")}
                 </option>
               ) : (
                 models.map((m) => (
@@ -867,7 +886,9 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
         {activeProvider?.providerType === "elevenlabs" && !isElevenLabsVoiceDesign && (
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <label className="text-[11px] font-medium text-fg/70">ElevenLabs Voice</label>
+              <label className="text-[11px] font-medium text-fg/70">
+                {t("voices.extra.editor.elevenlabsVoice")}
+              </label>
               <button
                 type="button"
                 onClick={async () => {
@@ -885,7 +906,7 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
                 className="flex items-center gap-1 text-[10px] text-fg/50 hover:text-fg/70 disabled:opacity-50"
               >
                 <RefreshCw className={`h-3 w-3 ${isLoadingVoices ? "animate-spin" : ""}`} />
-                Refresh
+                {t("common.buttons.refresh")}
               </button>
             </div>
             <select
@@ -903,16 +924,16 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
             >
               {isLoadingVoices ? (
                 <option value="" className="bg-surface-el">
-                  Loading voices...
+                  {t("characters.description.loadingVoices")}
                 </option>
               ) : providerVoices.length === 0 ? (
                 <option value="" className="bg-surface-el">
-                  No voices available
+                  {t("voices.extra.editor.noVoicesAvailable")}
                 </option>
               ) : (
                 <>
                   <option value="" className="bg-surface-el">
-                    Select a voice...
+                    {t("voices.extra.editor.selectVoice")}
                   </option>
                   {providerVoices.map((v) => (
                     <option key={v.voiceId} value={v.voiceId} className="bg-surface-el">
@@ -923,14 +944,18 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
                 </>
               )}
             </select>
-            <p className="mt-1 text-[10px] text-fg/40">Select from your ElevenLabs voices</p>
+            <p className="mt-1 text-[10px] text-fg/40">
+              {t("voices.extra.editor.elevenlabsVoiceHint")}
+            </p>
           </div>
         )}
 
         {/* Gemini Voice Selection */}
         {activeProvider?.providerType === "gemini_tts" && (
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-fg/70">Gemini Voice</label>
+            <label className="mb-1 block text-[11px] font-medium text-fg/70">
+              {t("voices.extra.editor.geminiVoice")}
+            </label>
             <select
               value={formData.voiceId}
               onChange={(e) => setFormData({ ...formData, voiceId: e.target.value })}
@@ -967,58 +992,69 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
                 Callirrhoe (Expressive and dynamic)
               </option>
             </select>
-            <p className="mt-1 text-[10px] text-fg/40">Select a Gemini TTS voice</p>
+            <p className="mt-1 text-[10px] text-fg/40">
+              {t("voices.extra.editor.geminiVoiceHint")}
+            </p>
           </div>
         )}
 
         {activeProvider?.providerType === "openai_tts" && (
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-fg/70">Voice ID</label>
+            <label className="mb-1 block text-[11px] font-medium text-fg/70">
+              {t("voices.extra.editor.voiceId")}
+            </label>
             <input
               type="text"
               value={formData.voiceId}
               onChange={(e) => setFormData({ ...formData, voiceId: e.target.value })}
-              placeholder="alloy"
+              placeholder={t("voices.extra.editor.voiceIdPlaceholder")}
               className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
             />
             <p className="mt-1 text-[10px] text-fg/40">
-              Enter the voice ID supported by your compatible endpoint
+              {t("voices.extra.editor.voiceIdHint")}
             </p>
           </div>
         )}
 
         {/* Prompt */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Voice Prompt</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("voices.extra.editor.voicePrompt")}
+          </label>
           <textarea
             value={formData.prompt ?? ""}
             onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-            placeholder="A warm, friendly voice with a cheerful tone..."
+            placeholder={t("voices.extra.editor.voicePromptPlaceholder")}
             rows={3}
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none resize-none"
           />
-          <p className="mt-1 text-[10px] text-fg/40">Describe how the voice should sound</p>
+          <p className="mt-1 text-[10px] text-fg/40">{t("voices.extra.editor.voicePromptHint")}</p>
         </div>
 
         {/* Example Text */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-fg/70">Example Text</label>
+          <label className="mb-1 block text-[11px] font-medium text-fg/70">
+            {t("voices.extra.editor.exampleText")}
+          </label>
           <textarea
             value={textSample}
             onChange={(e) => {
               setTextSample(e.target.value);
               if (previewError) setPreviewError(null);
             }}
-            placeholder="Hello! This is how I sound when speaking..."
+            placeholder={t("voices.extra.editor.exampleTextPlaceholder")}
             rows={2}
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none resize-none"
           />
-          <p className="mt-1 text-[10px] text-fg/40">Sample text for testing the voice</p>
+          <p className="mt-1 text-[10px] text-fg/40">{t("voices.extra.editor.exampleTextHint")}</p>
           {isElevenLabsVoiceDesign && (
             <p
               className={`mt-1 text-[10px] ${sampleLength < minVoiceDesignChars ? "text-danger/80" : "text-fg/40"}`}
             >
-              {sampleLength}/{minVoiceDesignChars} characters required for voice design preview
+              {t("voices.extra.editor.voiceDesignChars", {
+                current: sampleLength,
+                minimum: minVoiceDesignChars,
+              })}
             </p>
           )}
           {previewError && (
@@ -1035,12 +1071,12 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
           {isPlaying ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Playing...
+              {t("voices.extra.editor.playing")}
             </>
           ) : (
             <>
               <Play className="h-4 w-4" />
-              Preview Voice
+              {t("voices.extra.editor.previewVoice")}
             </>
           )}
         </button>
@@ -1051,14 +1087,14 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
             onClick={onClose}
             className="flex-1 rounded-lg border border-fg/10 bg-fg/5 px-4 py-2 text-sm font-medium text-fg/70 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
           >
-            Cancel
+            {t("common.buttons.cancel")}
           </button>
           <button
             onClick={() => void handleSave()}
             disabled={isSaving || !formData.name.trim()}
             className="flex-1 rounded-lg border border-accent/40 bg-accent/20 px-4 py-2 text-sm font-semibold text-accent/90 transition hover:border-accent/60 hover:bg-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("common.buttons.saving") : t("common.buttons.save")}
           </button>
         </div>
       </div>

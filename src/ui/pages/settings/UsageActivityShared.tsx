@@ -1,6 +1,7 @@
 import { Zap, ChevronRight } from "lucide-react";
 import { BottomMenu } from "../../components";
 import { RequestUsage } from "../../../core/usage";
+import { useI18n } from "../../../core/i18n/context";
 import { typography, components, cn } from "../../design-tokens";
 
 export function formatCurrency(value: number): string {
@@ -20,17 +21,20 @@ export function getEffectiveTotalCost(request: RequestUsage): number {
   return request.cost?.totalCost ?? request.apiCost ?? 0;
 }
 
-export function getRelativeTime(timestamp: number): string {
+export function getRelativeTime(
+  timestamp: number,
+  t: (key: any, params?: Record<string, string | number>) => string,
+): string {
   const now = Date.now();
   const diff = now - timestamp;
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
 
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  if (minutes < 1) return t("usageAnalytics.shared.relativeTime.justNow");
+  if (minutes < 60) return t("usageAnalytics.shared.relativeTime.minutesAgo", { count: minutes });
+  if (hours < 24) return t("usageAnalytics.shared.relativeTime.hoursAgo", { count: hours });
+  if (days < 7) return t("usageAnalytics.shared.relativeTime.daysAgo", { count: days });
   return new Date(timestamp).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -55,20 +59,23 @@ export function getOperationColor(type: string): string {
   return colorsMap[type.toLowerCase()] || "#94a3b8";
 }
 
-export function getOperationLabel(type: string): string {
+export function getOperationLabel(
+  type: string,
+  t: (key: any, params?: Record<string, string | number>) => string,
+): string {
   const labels: Record<string, string> = {
-    chat: "Chat",
-    regenerate: "Regen",
-    continue: "Continue",
-    summary: "Summary",
-    memory_manager: "Memory",
-    image_generation: "Image Gen",
-    ai_creator: "AI Creator",
-    reply_helper: "Reply Helper",
-    group_chat_message: "Group Chat",
-    group_chat_regenerate: "Group Regen",
-    group_chat_continue: "Group Continue",
-    group_chat_decision_maker: "Decision Maker",
+    chat: t("usageAnalytics.shared.operations.chat"),
+    regenerate: t("usageAnalytics.shared.operations.regenerate"),
+    continue: t("usageAnalytics.shared.operations.continue"),
+    summary: t("usageAnalytics.shared.operations.summary"),
+    memory_manager: t("usageAnalytics.shared.operations.memoryManager"),
+    image_generation: t("usageAnalytics.shared.operations.imageGeneration"),
+    ai_creator: t("usageAnalytics.shared.operations.aiCreator"),
+    reply_helper: t("usageAnalytics.shared.operations.replyHelper"),
+    group_chat_message: t("usageAnalytics.shared.operations.groupChatMessage"),
+    group_chat_regenerate: t("usageAnalytics.shared.operations.groupChatRegenerate"),
+    group_chat_continue: t("usageAnalytics.shared.operations.groupChatContinue"),
+    group_chat_decision_maker: t("usageAnalytics.shared.operations.groupChatDecisionMaker"),
   };
   return labels[type.toLowerCase()] || type;
 }
@@ -110,13 +117,14 @@ export function ActivityItem({
   onClick?: (request: RequestUsage) => void;
   showChevron?: boolean;
 }) {
+  const { t } = useI18n();
   const clickable = Boolean(onClick);
   const opColor = getOperationColor(request.operationType);
   const outputImageCount = parseMetadataNumber(request.metadata, "output_image_count");
   const usageLabel =
     outputImageCount && (request.totalTokens ?? 0) === 0
-      ? `${formatCompactNumber(outputImageCount)} image${outputImageCount === 1 ? "" : "s"}`
-      : `${formatCompactNumber(request.totalTokens || 0)} tokens`;
+      ? t("usageAnalytics.shared.outputImages", { count: formatCompactNumber(outputImageCount) })
+      : t("usageAnalytics.shared.tokens", { count: formatCompactNumber(request.totalTokens || 0) });
 
   // Robust background color calculation that works with both hex and var()
   const bgStyle = opColor.includes("var")
@@ -142,7 +150,7 @@ export function ActivityItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn(typography.body.size, typography.body.weight, "truncate text-fg")}>
-            {request.characterName || "Unknown"}
+            {request.characterName || t("usageAnalytics.shared.unknown")}
           </span>
           <span
             className="rounded-lg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
@@ -151,13 +159,13 @@ export function ActivityItem({
               color: opColor,
             }}
           >
-            {getOperationLabel(request.operationType)}
+            {getOperationLabel(request.operationType, t)}
           </span>
         </div>
         <div className={cn(typography.caption.size, "mt-0.5 flex items-center gap-2 text-fg/40")}>
           <span>{usageLabel}</span>
           <span className="opacity-30">·</span>
-          <span>{getRelativeTime(request.timestamp)}</span>
+          <span>{getRelativeTime(request.timestamp, t)}</span>
         </div>
       </div>
       <div className="shrink-0 text-right">
@@ -182,6 +190,7 @@ export function UsageRequestDetailSheet({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const cachedPromptTokens =
     request?.cachedPromptTokens ??
     parseMetadataNumber(request?.metadata, "cached_prompt_tokens") ??
@@ -205,7 +214,7 @@ export function UsageRequestDetailSheet({
     <BottomMenu
       isOpen={isOpen}
       onClose={onClose}
-      title={request ? getOperationLabel(request.operationType) : "Request Details"}
+      title={request ? getOperationLabel(request.operationType, t) : t("usageAnalytics.shared.requestDetails")}
       includeExitIcon={false}
     >
       {request && (
@@ -223,7 +232,7 @@ export function UsageRequestDetailSheet({
                 {request.providerLabel || request.providerId}
               </div>
               <div className="px-2 py-1 rounded-md bg-fg/5 text-[10px] font-medium text-fg/40 uppercase tracking-wider border border-fg/5">
-                {request.finishReason || "No stop reason"}
+                {request.finishReason || t("usageAnalytics.shared.noStopReason")}
               </div>
             </div>
           </div>
@@ -237,36 +246,36 @@ export function UsageRequestDetailSheet({
                 "text-fg/40 ml-1",
               )}
             >
-              Token Usage
+              {t("usageAnalytics.shared.tokenUsage")}
             </div>
             <div className="grid grid-cols-2 gap-2.5">
-              <DetailStat label="Prompt" value={(request.promptTokens ?? 0).toLocaleString()} />
+              <DetailStat label={t("usageAnalytics.shared.stats.prompt")} value={(request.promptTokens ?? 0).toLocaleString()} />
               <DetailStat
-                label="Completion"
+                label={t("usageAnalytics.shared.stats.completion")}
                 value={(request.completionTokens ?? 0).toLocaleString()}
               />
-              <DetailStat label="Total" value={(request.totalTokens ?? 0).toLocaleString()} />
+              <DetailStat label={t("usageAnalytics.shared.stats.total")} value={(request.totalTokens ?? 0).toLocaleString()} />
               <DetailStat
-                label="Reasoning"
+                label={t("usageAnalytics.shared.stats.reasoning")}
                 value={(request.reasoningTokens ?? 0).toLocaleString()}
               />
-              <DetailStat label="Image" value={(request.imageTokens ?? 0).toLocaleString()} />
-              <DetailStat label="Memory" value={(request.memoryTokens ?? 0).toLocaleString()} />
-              <DetailStat label="Summary" value={(request.summaryTokens ?? 0).toLocaleString()} />
+              <DetailStat label={t("usageAnalytics.shared.stats.image")} value={(request.imageTokens ?? 0).toLocaleString()} />
+              <DetailStat label={t("usageAnalytics.shared.stats.memory")} value={(request.memoryTokens ?? 0).toLocaleString()} />
+              <DetailStat label={t("usageAnalytics.shared.stats.summary")} value={(request.summaryTokens ?? 0).toLocaleString()} />
               {inputImageCount !== null && (
-                <DetailStat label="Input Images" value={inputImageCount.toLocaleString()} />
+                <DetailStat label={t("usageAnalytics.shared.stats.inputImages")} value={inputImageCount.toLocaleString()} />
               )}
               {outputImageCount !== null && (
-                <DetailStat label="Output Images" value={outputImageCount.toLocaleString()} />
+                <DetailStat label={t("usageAnalytics.shared.stats.outputImages")} value={outputImageCount.toLocaleString()} />
               )}
               {cachedPromptTokens !== null && (
-                <DetailStat label="Cached Prompt" value={cachedPromptTokens.toLocaleString()} />
+                <DetailStat label={t("usageAnalytics.shared.stats.cachedPrompt")} value={cachedPromptTokens.toLocaleString()} />
               )}
               {cacheWriteTokens !== null && (
-                <DetailStat label="Cache Write" value={cacheWriteTokens.toLocaleString()} />
+                <DetailStat label={t("usageAnalytics.shared.stats.cacheWrite")} value={cacheWriteTokens.toLocaleString()} />
               )}
               {webSearchRequests !== null && (
-                <DetailStat label="Web Searches" value={webSearchRequests.toLocaleString()} />
+                <DetailStat label={t("usageAnalytics.shared.stats.webSearches")} value={webSearchRequests.toLocaleString()} />
               )}
             </div>
           </div>
@@ -280,15 +289,15 @@ export function UsageRequestDetailSheet({
                 "text-fg/40 ml-1",
               )}
             >
-              Estimated Cost
+              {t("usageAnalytics.shared.estimatedCost")}
             </div>
             <div className="grid grid-cols-3 gap-2.5">
-              <DetailStat label="Prompt" value={formatCurrency(request.cost?.promptCost || 0)} />
+              <DetailStat label={t("usageAnalytics.shared.stats.prompt")} value={formatCurrency(request.cost?.promptCost || 0)} />
               <DetailStat
-                label="Completion"
+                label={t("usageAnalytics.shared.stats.completion")}
                 value={formatCurrency(request.cost?.completionCost || 0)}
               />
-              <DetailStat label="Total" value={formatCurrency(getEffectiveTotalCost(request))} />
+              <DetailStat label={t("usageAnalytics.shared.stats.total")} value={formatCurrency(getEffectiveTotalCost(request))} />
             </div>
             {(request.cost?.cacheReadCost ||
               request.cost?.cacheWriteCost ||
@@ -299,36 +308,36 @@ export function UsageRequestDetailSheet({
               <div className="grid grid-cols-2 gap-2.5">
                 {(request.cost?.cacheReadCost ?? 0) > 0 && (
                   <DetailStat
-                    label="Cache Read"
+                    label={t("usageAnalytics.shared.stats.cacheRead")}
                     value={formatCurrency(request.cost?.cacheReadCost || 0)}
                   />
                 )}
                 {(request.cost?.cacheWriteCost ?? 0) > 0 && (
                   <DetailStat
-                    label="Cache Write"
+                    label={t("usageAnalytics.shared.stats.cacheWrite")}
                     value={formatCurrency(request.cost?.cacheWriteCost || 0)}
                   />
                 )}
                 {(request.cost?.reasoningCost ?? 0) > 0 && (
                   <DetailStat
-                    label="Reasoning"
+                    label={t("usageAnalytics.shared.stats.reasoning")}
                     value={formatCurrency(request.cost?.reasoningCost || 0)}
                   />
                 )}
                 {(request.cost?.requestCost ?? 0) > 0 && (
                   <DetailStat
-                    label="Request Fee"
+                    label={t("usageAnalytics.shared.stats.requestFee")}
                     value={formatCurrency(request.cost?.requestCost || 0)}
                   />
                 )}
                 {(request.cost?.webSearchCost ?? 0) > 0 && (
                   <DetailStat
-                    label="Web Search"
+                    label={t("usageAnalytics.shared.stats.webSearch")}
                     value={formatCurrency(request.cost?.webSearchCost || 0)}
                   />
                 )}
                 {apiCost !== null && (
-                  <DetailStat label="Provider Total" value={formatCurrency(apiCost)} />
+                  <DetailStat label={t("usageAnalytics.shared.stats.providerTotal")} value={formatCurrency(apiCost)} />
                 )}
               </div>
             )}

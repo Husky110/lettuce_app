@@ -5,6 +5,7 @@ import { ArrowUpDown, Copy, Cpu, HardDrive, RefreshCw, Search, Trash2 } from "lu
 import { cn } from "../../design-tokens";
 import { confirmBottomMenu } from "../../components/ConfirmBottomMenu";
 import { toast } from "../../components/toast";
+import { useI18n } from "../../../core/i18n/context";
 
 type InstalledGgufModel = {
   modelId: string;
@@ -66,6 +67,7 @@ function getModelTypeLabel(model: InstalledGgufModel): "MMPROJ" | "LLM" {
 }
 
 export function InstalledModelsPage() {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [modelsDir, setModelsDir] = useState("");
   const [models, setModels] = useState<InstalledGgufModel[]>([]);
@@ -177,18 +179,21 @@ export function InstalledModelsPage() {
   const handleCopyPath = useCallback(async (path: string) => {
     try {
       await navigator.clipboard.writeText(path);
-      toast.success("Path copied", path);
+      toast.success(t("installedModels.toasts.pathCopied"), path);
     } catch (err) {
-      toast.error("Copy failed", err instanceof Error ? err.message : String(err));
+      toast.error(
+        t("installedModels.toasts.copyFailed"),
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }, []);
 
   const handleDeleteModel = useCallback(
     async (model: InstalledGgufModel) => {
       const confirmed = await confirmBottomMenu({
-        title: "Delete model file",
-        message: `Delete ${model.filename}? This only removes the local GGUF file from the models folder.`,
-        confirmLabel: "Delete",
+        title: t("installedModels.confirm.deleteTitle"),
+        message: t("installedModels.confirm.deleteMessage", { filename: model.filename }),
+        confirmLabel: t("common.buttons.delete"),
         destructive: true,
       });
       if (!confirmed) return;
@@ -196,10 +201,13 @@ export function InstalledModelsPage() {
       try {
         setDeletingPath(model.path);
         await invoke("hf_delete_downloaded_model", { filePath: model.path });
-        toast.success("Model deleted", model.filename);
+        toast.success(t("installedModels.toasts.modelDeleted"), model.filename);
         await loadModels("refresh");
       } catch (err) {
-        toast.error("Delete failed", err instanceof Error ? err.message : String(err));
+        toast.error(
+          t("installedModels.toasts.deleteFailed"),
+          err instanceof Error ? err.message : String(err),
+        );
       } finally {
         setDeletingPath(null);
       }
@@ -273,7 +281,7 @@ export function InstalledModelsPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium text-fg">
               <HardDrive size={15} className="text-fg/60" />
-              <span>Local GGUF inventory</span>
+              <span>{t("installedModels.title")}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-fg/55">
               <button
@@ -288,7 +296,7 @@ export function InstalledModelsPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-md border border-fg/10 px-3 py-2 text-sm text-fg/70">
-              {sortedModels.length} files
+              {t("installedModels.fileCount", { count: sortedModels.length })}
             </div>
             <div className="rounded-md border border-fg/10 px-3 py-2 text-sm text-fg/70">
               {formatBytes(totalSize)}
@@ -300,7 +308,7 @@ export function InstalledModelsPage() {
               )}
             >
               <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-              Refresh
+              {t("common.buttons.refresh")}
             </button>
           </div>
         </div>
@@ -310,7 +318,7 @@ export function InstalledModelsPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search model name, filename, path, quantization, or architecture"
+            placeholder={t("installedModels.searchPlaceholder")}
             className="w-full bg-transparent text-sm text-fg outline-none placeholder:text-fg/35"
           />
         </div>
@@ -318,32 +326,32 @@ export function InstalledModelsPage() {
 
       {loading ? (
         <div className="rounded-xl border border-fg/10 bg-fg/[0.03] px-4 py-10 text-sm text-fg/55">
-          Scanning installed models…
+          {t("installedModels.loading")}
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-4 text-sm text-red-200">
-          Failed to load installed models: {error}
+          {t("installedModels.loadFailed", { error })}
         </div>
       ) : sortedModels.length === 0 ? (
         <div className="rounded-xl border border-dashed border-fg/10 bg-fg/[0.02] px-4 py-12 text-center">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg border border-fg/10 bg-fg/[0.03]">
             <Cpu size={18} className="text-fg/45" />
           </div>
-          <div className="text-sm font-medium text-fg">No installed GGUF models found</div>
+          <div className="text-sm font-medium text-fg">{t("installedModels.empty.title")}</div>
           <p className="mt-1 text-sm text-fg/50">
-            Download models from the browser first, or place `.gguf` files inside the models folder.
+            {t("installedModels.empty.description")}
           </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-fg/10 bg-fg/[0.03]">
           <div className="hidden grid-cols-[minmax(0,1.45fr)_86px_110px_110px_130px_120px_168px] items-center gap-3 border-b border-fg/10 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.16em] text-fg/35 lg:grid">
-            <div>Name</div>
-            <div>Type</div>
-            {renderSortHeader("params", "Params")}
-            {renderSortHeader("arch", "Arch")}
-            {renderSortHeader("context", "Context")}
-            {renderSortHeader("size", "Size")}
-            <div className="text-right">Action</div>
+            <div>{t("common.labels.name")}</div>
+            <div>{t("installedModels.columns.type")}</div>
+            {renderSortHeader("params", t("installedModels.columns.params"))}
+            {renderSortHeader("arch", t("installedModels.columns.arch"))}
+            {renderSortHeader("context", t("installedModels.columns.context"))}
+            {renderSortHeader("size", t("installedModels.columns.size"))}
+            <div className="text-right">{t("installedModels.columns.action")}</div>
           </div>
           {sortedModels.map((model, index) => {
             const paramSize = extractParamSize(model.modelId, model.filename);
@@ -427,7 +435,7 @@ export function InstalledModelsPage() {
                       className="inline-flex items-center gap-1 rounded-md border border-fg/10 bg-fg/[0.02] px-2.5 py-1.5 text-xs text-fg/65 transition hover:bg-fg/[0.06] hover:text-fg"
                     >
                       <Copy size={12} />
-                      Copy
+                      {t("common.buttons.copy")}
                     </button>
                     <button
                       onClick={() => void handleDeleteModel(model)}
@@ -440,7 +448,9 @@ export function InstalledModelsPage() {
                       )}
                     >
                       <Trash2 size={12} />
-                      {deletingPath === model.path ? "Deleting" : "Delete"}
+                      {deletingPath === model.path
+                        ? t("common.buttons.deleting")
+                        : t("common.buttons.delete")}
                     </button>
                   </div>
                 </div>

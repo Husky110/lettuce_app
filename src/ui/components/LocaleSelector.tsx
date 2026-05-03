@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
 import { type Locale, SUPPORTED_LOCALES, getLocaleMetadata } from "../../core/i18n";
+import { getLocaleTranslationCompletion } from "../../core/i18n/translationStatus";
 import { BottomMenu } from "./BottomMenu";
 import { LocaleIcon } from "./LocaleIcon";
 import { cn, interactive, radius, typography } from "../design-tokens";
@@ -21,12 +22,25 @@ interface LocaleSelectorProps {
 
 function LocaleText({ locale, selected = false }: { locale: Locale; selected?: boolean }) {
   const metadata = getLocaleMetadata(locale);
+  const completion = getLocaleTranslationCompletion(locale);
   const showName = metadata.label !== metadata.name;
 
   return (
     <div className="min-w-0 flex-1">
-      <div className={cn("truncate text-sm font-medium", selected ? "text-accent" : "text-fg")}>
-        {metadata.label}
+      <div className="flex min-w-0 items-center gap-2">
+        <div className={cn("truncate text-sm font-medium", selected ? "text-accent" : "text-fg")}>
+          {metadata.label}
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+            selected
+              ? "border-accent/35 bg-accent/10 text-accent/85"
+              : "border-fg/10 bg-fg/5 text-fg/45",
+          )}
+        >
+          {completion.percent}%
+        </span>
       </div>
       {showName && (
         <div className={cn("truncate text-[11px]", selected ? "text-accent/70" : "text-fg/45")}>
