@@ -235,6 +235,7 @@ fn resolve_author_note(
 }
 
 fn build_session_advanced_model_settings(
+    advanced_model_settings_json: Option<&str>,
     temperature: Option<f64>,
     top_p: Option<f64>,
     max_output_tokens: Option<i64>,
@@ -242,6 +243,11 @@ fn build_session_advanced_model_settings(
     presence_penalty: Option<f64>,
     top_k: Option<i64>,
 ) -> Option<AdvancedModelSettings> {
+    if let Some(raw) = advanced_model_settings_json {
+        if let Ok(parsed) = serde_json::from_str::<AdvancedModelSettings>(raw) {
+            return Some(parsed);
+        }
+    }
     if temperature.is_some()
         || top_p.is_some()
         || max_output_tokens.is_some()
@@ -263,16 +269,21 @@ fn build_session_advanced_model_settings(
     }
 }
 
+fn serialize_session_advanced_model_settings(adv: Option<&JsonValue>) -> Option<String> {
+    adv.filter(|value| !value.is_null())
+        .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()))
+}
+
 fn read_session_meta_typed_internal(
     conn: &rusqlite::Connection,
     id: &str,
 ) -> Result<Option<Session>, String> {
     let row = conn
         .query_row(
-            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
+            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
             params![id],
             |r| Ok((
-                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, String>(16)?, r.get::<_, String>(17)?, r.get::<_, Option<String>>(18)?, r.get::<_, i64>(19)?, r.get::<_, String>(20)?, r.get::<_, Option<String>>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, i64>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, Option<String>>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<i64>>(28)?, r.get::<_, Option<String>>(29)?
+                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, Option<String>>(16)?, r.get::<_, String>(17)?, r.get::<_, String>(18)?, r.get::<_, Option<String>>(19)?, r.get::<_, i64>(20)?, r.get::<_, String>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, Option<String>>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, i64>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<String>>(28)?, r.get::<_, Option<i64>>(29)?, r.get::<_, Option<String>>(30)?
             )),
         )
         .optional()
@@ -294,6 +305,7 @@ fn read_session_meta_typed_internal(
         frequency_penalty,
         presence_penalty,
         top_k,
+        advanced_model_settings_json,
         companion_state_json,
         memories_json,
         memory_embeddings_json,
@@ -331,6 +343,7 @@ fn read_session_meta_typed_internal(
         persona_disabled: persona_disabled.unwrap_or(0) != 0,
         voice_autoplay: voice_autoplay.map(|value| value != 0),
         advanced_model_settings: build_session_advanced_model_settings(
+            advanced_model_settings_json.as_deref(),
             temperature,
             top_p,
             max_output_tokens,
@@ -816,6 +829,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
     let memory_progress_step = s.get("memoryProgressStep").and_then(|v| v.as_i64());
 
     let adv = s.get("advancedModelSettings");
+    let advanced_model_settings_json = serialize_session_advanced_model_settings(adv);
     let temperature = adv
         .and_then(|v| v.get("temperature"))
         .and_then(|v| v.as_f64());
@@ -832,8 +846,8 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
     let top_k = adv.and_then(|v| v.get("topK")).and_then(|v| v.as_i64());
 
     conn.execute(
-        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               character_id=excluded.character_id,
               title=excluded.title,
@@ -853,6 +867,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
               frequency_penalty=excluded.frequency_penalty,
               presence_penalty=excluded.presence_penalty,
               top_k=excluded.top_k,
+              advanced_model_settings=excluded.advanced_model_settings,
               companion_state=excluded.companion_state,
               memories=excluded.memories,
               memory_embeddings=excluded.memory_embeddings,
@@ -884,6 +899,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
             frequency_penalty,
             presence_penalty,
             top_k,
+            advanced_model_settings_json,
             companion_state_json,
             &memories_json,
             &memory_embeddings_json,
@@ -1124,10 +1140,10 @@ pub fn messages_upsert_batch_internal(
 fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValue>, String> {
     let row = conn
         .query_row(
-            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
+            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
             params![id],
             |r| Ok((
-                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, String>(16)?, r.get::<_, String>(17)?, r.get::<_, Option<String>>(18)?, r.get::<_, i64>(19)?, r.get::<_, String>(20)?, r.get::<_, Option<String>>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, i64>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, Option<String>>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<i64>>(28)?, r.get::<_, Option<String>>(29)?
+                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, Option<String>>(16)?, r.get::<_, String>(17)?, r.get::<_, String>(18)?, r.get::<_, Option<String>>(19)?, r.get::<_, i64>(20)?, r.get::<_, String>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, Option<String>>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, i64>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<String>>(28)?, r.get::<_, Option<i64>>(29)?, r.get::<_, Option<String>>(30)?
             )),
         )
         .optional()
@@ -1148,6 +1164,7 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
         frequency_penalty,
         presence_penalty,
         top_k,
+        advanced_model_settings_json,
         companion_state_json,
         memories_json,
         memory_embeddings_json,
@@ -1168,24 +1185,16 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
         return Ok(None);
     };
 
-    let advanced = if temperature.is_some()
-        || top_p.is_some()
-        || max_output_tokens.is_some()
-        || frequency_penalty.is_some()
-        || presence_penalty.is_some()
-        || top_k.is_some()
-    {
-        Some(serde_json::json!({
-            "temperature": temperature,
-            "topP": top_p,
-            "maxOutputTokens": max_output_tokens,
-            "frequencyPenalty": frequency_penalty,
-            "presencePenalty": presence_penalty,
-            "topK": top_k,
-        }))
-    } else {
-        None
-    };
+    let advanced = build_session_advanced_model_settings(
+        advanced_model_settings_json.as_deref(),
+        temperature,
+        top_p,
+        max_output_tokens,
+        frequency_penalty,
+        presence_penalty,
+        top_k,
+    )
+    .and_then(|value| serde_json::to_value(value).ok());
 
     let memories: JsonValue =
         serde_json::from_str(&memories_json).unwrap_or_else(|_| JsonValue::Array(vec![]));
@@ -1250,10 +1259,10 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
 fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValue>, String> {
     let row = conn
         .query_row(
-            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
+            "SELECT character_id, title, background_image_path, system_prompt, mode, selected_scene_id, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, archived, created_at, updated_at, prompt_template_id, lorebook_ids_override, memory_progress_step, author_note FROM sessions WHERE id = ?",
             params![id],
             |r| Ok((
-                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, String>(16)?, r.get::<_, String>(17)?, r.get::<_, Option<String>>(18)?, r.get::<_, i64>(19)?, r.get::<_, String>(20)?, r.get::<_, Option<String>>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, i64>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, Option<String>>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<i64>>(28)?, r.get::<_, Option<String>>(29)?
+                r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, Option<i64>>(7)?, r.get::<_, Option<i64>>(8)?, r.get::<_, Option<f64>>(9)?, r.get::<_, Option<f64>>(10)?, r.get::<_, Option<i64>>(11)?, r.get::<_, Option<f64>>(12)?, r.get::<_, Option<f64>>(13)?, r.get::<_, Option<i64>>(14)?, r.get::<_, Option<String>>(15)?, r.get::<_, Option<String>>(16)?, r.get::<_, String>(17)?, r.get::<_, String>(18)?, r.get::<_, Option<String>>(19)?, r.get::<_, i64>(20)?, r.get::<_, String>(21)?, r.get::<_, Option<String>>(22)?, r.get::<_, Option<String>>(23)?, r.get::<_, i64>(24)?, r.get::<_, i64>(25)?, r.get::<_, i64>(26)?, r.get::<_, Option<String>>(27)?, r.get::<_, Option<String>>(28)?, r.get::<_, Option<i64>>(29)?, r.get::<_, Option<String>>(30)?
             )),
         )
         .optional()
@@ -1274,6 +1283,7 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
         frequency_penalty,
         presence_penalty,
         top_k,
+        advanced_model_settings_json,
         companion_state_json,
         memories_json,
         memory_embeddings_json,
@@ -1410,24 +1420,16 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
         messages.push(JsonValue::Object(mobj));
     }
 
-    let advanced = if temperature.is_some()
-        || top_p.is_some()
-        || max_output_tokens.is_some()
-        || frequency_penalty.is_some()
-        || presence_penalty.is_some()
-        || top_k.is_some()
-    {
-        Some(serde_json::json!({
-            "temperature": temperature,
-            "topP": top_p,
-            "maxOutputTokens": max_output_tokens,
-            "frequencyPenalty": frequency_penalty,
-            "presencePenalty": presence_penalty,
-            "topK": top_k,
-        }))
-    } else {
-        None
-    };
+    let advanced = build_session_advanced_model_settings(
+        advanced_model_settings_json.as_deref(),
+        temperature,
+        top_p,
+        max_output_tokens,
+        frequency_penalty,
+        presence_penalty,
+        top_k,
+    )
+    .and_then(|value| serde_json::to_value(value).ok());
 
     // Parse memories JSON array
     let memories: JsonValue =
@@ -2249,6 +2251,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
     let memory_progress_step = s.get("memoryProgressStep").and_then(|v| v.as_i64());
 
     let adv = s.get("advancedModelSettings");
+    let advanced_model_settings_json = serialize_session_advanced_model_settings(adv);
     let temperature = adv
         .and_then(|v| v.get("temperature"))
         .and_then(|v| v.as_f64());
@@ -2265,8 +2268,8 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
     let top_k = adv.and_then(|v| v.get("topK")).and_then(|v| v.as_i64());
 
     conn.execute(
-        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               character_id=excluded.character_id,
               title=excluded.title,
@@ -2286,6 +2289,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
               frequency_penalty=excluded.frequency_penalty,
               presence_penalty=excluded.presence_penalty,
               top_k=excluded.top_k,
+              advanced_model_settings=excluded.advanced_model_settings,
               companion_state=excluded.companion_state,
               memories=excluded.memories,
               memory_embeddings=excluded.memory_embeddings,
@@ -2317,6 +2321,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
             frequency_penalty,
             presence_penalty,
             top_k,
+            advanced_model_settings_json,
             companion_state_json,
             &memories_json,
             &memory_embeddings_json,
@@ -2713,6 +2718,7 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
     };
 
     let adv = s.get("advancedModelSettings");
+    let advanced_model_settings_json = serialize_session_advanced_model_settings(adv);
     let temperature = adv
         .and_then(|v| v.get("temperature"))
         .and_then(|v| v.as_f64());
@@ -2732,8 +2738,8 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
         .transaction()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     tx.execute(
-        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, archived, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        r#"INSERT INTO sessions (id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               character_id=excluded.character_id,
               title=excluded.title,
@@ -2753,6 +2759,7 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
               frequency_penalty=excluded.frequency_penalty,
               presence_penalty=excluded.presence_penalty,
               top_k=excluded.top_k,
+              advanced_model_settings=excluded.advanced_model_settings,
               companion_state=excluded.companion_state,
               memories=excluded.memories,
               memory_embeddings=excluded.memory_embeddings,
@@ -2761,7 +2768,7 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
               memory_tool_events=excluded.memory_tool_events,
               archived=excluded.archived,
               updated_at=excluded.updated_at"#,
-        params![&id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override_json, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, companion_state_json, &memories_json, &memory_embeddings_json, memory_summary, memory_summary_token_count, &memory_tool_events_json, archived, created_at, updated_at],
+        params![&id, character_id, title, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override_json, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings_json, companion_state_json, &memories_json, &memory_embeddings_json, memory_summary, memory_summary_token_count, &memory_tool_events_json, archived, created_at, updated_at],
     ).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     if let Some(msgs) = s.get("messages").and_then(|v| v.as_array()) {

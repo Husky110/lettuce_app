@@ -1339,6 +1339,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let mut has_session_voice_autoplay = false;
     let mut has_session_persona_disabled = false;
+    let mut has_session_advanced_model_settings = false;
     let mut rows_sessions = stmt_sessions
         .query([])
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1352,6 +1353,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         match col_name.as_str() {
             "voice_autoplay" => has_session_voice_autoplay = true,
             "persona_disabled" => has_session_persona_disabled = true,
+            "advanced_model_settings" => has_session_advanced_model_settings = true,
             _ => {}
         }
     }
@@ -1363,6 +1365,9 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
             "ALTER TABLE sessions ADD COLUMN persona_disabled INTEGER NOT NULL DEFAULT 0",
             [],
         );
+    }
+    if !has_session_advanced_model_settings {
+        let _ = conn.execute("ALTER TABLE sessions ADD COLUMN advanced_model_settings TEXT", []);
     }
 
     let mut stmt_sessions_mem = conn
