@@ -2721,6 +2721,7 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
     downloadFailed: "Nedlasting mislyktes",
     downloadCancelled: "Nedlasting avbrutt",
     downloadProgress: "{{downloaded}} / {{total}}",
+    progress: "Fremdrift",
     speed: "{{speed}}/s",
     alreadyDownloaded: "Allerede lastet ned",
     createModel: "Opprett modell",

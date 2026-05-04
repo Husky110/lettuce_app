@@ -2743,6 +2743,7 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Échec du téléchargement",
     "downloadCancelled": "Téléchargement annulé",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Progression",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Déjà téléchargé",
     "createModel": "Créer un Modèle",

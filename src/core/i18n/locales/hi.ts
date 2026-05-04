@@ -2444,6 +2444,7 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "डाउनलोड विफल",
     "downloadCancelled": "डाउनलोड रद्द किया गया",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "प्रगति",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "पहले से डाउनलोड किया हुआ",
     "createModel": "मॉडल बनाएँ",

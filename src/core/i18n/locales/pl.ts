@@ -2473,6 +2473,7 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Pobieranie nie powiodło się",
     "downloadCancelled": "Pobieranie anulowane",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Postęp",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Już pobrano",
     "createModel": "Utwórz model",

@@ -2743,6 +2743,7 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Загрузка не удалась",
     "downloadCancelled": "Загрузка отменена",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Прогресс",
     "speed": "{{speed}}/с",
     "alreadyDownloaded": "Уже загружено",
     "createModel": "Создать модель",

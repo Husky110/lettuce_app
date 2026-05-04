@@ -2743,6 +2743,7 @@ export const trMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "İndirme başarısız",
     "downloadCancelled": "İndirme iptal edildi",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "İlerleme",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Zaten indirilmiş",
     "createModel": "Model Oluştur",

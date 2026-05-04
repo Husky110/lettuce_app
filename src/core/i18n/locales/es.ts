@@ -2743,6 +2743,7 @@ export const esMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Descarga fallida",
     "downloadCancelled": "Descarga cancelada",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Progreso",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Ya descargado",
     "createModel": "Crear Modelo",

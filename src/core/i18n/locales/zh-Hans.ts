@@ -2743,6 +2743,7 @@ export const zhHansMessages: DeepPartialMessageTree<LocaleMessages> = {
     downloadFailed: "下载失败",
     downloadCancelled: "下载已取消",
     downloadProgress: "{{downloaded}} / {{total}}",
+    progress: "进度",
     speed: "{{speed}}/s",
     alreadyDownloaded: "已下载",
     createModel: "创建模型",

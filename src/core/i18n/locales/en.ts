@@ -2762,6 +2762,7 @@ export const enMessages = {
     downloadFailed: "Download failed",
     downloadCancelled: "Download cancelled",
     downloadProgress: "{{downloaded}} / {{total}}",
+    progress: "Progress",
     speed: "{{speed}}/s",
     alreadyDownloaded: "Already downloaded",
     createModel: "Create Model",

@@ -2444,6 +2444,7 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Unduhan gagal",
     "downloadCancelled": "Unduhan dibatalkan",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Kemajuan",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Sudah diunduh",
     "createModel": "Buat Model",

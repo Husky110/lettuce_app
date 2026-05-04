@@ -2444,6 +2444,7 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Tải xuống thất bại",
     "downloadCancelled": "Đã hủy tải xuống",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Tiến trình",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Đã tải xuống",
     "createModel": "Tạo mô hình",

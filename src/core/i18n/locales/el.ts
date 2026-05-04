@@ -2743,6 +2743,7 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
     "downloadFailed": "Η λήψη απέτυχε",
     "downloadCancelled": "Η λήψη ακυρώθηκε",
     "downloadProgress": "{{downloaded}} / {{total}}",
+    "progress": "Πρόοδος",
     "speed": "{{speed}}/s",
     "alreadyDownloaded": "Έχει ήδη ληφθεί",
     "createModel": "Δημιουργία Μοντέλου",
