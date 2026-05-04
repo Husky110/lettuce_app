@@ -1,5 +1,6 @@
 use super::*;
 use crate::chat_manager::prompts;
+use crate::storage_manager::settings::{internal_read_settings, settings_set_advanced};
 use crate::utils::{log_error, log_info, log_warn};
 use futures_util::StreamExt;
 use std::fs;
@@ -21,6 +22,55 @@ pub async fn reset_download_state() {
         total_files: 0,
         current_file_name: String::new(),
     };
+}
+
+fn apply_embedding_version_preference(
+    advanced_settings: &mut serde_json::Value,
+    version: &str,
+) -> Result<(), String> {
+    let Some(obj) = advanced_settings.as_object_mut() else {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Advanced settings payload is not an object",
+        ));
+    };
+
+    obj.insert(
+        "embeddingModelVersion".to_string(),
+        serde_json::Value::String(version.to_string()),
+    );
+
+    Ok(())
+}
+
+fn persist_embedding_version_preference(app: &AppHandle, version: &str) -> Result<(), String> {
+    let settings_json =
+        internal_read_settings(app)?.ok_or_else(|| "Settings not found".to_string())?;
+    let settings_value: serde_json::Value = serde_json::from_str(&settings_json).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to parse settings: {}", e),
+        )
+    })?;
+
+    let mut advanced_settings = settings_value
+        .get("advancedSettings")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    apply_embedding_version_preference(&mut advanced_settings, version)?;
+
+    let advanced_json = serde_json::to_string(&advanced_settings).map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to serialize advanced settings: {}", e),
+        )
+    })?;
+
+    settings_set_advanced(app.clone(), advanced_json)
 }
 
 fn delete_files(model_dir: &Path, files: &[&str]) -> Result<(), String> {
@@ -366,6 +416,16 @@ pub async fn start_embedding_download(
         ),
     );
 
+    persist_embedding_version_preference(&app, target_version.label())?;
+    log_info(
+        &app,
+        "embedding_download",
+        format!(
+            "set preferred embedding model version to {}",
+            target_version.label()
+        ),
+    );
+
     run_download_plan(&app, "embedding_download", plan, owned_files).await?;
 
     let model_dir = embedding_model_dir(&app)?;
@@ -380,6 +440,39 @@ pub async fn start_embedding_download(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_embedding_version_preference;
+
+    #[test]
+    fn sets_embedding_version_preference_in_advanced_settings() {
+        let mut advanced = serde_json::json!({
+            "embeddingMaxTokens": 2048
+        });
+
+        apply_embedding_version_preference(&mut advanced, "v4").expect("should update settings");
+
+        assert_eq!(
+            advanced.get("embeddingModelVersion"),
+            Some(&serde_json::json!("v4"))
+        );
+        assert_eq!(
+            advanced.get("embeddingMaxTokens"),
+            Some(&serde_json::json!(2048))
+        );
+    }
+
+    #[test]
+    fn rejects_non_object_advanced_settings() {
+        let mut advanced = serde_json::json!(null);
+
+        let err = apply_embedding_version_preference(&mut advanced, "v4")
+            .expect_err("non-object settings should fail");
+
+        assert!(err.contains("Advanced settings payload is not an object"));
+    }
 }
 
 pub async fn start_companion_download(app: AppHandle, kind: String) -> Result<(), String> {
