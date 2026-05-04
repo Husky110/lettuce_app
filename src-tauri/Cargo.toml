@@ -96,8 +96,8 @@ whisper-rs = { version = "0.16.0", features = ["tracing_backend"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))'.dependencies]
 machine-uid = "0.3"
 ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "half", "ndarray"] }
-llama-cpp-2 = { version="0.1.143", features = ["mtmd"] }
-llama-cpp-sys-2 = { version="0.1.143" }
+llama-cpp-2 = { version="0.1.146", features = ["mtmd"] }
+llama-cpp-sys-2 = { version="0.1.146" }
 sysinfo = "0.33"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -106,8 +106,8 @@ webkit2gtk = "2.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 machine-uid = "0.3"
 ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "coreml", "half", "ndarray"] }
-llama-cpp-2 = { version="0.1.143", features = ["mtmd"] }
-llama-cpp-sys-2 = { version="0.1.143" }
+llama-cpp-2 = { version="0.1.146", features = ["mtmd"] }
+llama-cpp-sys-2 = { version="0.1.146" }
 sysinfo = "0.33"
 
 [target.'cfg(target_os = "android")'.dependencies]
