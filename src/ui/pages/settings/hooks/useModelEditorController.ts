@@ -151,24 +151,38 @@ export function useModelEditorController(): ControllerReturn {
     [],
   );
 
-  const ensureLocalProvider = useCallback(
-    (providers: ProviderCredential[]) => {
-      if (isMobile) {
-        return providers.filter((provider) => provider.providerId !== localProvider.providerId);
-      }
-      const hasLocal = providers.some((p) => p.providerId === localProvider.providerId);
-      if (hasLocal) return providers;
-      return providers.length === 0 ? [localProvider] : [...providers, localProvider];
-    },
-    [isMobile, localProvider],
-  );
-
   const visibleCapabilities = useMemo(
     () =>
       isMobile
         ? capabilities.filter((capability) => capability.id !== "llamacpp")
         : capabilities,
     [capabilities, isMobile],
+  );
+
+  const ensureLocalProvider = useCallback(
+    (providers: ProviderCredential[]) => {
+      const capabilityIds = new Set(visibleCapabilities.map((capability) => capability.id));
+      const filteredProviders =
+        capabilityIds.size > 0
+          ? providers.filter(
+              (provider) =>
+                provider.providerId === localProvider.providerId ||
+                capabilityIds.has(provider.providerId),
+            )
+          : providers;
+
+      if (isMobile) {
+        return filteredProviders.filter(
+          (provider) => provider.providerId !== localProvider.providerId,
+        );
+      }
+      const hasLocal = filteredProviders.some((p) => p.providerId === localProvider.providerId);
+      if (hasLocal) return filteredProviders;
+      return filteredProviders.length === 0
+        ? [localProvider]
+        : [...filteredProviders, localProvider];
+    },
+    [isMobile, localProvider, visibleCapabilities],
   );
 
   useEffect(() => {
