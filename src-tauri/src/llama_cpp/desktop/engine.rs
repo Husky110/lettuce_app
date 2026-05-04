@@ -397,9 +397,29 @@ pub(super) fn load_engine(
         "requested_gpu_layers={requested_gpu_layers_key};strict_mode={}",
         strict_mode
     );
-    let should_reload = guard.model.is_none()
+    let mut should_reload = guard.model.is_none()
         || guard.model_path.as_deref() != Some(model_path)
         || guard.model_params_key.as_deref() != Some(&model_params_key);
+    let reusing_loaded_smart_gpu_model = should_reload
+        && auto_gpu_layer_candidates.is_some()
+        && guard.model.is_some()
+        && guard.model_path.as_deref() == Some(model_path)
+        && guard.backend_path_used.as_deref() == Some("gpu_offload")
+        && guard.actual_gpu_layers_used.unwrap_or(0) > 0;
+    if reusing_loaded_smart_gpu_model {
+        should_reload = false;
+        guard.model_params_key = Some(model_params_key.clone());
+        if let Some(app) = app {
+            log_info(
+                app,
+                "llama_cpp",
+                format!(
+                    "Reusing loaded smart-offload GPU model despite candidate change: model_path={} actual_gpu_layers_used={:?} requested_candidates={:?}",
+                    model_path, guard.actual_gpu_layers_used, auto_gpu_layer_candidates
+                ),
+            );
+        }
+    }
     if !should_reload {
         if let Some(app) = app {
             log_info(
