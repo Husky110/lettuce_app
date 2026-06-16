@@ -187,6 +187,7 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
       ADVANCED_REASONING_BUDGET_RANGE,
       true,
     ),
+    forceSendThinkingState: input.forceSendThinkingState ?? null,
     promptCachingEnabled: input.promptCachingEnabled ?? null,
     promptCachingTtl: input.promptCachingTtl ?? "5min",
   };
