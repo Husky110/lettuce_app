@@ -24,6 +24,7 @@ pub(super) struct SmartGpuOffloadPlan {
     pub(super) kqv_vram_reserved: bool,
     pub(super) planning_offload_kqv: Option<bool>,
     pub(super) estimated_kv_bytes: u64,
+    pub(super) kv_bytes_per_layer: u64,
     pub(super) estimated_sidecar_vram_reserve_bytes: u64,
     pub(super) estimated_runtime_reserve_bytes: u64,
     pub(super) effective_vram_budget_bytes: u64,
@@ -332,7 +333,7 @@ pub(super) fn plan_smart_gpu_offload(
         None => &[Some(false), Some(true), None],
     };
 
-    let mut selected_plan: Option<(Option<bool>, bool, u64, u32)> = None;
+    let mut selected_plan: Option<(Option<bool>, bool, u64, u64, u32)> = None;
     for planning_offload_kqv in planning_modes {
         let kqv_vram_reserved = *planning_offload_kqv == Some(true);
         // When KV is GPU-resident, only the GPU-resident layers' KV goes to VRAM —
@@ -353,21 +354,19 @@ pub(super) fn plan_smart_gpu_offload(
         let estimated_gpu_layers = if available_base == 0 || effective_bytes_per_layer == 0 {
             0
         } else {
-            u32::try_from(
-                (available_base / effective_bytes_per_layer).min(u64::from(total_layers)),
-            )
-            .unwrap_or(total_layers)
-            .min(total_layers)
+            u32::try_from((available_base / effective_bytes_per_layer).min(u64::from(total_layers)))
+                .unwrap_or(total_layers)
+                .min(total_layers)
         };
         // Report the KV bytes that will actually land on GPU (scales with GPU layers).
-        let estimated_kv_bytes =
-            kv_bytes_per_layer.saturating_mul(u64::from(estimated_gpu_layers));
+        let estimated_kv_bytes = kv_bytes_per_layer.saturating_mul(u64::from(estimated_gpu_layers));
 
         if selected_plan.is_none() {
             selected_plan = Some((
                 *planning_offload_kqv,
                 kqv_vram_reserved,
                 estimated_kv_bytes,
+                kv_bytes_per_layer,
                 estimated_gpu_layers,
             ));
         }
@@ -377,6 +376,7 @@ pub(super) fn plan_smart_gpu_offload(
                 *planning_offload_kqv,
                 kqv_vram_reserved,
                 estimated_kv_bytes,
+                kv_bytes_per_layer,
                 estimated_gpu_layers,
             ));
             if estimated_gpu_layers > 0 {
@@ -385,8 +385,13 @@ pub(super) fn plan_smart_gpu_offload(
         }
     }
 
-    let (planning_offload_kqv, kqv_vram_reserved, estimated_kv_bytes, estimated_gpu_layers) =
-        selected_plan.unwrap_or((Some(false), false, 0, 0));
+    let (
+        planning_offload_kqv,
+        kqv_vram_reserved,
+        estimated_kv_bytes,
+        kv_bytes_per_layer,
+        estimated_gpu_layers,
+    ) = selected_plan.unwrap_or((Some(false), false, 0, 0, 0));
 
     Ok(SmartGpuOffloadPlan {
         total_layers,
@@ -397,6 +402,7 @@ pub(super) fn plan_smart_gpu_offload(
         kqv_vram_reserved,
         planning_offload_kqv,
         estimated_kv_bytes,
+        kv_bytes_per_layer,
         estimated_sidecar_vram_reserve_bytes: sidecar_vram_reserve_bytes,
         estimated_runtime_reserve_bytes,
         effective_vram_budget_bytes,
@@ -507,7 +513,9 @@ pub(super) fn plan_multi_gpu_distribution(
                     break;
                 }
                 let budget = if i == 0 {
-                    priority_limit_bytes.map(|lim| lim.min(*free)).unwrap_or(*free)
+                    priority_limit_bytes
+                        .map(|lim| lim.min(*free))
+                        .unwrap_or(*free)
                 } else {
                     *free
                 };
