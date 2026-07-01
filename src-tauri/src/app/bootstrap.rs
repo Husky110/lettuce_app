@@ -174,14 +174,15 @@ fn initialize_database(app: &mut tauri::App) {
     // Clear stale smart-offload layer caches on every startup. The cached
     // layer counts are VRAM-availability snapshots from the previous session;
     // available VRAM can differ significantly across restarts (GPU config
-    // changes, other apps, driver state). Clearing here ensures the first
-    // generation of each session re-estimates from scratch.
-    match storage_manager::models::clear_all_llama_runtime_reports(app.handle()) {
+    // changes, other apps, driver state). Only the cached layer count is
+    // removed — the rest of llamaLastRuntimeReport is user-facing diagnostics
+    // that persist across restarts.
+    match storage_manager::models::clear_all_llama_runtime_layer_caches(app.handle()) {
         Ok(n) if n > 0 => {
-            eprintln!("[INFO] Cleared stale llama runtime report cache for {n} model(s)");
+            eprintln!("[INFO] Cleared stale llama smart-offload layer cache for {n} model(s)");
         }
         Err(err) => {
-            eprintln!("[WARN] Failed to clear llama runtime report cache on startup: {err}");
+            eprintln!("[WARN] Failed to clear llama smart-offload layer cache on startup: {err}");
         }
         _ => {}
     }

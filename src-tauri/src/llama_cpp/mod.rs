@@ -1145,12 +1145,11 @@ mod desktop {
             } else {
                 Vec::new()
             };
-            // For smart-offload planning use the CUDA-reported total per-device VRAM
-            // rather than free VRAM. cudaMemGetInfo's free is pessimistic on newer GPU
-            // architectures (e.g. Blackwell) where the driver reserves a large fraction
-            // of VRAM for internal use that is NOT actually consumed by allocations.
-            // Using total gives a realistic picture of how much the model load can use.
-            // The smart fallback ladder handles actual OOM if the estimate is too high.
+            // cudaMemGetInfo's free is pessimistic on newer GPU architectures
+            // (e.g. Blackwell) where the driver reserve does not reflect real
+            // allocation pressure, so the planning budget allows a small bounded
+            // headroom above free (see combined_effective_vram_bytes). Free VRAM
+            // held by other processes stays out of the budget.
             let available_vram_bytes = if multi_gpu_active {
                 context::combined_effective_vram_bytes(&per_device_vram)
                     .or_else(get_available_vram_bytes)
@@ -1305,7 +1304,7 @@ mod desktop {
                             })
                             .unwrap_or_default();
                         let multi_gpu_config_matches = cached_multi_gpu == multi_gpu_active
-                            && cached_device_ids == llama_gpu_device_ids;
+                            && (!multi_gpu_active || cached_device_ids == llama_gpu_device_ids);
                         if cached_status == Some("succeeded")
                             && cached_backend_path == Some("gpu_offload")
                             && bucket == current_context_bucket

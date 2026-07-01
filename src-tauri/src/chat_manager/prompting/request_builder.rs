@@ -30,7 +30,15 @@ fn strip_provider_incompatible_extra_fields(
     extra_body_fields: &mut HashMap<String, Value>,
 ) {
     let supported_keys = supported_extra_body_keys_for_provider(&credential.provider_id);
-    extra_body_fields.retain(|key, _| supported_keys.contains(&key.as_str()));
+    extra_body_fields.retain(|key, _| {
+        let supported = supported_keys.contains(&key.as_str());
+        if !supported && credential.provider_id == "llamacpp" && key.starts_with("llama") {
+            eprintln!(
+                "[WARN] request_builder: dropping extra-body key '{key}' — missing from the llamacpp allowlist in providers/config.rs"
+            );
+        }
+        supported
+    });
 }
 
 pub fn provider_streaming_enabled(credential: &ProviderCredential) -> bool {

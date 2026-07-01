@@ -568,3 +568,66 @@ pub(super) fn plan_multi_gpu_distribution(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{candidate_gpu_layers, estimated_runtime_reserve_bytes, LlamaModelMetadata};
+
+    fn large_context_metadata() -> LlamaModelMetadata {
+        LlamaModelMetadata {
+            model_size_bytes: 16 * 1024 * 1024 * 1024,
+            layer_count: 60,
+            max_context_length: 262_144,
+            n_embd: 4096,
+            n_head: 32,
+            n_head_kv: 8,
+        }
+    }
+
+    #[test]
+    fn runtime_reserve_holds_attention_scratch_when_flash_attention_disabled() {
+        let available = 16_u64 * 1024 * 1024 * 1024;
+
+        let reserve = estimated_runtime_reserve_bytes(
+            &large_context_metadata(),
+            available,
+            32_768,
+            2048,
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_DISABLED,
+        );
+
+        assert_eq!(reserve, available / 20 + 4_294_967_296);
+    }
+
+    #[test]
+    fn runtime_reserve_assumes_flash_attention_for_auto_policy_on_every_backend() {
+        let available = 16_u64 * 1024 * 1024 * 1024;
+
+        let auto_reserve = estimated_runtime_reserve_bytes(
+            &large_context_metadata(),
+            available,
+            32_768,
+            2048,
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO,
+        );
+        let enabled_reserve = estimated_runtime_reserve_bytes(
+            &large_context_metadata(),
+            available,
+            32_768,
+            2048,
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_ENABLED,
+        );
+
+        assert_eq!(auto_reserve, enabled_reserve);
+        assert_eq!(auto_reserve, available / 20);
+    }
+
+    #[test]
+    fn candidate_ladder_tries_full_offload_when_estimate_is_near_total() {
+        let candidates = candidate_gpu_layers(60, 55);
+
+        assert_eq!(candidates.first(), Some(&60));
+        assert!(candidates.contains(&55));
+        assert_eq!(candidates.last(), Some(&0));
+    }
+}

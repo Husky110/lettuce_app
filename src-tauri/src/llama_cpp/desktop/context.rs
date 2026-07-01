@@ -296,13 +296,6 @@ pub(crate) fn list_gpu_devices() -> Vec<LlamaGpuDeviceInfo> {
         .collect()
 }
 
-pub(crate) fn get_available_vram_bytes_for_devices(device_ids: &[usize]) -> Option<u64> {
-    if device_ids.is_empty() {
-        return None;
-    }
-    combined_effective_vram_bytes(&get_aligned_per_device_vram(device_ids))
-}
-
 /// Per-device free/total VRAM for the explicitly selected device ids, preserving
 /// the caller's order. Integrated GPUs are skipped (never used for multi-GPU).
 /// Each tuple is `(device_id, free_bytes, total_bytes)`.
@@ -375,10 +368,14 @@ pub(crate) fn align_per_device_vram(
 }
 
 pub(crate) fn combined_effective_vram_bytes(per_device_vram: &[(usize, u64, u64)]) -> Option<u64> {
-    let total_combined: u64 = per_device_vram.iter().map(|(_, _, total)| *total).sum();
-    let free_combined: u64 = per_device_vram.iter().map(|(_, free, _)| *free).sum();
-    let best = total_combined.max(free_combined);
-    (best > 0).then_some(best)
+    let combined: u64 = per_device_vram
+        .iter()
+        .map(|(_, free, total)| {
+            let driver_reserve_headroom = total.saturating_sub(*free).min(total / 8);
+            free.saturating_add(driver_reserve_headroom)
+        })
+        .sum();
+    (combined > 0).then_some(combined)
 }
 
 /// Detect if the system uses unified memory (shared RAM/VRAM).
@@ -646,10 +643,18 @@ mod tests {
     }
 
     #[test]
-    fn combined_effective_vram_prefers_reported_total_capacity() {
+    fn combined_effective_vram_allows_bounded_headroom_over_free() {
         let per_device = vec![(0, 10, 12), (1, 14, 0)];
 
-        assert_eq!(combined_effective_vram_bytes(&per_device), Some(24));
+        assert_eq!(combined_effective_vram_bytes(&per_device), Some(25));
+    }
+
+    #[test]
+    fn combined_effective_vram_excludes_vram_held_by_other_processes() {
+        let gib = 1024_u64 * 1024 * 1024;
+        let per_device = vec![(0, 4 * gib, 24 * gib)];
+
+        assert_eq!(combined_effective_vram_bytes(&per_device), Some(7 * gib));
     }
 
     #[test]
@@ -657,6 +662,17 @@ mod tests {
         let aligned = align_per_device_vram(&[0, 1], &[(0, 10, 12)]);
 
         assert_eq!(aligned, vec![(0, 10, 12), (1, 12, 12)]);
+    }
+
+    #[test]
+    fn aligned_per_device_vram_imputes_unreported_device_at_largest_capacity() {
+        let gib = 1024_u64 * 1024 * 1024;
+        let aligned = align_per_device_vram(&[0, 1], &[(0, 20 * gib, 24 * gib)]);
+
+        assert_eq!(
+            aligned,
+            vec![(0, 20 * gib, 24 * gib), (1, 24 * gib, 24 * gib)]
+        );
     }
 }
 
@@ -700,9 +716,13 @@ pub(crate) async fn llamacpp_context_info(
     let selected_gpu_device_ids = llama_gpu_device_ids.unwrap_or_default();
     let multi_gpu_active =
         llama_multi_gpu_enabled == Some(true) && selected_gpu_device_ids.len() >= 2;
+    let aligned_per_device_vram = if multi_gpu_active {
+        get_aligned_per_device_vram(&selected_gpu_device_ids)
+    } else {
+        Vec::new()
+    };
     let available_vram_bytes = if multi_gpu_active {
-        get_available_vram_bytes_for_devices(&selected_gpu_device_ids)
-            .or_else(get_available_vram_bytes)
+        combined_effective_vram_bytes(&aligned_per_device_vram).or_else(get_available_vram_bytes)
     } else {
         get_available_vram_bytes()
     };
@@ -793,17 +813,8 @@ pub(crate) async fn llamacpp_context_info(
     };
 
     let (per_device_vram, estimated_placement) = if multi_gpu_active && supports_gpu_offload {
-        let per_dev = get_aligned_per_device_vram(&selected_gpu_device_ids);
-        let device_free_aligned: Vec<u64> = selected_gpu_device_ids
-            .iter()
-            .map(|id| {
-                per_dev
-                    .iter()
-                    .find(|(dev, _, _)| dev == id)
-                    .map(|(_, free, _)| *free)
-                    .unwrap_or(0)
-            })
-            .collect();
+        let per_dev = aligned_per_device_vram.clone();
+        let device_free_aligned: Vec<u64> = per_dev.iter().map(|(_, free, _)| *free).collect();
         let dist_mode = llama_gpu_distribution_mode.as_deref().unwrap_or("balanced");
         let dist = if dist_mode == "manual" {
             let manual_aligned: Vec<u32> = selected_gpu_device_ids

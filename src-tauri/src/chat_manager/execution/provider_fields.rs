@@ -11,11 +11,10 @@ use super::{
     resolve_llama_dry_sequence_breakers, resolve_llama_flash_attention,
     resolve_llama_gpu_device_ids, resolve_llama_gpu_distribution_mode, resolve_llama_gpu_layers,
     resolve_llama_gpu_manual_layers, resolve_llama_kv_placement, resolve_llama_kv_type,
-    resolve_llama_main_gpu, resolve_llama_mmproj_path,
-    resolve_llama_mtp_draft_tokens, resolve_llama_mtp_enabled, resolve_llama_mtp_model_path,
-    resolve_llama_multi_gpu_enabled, resolve_llama_offload_kqv,
-    resolve_llama_priority_vram_limit_bytes, resolve_llama_profile_min_p,
-    resolve_llama_profile_typical_p,
+    resolve_llama_main_gpu, resolve_llama_mmproj_path, resolve_llama_mtp_draft_tokens,
+    resolve_llama_mtp_enabled, resolve_llama_mtp_model_path, resolve_llama_multi_gpu_enabled,
+    resolve_llama_offload_kqv, resolve_llama_priority_vram_limit_bytes,
+    resolve_llama_profile_min_p, resolve_llama_profile_typical_p,
     resolve_llama_raw_completion_fallback, resolve_llama_rope_freq_base,
     resolve_llama_rope_freq_scale, resolve_llama_sampler_order, resolve_llama_sampler_profile,
     resolve_llama_seed, resolve_llama_streaming_enabled, resolve_llama_strict_mode,
@@ -160,6 +159,110 @@ fn build_llama_extra_fields(
         None
     } else {
         Some(extra)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chat_manager::types::{
+        AdvancedModelSettings, GpuLayerAssignment, Model, Session, Settings,
+    };
+    use crate::providers::config::supported_extra_body_keys_for_provider;
+
+    #[test]
+    fn every_llama_extra_body_key_is_in_the_llamacpp_allowlist() {
+        let advanced = AdvancedModelSettings {
+            llama_gpu_layers: Some(32),
+            llama_multi_gpu_enabled: Some(true),
+            llama_gpu_device_ids: Some(vec![0, 1]),
+            llama_gpu_distribution_mode: Some("balanced".to_string()),
+            llama_gpu_manual_layers: Some(vec![GpuLayerAssignment {
+                device_id: 0,
+                layers: 16,
+            }]),
+            llama_kv_placement: Some("pin".to_string()),
+            llama_main_gpu: Some(0),
+            llama_priority_vram_limit_bytes: Some(8 * 1024 * 1024 * 1024),
+            llama_threads: Some(8),
+            llama_threads_batch: Some(8),
+            llama_seed: Some(42),
+            llama_rope_freq_base: Some(10000.0),
+            llama_rope_freq_scale: Some(1.0),
+            llama_offload_kqv: Some(true),
+            llama_batch_size: Some(512),
+            llama_kv_type: Some("q8_0".to_string()),
+            llama_flash_attention: Some("auto".to_string()),
+            llama_swa_full: Some(true),
+            llama_chat_template_override: Some("{{messages}}".to_string()),
+            llama_mmproj_path: Some("/models/mmproj.gguf".to_string()),
+            llama_chat_template_preset: Some("chatml".to_string()),
+            llama_raw_completion_fallback: Some(true),
+            llama_strict_mode: Some(true),
+            llama_mtp_enabled: Some(true),
+            llama_mtp_draft_tokens: Some(2),
+            llama_mtp_model_path: Some("/models/mtp.gguf".to_string()),
+            llama_streaming_enabled: Some(true),
+            llama_sampler_profile: Some("balanced".to_string()),
+            llama_sampler_order: Some(vec!["top_k".to_string()]),
+            llama_min_p: Some(0.05),
+            llama_typical_p: Some(0.9),
+            llama_dry_multiplier: Some(0.8),
+            llama_dry_base: Some(1.75),
+            llama_dry_allowed_length: Some(2),
+            llama_dry_penalty_last_n: Some(64),
+            llama_dry_sequence_breakers: Some(vec![":".to_string()]),
+            llama_xtc_probability: Some(0.5),
+            llama_xtc_threshold: Some(0.1),
+            ..Default::default()
+        };
+        let model = Model {
+            id: "model".to_string(),
+            name: "/models/test.gguf".to_string(),
+            provider_id: "llamacpp".to_string(),
+            provider_credential_id: None,
+            provider_label: "llama.cpp".to_string(),
+            display_name: "Test Model".to_string(),
+            created_at: 0,
+            input_scopes: vec!["text".to_string()],
+            output_scopes: vec!["text".to_string()],
+            advanced_model_settings: Some(advanced),
+            prompt_template_id: None,
+            voice_config: None,
+            system_prompt: None,
+        };
+        let session: Session = serde_json::from_value(json!({
+            "id": "session",
+            "characterId": "character",
+            "title": "test",
+            "createdAt": 0,
+            "updatedAt": 0
+        }))
+        .expect("session fixture should deserialize");
+        let settings: Settings = serde_json::from_value(json!({
+            "defaultProviderCredentialId": null,
+            "defaultModelId": null,
+            "providerCredentials": [],
+            "models": []
+        }))
+        .expect("settings fixture should deserialize");
+
+        let extra = build_llama_extra_fields(&session, &model, &settings)
+            .expect("fully populated llama settings should emit extra-body fields");
+        assert_eq!(
+            extra.len(),
+            38,
+            "unexpected llama extra-body key count; a resolver stopped emitting or a new field was added without updating this fixture: {:?}",
+            extra.keys().collect::<Vec<_>>()
+        );
+
+        let allowlist = supported_extra_body_keys_for_provider("llamacpp");
+        for key in extra.keys() {
+            assert!(
+                allowlist.contains(&key.as_str()),
+                "extra-body key '{key}' is missing from supported_extra_body_keys(\"llamacpp\") in providers/config.rs and would be silently stripped from every llama.cpp request"
+            );
+        }
     }
 }
 
