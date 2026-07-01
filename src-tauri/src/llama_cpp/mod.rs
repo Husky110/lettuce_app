@@ -1299,6 +1299,11 @@ mod desktop {
                     resolved_flash_attention_policy,
                     sidecar_vram_reserve_bytes,
                 )?;
+                // Capture the planner's own KV-aware estimate before any cache
+                // merge overwrites it: the GPU-KV context-OOM retry must step
+                // down to what fits with KV in VRAM, not to a cached count that
+                // may only have "succeeded" by spilling KV to RAM.
+                smart_kv_aware_layer_estimate = Some(smart_offload_plan.estimated_gpu_layers);
                 let current_context_bucket =
                     context_bucket_upper(smart_offload_plan.planned_context.max(1));
                 if let Some(report) = cached_runtime_report.as_ref() {
@@ -1337,10 +1342,37 @@ mod desktop {
                             .and_then(|v| v.as_str());
                         let planning_config_matches =
                             cached_planning_config == Some(smart_offload_planning_config.as_str());
+                        // A run that fell back to RAM KV proves its layer count
+                        // does NOT fit with GPU KV; reusing it would repeat the
+                        // fallback forever.
+                        let cached_kqv_fallback = report
+                            .get("kqvFallbackActivated")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let cached_vram_budget =
+                            report.get("availableVramBytes").and_then(|v| v.as_u64());
+                        let vram_budget_matches = match (cached_vram_budget, available_vram_bytes) {
+                            (Some(cached), Some(current)) => {
+                                cached.abs_diff(current) <= current / 20
+                            }
+                            _ => true,
+                        };
+                        if !planning_config_matches || cached_kqv_fallback || !vram_budget_matches {
+                            log_info(
+                                &app,
+                                "llama_cpp",
+                                format!(
+                                    "smart gpu offload cache invalidated: config_match={} kqv_fallback={} vram_budget_match={}",
+                                    planning_config_matches, cached_kqv_fallback, vram_budget_matches
+                                ),
+                            );
+                        }
                         if cached_status == Some("succeeded")
                             && cached_backend_path == Some("gpu_offload")
                             && bucket == current_context_bucket
                             && planning_config_matches
+                            && !cached_kqv_fallback
+                            && vram_budget_matches
                         {
                             let merged_candidates = merge_cached_candidate_layers(
                                 smart_offload_plan.total_layers,
