@@ -547,12 +547,22 @@ pub(super) fn plan_multi_gpu_distribution(
             }
         }
         "proportional" => {
+            let effective_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
+            let capped_total = if effective_per_layer == 0 {
+                auto_total
+            } else {
+                let feasible: u64 = device_free_vram
+                    .iter()
+                    .map(|free| free / effective_per_layer)
+                    .sum();
+                auto_total.min(u32::try_from(feasible).unwrap_or(auto_total))
+            };
             let weights: Vec<f32> = device_free_vram.iter().map(|f| *f as f32).collect();
             let split = normalize_weights(&weights);
             MultiGpuDistribution {
-                n_gpu_layers: auto_total,
-                per_device_layers: distribute_by_weights(auto_total, &split),
-                tensor_split: if auto_total > 0 { split } else { Vec::new() },
+                n_gpu_layers: capped_total,
+                per_device_layers: distribute_by_weights(capped_total, &split),
+                tensor_split: if capped_total > 0 { split } else { Vec::new() },
                 main_gpu: None,
             }
         }
@@ -571,7 +581,10 @@ pub(super) fn plan_multi_gpu_distribution(
 
 #[cfg(test)]
 mod tests {
-    use super::{candidate_gpu_layers, estimated_runtime_reserve_bytes, LlamaModelMetadata};
+    use super::{
+        candidate_gpu_layers, estimated_runtime_reserve_bytes, plan_multi_gpu_distribution,
+        LlamaModelMetadata,
+    };
 
     fn large_context_metadata() -> LlamaModelMetadata {
         LlamaModelMetadata {
@@ -629,5 +642,22 @@ mod tests {
         assert_eq!(candidates.first(), Some(&60));
         assert!(candidates.contains(&55));
         assert_eq!(candidates.last(), Some(&0));
+    }
+
+    #[test]
+    fn proportional_distribution_caps_total_to_per_device_free_capacity() {
+        let dist = plan_multi_gpu_distribution("proportional", &[8, 24], 60, 1, 0, 60, None, None);
+
+        assert_eq!(dist.n_gpu_layers, 32);
+        assert_eq!(dist.per_device_layers, vec![8, 24]);
+    }
+
+    #[test]
+    fn balanced_distribution_keeps_even_split_for_identical_cards() {
+        let dist = plan_multi_gpu_distribution("balanced", &[16, 16], 60, 1, 0, 32, None, None);
+
+        assert_eq!(dist.n_gpu_layers, 32);
+        assert_eq!(dist.per_device_layers, vec![16, 16]);
+        assert_eq!(dist.tensor_split, vec![1.0, 1.0]);
     }
 }

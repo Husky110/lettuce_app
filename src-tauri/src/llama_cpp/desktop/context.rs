@@ -343,17 +343,11 @@ pub(crate) fn align_per_device_vram(
     device_ids: &[usize],
     per_device_vram: &[(usize, u64, u64)],
 ) -> Vec<(usize, u64, u64)> {
-    let max_reported_total = per_device_vram
+    let impute_capacity = per_device_vram
         .iter()
-        .map(|(_, _, total)| *total)
-        .max()
+        .map(|(_, free, total)| (*free).max(*total))
+        .min()
         .unwrap_or(0);
-    let max_reported_free = per_device_vram
-        .iter()
-        .map(|(_, free, _)| *free)
-        .max()
-        .unwrap_or(0);
-    let impute_capacity = max_reported_total.max(max_reported_free);
 
     device_ids
         .iter()
@@ -665,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn aligned_per_device_vram_imputes_unreported_device_at_largest_capacity() {
+    fn aligned_per_device_vram_imputes_unreported_device_from_reported_sibling() {
         let gib = 1024_u64 * 1024 * 1024;
         let aligned = align_per_device_vram(&[0, 1], &[(0, 20 * gib, 24 * gib)]);
 
@@ -673,6 +667,17 @@ mod tests {
             aligned,
             vec![(0, 20 * gib, 24 * gib), (1, 24 * gib, 24 * gib)]
         );
+    }
+
+    #[test]
+    fn aligned_per_device_vram_imputes_from_smallest_reported_device() {
+        let gib = 1024_u64 * 1024 * 1024;
+        let aligned = align_per_device_vram(
+            &[0, 1, 2],
+            &[(0, 20 * gib, 24 * gib), (1, 6 * gib, 8 * gib)],
+        );
+
+        assert_eq!(aligned[2], (2, 8 * gib, 8 * gib));
     }
 }
 
@@ -854,11 +859,7 @@ pub(crate) async fn llamacpp_context_info(
                 flash_attention_policy,
                 sidecar_vram_reserve_bytes,
             )?;
-            let kv_bytes_per_layer = if llama_kv_placement.as_deref() == Some("pin") {
-                0
-            } else {
-                plan.kv_bytes_per_layer
-            };
+            let kv_bytes_per_layer = plan.kv_bytes_per_layer;
             plan_multi_gpu_distribution(
                 dist_mode,
                 &device_free_aligned,

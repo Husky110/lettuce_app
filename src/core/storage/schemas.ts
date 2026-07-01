@@ -340,6 +340,7 @@ export const LlamaLastRuntimeReportSchema = z.object({
   smartOffloadSidecarVramReserveBytes: z.number().int().nonnegative().nullable().optional(),
   smartOffloadCacheHit: z.boolean().nullable().optional(),
   smartOffloadCachedGpuLayers: z.number().int().min(0).nullable().optional(),
+  smartOffloadPlanningConfig: z.string().trim().min(1).nullable().optional(),
   actualKvTypeUsed: z.string().trim().min(1).nullable().optional(),
   actualOffloadKqvMode: z.string().trim().min(1).nullable().optional(),
   flashAttentionPolicy: z.string().trim().min(1).nullable().optional(),

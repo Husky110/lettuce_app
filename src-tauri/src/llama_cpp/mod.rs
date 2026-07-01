@@ -1066,7 +1066,9 @@ mod desktop {
             check_abort_signal(abort_rx.as_mut())?;
             let multi_gpu_active = llama_multi_gpu_enabled && llama_gpu_device_ids.len() >= 2;
             // KV cache placement (multi-GPU only): drives both planning and the
-            // runtime context's offload_kqv, and pins the KV cache to a GPU.
+            // runtime context's offload_kqv. "pin" makes the chosen GPU the main
+            // device for shared scratch buffers; under layer split each layer's
+            // KV still lives on that layer's device.
             let mut kv_main_gpu: Option<i32> = None;
             let kv_placement_offload_kqv: Option<bool> = if multi_gpu_active {
                 match llama_kv_placement.as_deref() {
@@ -1169,6 +1171,23 @@ mod desktop {
                     .collect()
             } else {
                 Vec::new()
+            };
+            // Single fingerprint over every input that changes the layer plan.
+            // The cached layer count is only reused when this matches, so new
+            // planning-relevant settings must be added here, not as extra
+            // field-by-field comparisons at the cache check.
+            let smart_offload_planning_config = if multi_gpu_active {
+                format!(
+                    "multiGpu=true;devices={:?};mode={};kv={};mainGpu={:?};priorityLimitBytes={:?};manualLayers={:?}",
+                    llama_gpu_device_ids,
+                    distribution_mode,
+                    llama_kv_placement.as_deref().unwrap_or("auto"),
+                    llama_main_gpu,
+                    llama_priority_vram_limit_bytes,
+                    manual_layers_aligned,
+                )
+            } else {
+                "multiGpu=false".to_string()
             };
             let mut multi_gpu_distribution: Option<offload::MultiGpuDistribution> = None;
             let mut effective_gpu_layers = llama_gpu_layers;
@@ -1288,27 +1307,15 @@ mod desktop {
                     if let (Some(cached_layers), Some(bucket)) =
                         (cached_gpu_layers, cached_context_bucket)
                     {
-                        let cached_multi_gpu = report
-                            .get("multiGpuEnabled")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let cached_device_ids: Vec<usize> = report
-                            .get("multiGpuDeviceIds")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| {
-                                        v.as_u64().and_then(|n| usize::try_from(n).ok())
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let multi_gpu_config_matches = cached_multi_gpu == multi_gpu_active
-                            && (!multi_gpu_active || cached_device_ids == llama_gpu_device_ids);
+                        let cached_planning_config = report
+                            .get("smartOffloadPlanningConfig")
+                            .and_then(|v| v.as_str());
+                        let planning_config_matches =
+                            cached_planning_config == Some(smart_offload_planning_config.as_str());
                         if cached_status == Some("succeeded")
                             && cached_backend_path == Some("gpu_offload")
                             && bucket == current_context_bucket
-                            && multi_gpu_config_matches
+                            && planning_config_matches
                         {
                             let merged_candidates = merge_cached_candidate_layers(
                                 smart_offload_plan.total_layers,
@@ -1341,29 +1348,17 @@ mod desktop {
                 effective_gpu_layers = smart_offload_plan.candidate_gpu_layers.first().copied();
                 smart_gpu_layer_candidates = Some(smart_offload_plan.candidate_gpu_layers.clone());
                 if multi_gpu_active {
-                    let mut kv_adjusted_free = device_free_aligned.clone();
-                    let kv_bytes_per_layer = if kv_main_gpu.is_none() {
-                        smart_offload_plan.kv_bytes_per_layer
-                    } else {
-                        0
-                    };
-                    if let Some(pinned) = kv_main_gpu {
-                        if pinned >= 0 {
-                            if let Some(pos) = llama_gpu_device_ids
-                                .iter()
-                                .position(|id| *id == pinned as usize)
-                            {
-                                kv_adjusted_free[pos] = kv_adjusted_free[pos]
-                                    .saturating_sub(smart_offload_plan.estimated_kv_bytes);
-                            }
-                        }
-                    }
+                    // Split mode is always LLAMA_SPLIT_MODE_LAYER, so each layer's
+                    // KV lives on that layer's device regardless of placement. Pin
+                    // only routes shared scratch buffers to the main GPU; KV cost
+                    // is therefore always priced per layer, never as one lump on
+                    // the pinned device.
                     multi_gpu_distribution = Some(offload::plan_multi_gpu_distribution(
                         &distribution_mode,
-                        &kv_adjusted_free,
+                        &device_free_aligned,
                         smart_offload_plan.total_layers,
                         smart_offload_plan.bytes_per_layer,
-                        kv_bytes_per_layer,
+                        smart_offload_plan.kv_bytes_per_layer,
                         smart_offload_plan.estimated_gpu_layers,
                         None,
                         llama_priority_vram_limit_bytes,
@@ -1654,6 +1649,11 @@ mod desktop {
                 } else {
                     vec![]
                 }),
+            );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "smartOffloadPlanningConfig",
+                json!(smart_offload_planning_config),
             );
             update_runtime_report_field(
                 &mut runtime_report,
