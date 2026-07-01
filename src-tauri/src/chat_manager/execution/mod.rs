@@ -386,7 +386,12 @@ pub(super) fn resolve_llama_gpu_distribution_mode(
                 .clone()
         })
         .map(|v| v.trim().to_ascii_lowercase())
-        .filter(|v| matches!(v.as_str(), "balanced" | "proportional" | "priority" | "manual"))
+        .filter(|v| {
+            matches!(
+                v.as_str(),
+                "balanced" | "proportional" | "priority" | "manual"
+            )
+        })
 }
 
 pub(super) fn resolve_llama_gpu_manual_layers(
@@ -449,6 +454,24 @@ pub(super) fn resolve_llama_main_gpu(
                 .and_then(|cfg| cfg.llama_main_gpu)
         })
         .or(settings.advanced_model_settings.llama_main_gpu)
+}
+
+pub(super) fn resolve_llama_single_gpu_device_id(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<usize> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_single_gpu_device_id)
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_single_gpu_device_id)
+        })
+        .or(settings.advanced_model_settings.llama_single_gpu_device_id)
 }
 
 pub(super) fn resolve_llama_priority_vram_limit_bytes(

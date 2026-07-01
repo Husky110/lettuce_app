@@ -692,6 +692,7 @@ pub(crate) async fn llamacpp_context_info(
     llama_gpu_distribution_mode: Option<String>,
     llama_gpu_manual_layers: Option<Vec<GpuLayerAssignment>>,
     llama_main_gpu: Option<i32>,
+    llama_single_gpu_device_id: Option<usize>,
     llama_kv_placement: Option<String>,
     llama_priority_vram_limit_bytes: Option<u64>,
     llama_mmproj_path: Option<String>,
@@ -719,8 +720,9 @@ pub(crate) async fn llamacpp_context_info(
     let max_ctx = metadata.max_context_length.max(1);
     let available_memory_bytes = get_available_memory_bytes();
     let selected_gpu_device_ids = llama_gpu_device_ids.unwrap_or_default();
-    let multi_gpu_active =
-        llama_multi_gpu_enabled == Some(true) && selected_gpu_device_ids.len() >= 2;
+    let multi_gpu_active = llama_multi_gpu_enabled == Some(true)
+        && selected_gpu_device_ids.len() >= 2
+        && llama_single_gpu_device_id.is_none();
     let aligned_per_device_vram = if multi_gpu_active {
         get_aligned_per_device_vram(&selected_gpu_device_ids)
     } else {
@@ -728,6 +730,9 @@ pub(crate) async fn llamacpp_context_info(
     };
     let available_vram_bytes = if multi_gpu_active {
         combined_effective_vram_bytes(&aligned_per_device_vram).or_else(get_available_vram_bytes)
+    } else if let Some(device_id) = llama_single_gpu_device_id {
+        combined_effective_vram_bytes(&get_aligned_per_device_vram(&[device_id]))
+            .or_else(get_available_vram_bytes)
     } else {
         get_available_vram_bytes()
     };

@@ -673,6 +673,14 @@ pub(crate) fn build_llama_extra_fields(
     if let Some(v) = model
         .advanced_model_settings
         .as_ref()
+        .and_then(|a| a.llama_single_gpu_device_id)
+        .or(settings.advanced_model_settings.llama_single_gpu_device_id)
+    {
+        extra.insert("llamaSingleGpuDeviceId".to_string(), json!(v));
+    }
+    if let Some(v) = model
+        .advanced_model_settings
+        .as_ref()
         .and_then(|a| a.llama_priority_vram_limit_bytes)
         .or(settings
             .advanced_model_settings

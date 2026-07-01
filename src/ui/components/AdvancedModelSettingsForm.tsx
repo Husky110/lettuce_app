@@ -148,6 +148,11 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     llamaCpuLayers: sanitize(input.llamaCpuLayers, ADVANCED_LLAMA_GPU_LAYERS_RANGE, true),
     llamaKvPlacement: input.llamaKvPlacement ?? null,
     llamaMainGpu: sanitize(input.llamaMainGpu, ADVANCED_LLAMA_MAIN_GPU_RANGE, true),
+    llamaSingleGpuDeviceId: sanitize(
+      input.llamaSingleGpuDeviceId,
+      ADVANCED_LLAMA_MAIN_GPU_RANGE,
+      true,
+    ),
     llamaPriorityVramLimitBytes:
       input.llamaPriorityVramLimitBytes != null && Number.isFinite(input.llamaPriorityVramLimitBytes)
         ? Math.max(0, Math.round(input.llamaPriorityVramLimitBytes))

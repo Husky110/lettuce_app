@@ -636,6 +636,8 @@ pub struct AdvancedModelSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_main_gpu: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llama_single_gpu_device_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_priority_vram_limit_bytes: Option<u64>,
     pub llama_threads: Option<u32>,
     pub llama_threads_batch: Option<u32>,
@@ -749,6 +751,7 @@ impl Default for AdvancedModelSettings {
             llama_cpu_layers: None,
             llama_kv_placement: None,
             llama_main_gpu: None,
+            llama_single_gpu_device_id: None,
             llama_priority_vram_limit_bytes: None,
             llama_threads: None,
             llama_threads_batch: None,

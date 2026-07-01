@@ -17,10 +17,11 @@ use super::{
     resolve_llama_profile_min_p, resolve_llama_profile_typical_p,
     resolve_llama_raw_completion_fallback, resolve_llama_rope_freq_base,
     resolve_llama_rope_freq_scale, resolve_llama_sampler_order, resolve_llama_sampler_profile,
-    resolve_llama_seed, resolve_llama_streaming_enabled, resolve_llama_strict_mode,
-    resolve_llama_swa_full, resolve_llama_threads, resolve_llama_threads_batch,
-    resolve_llama_xtc_probability, resolve_llama_xtc_threshold, resolve_max_tokens,
-    resolve_presence_penalty, resolve_temperature, resolve_top_k, resolve_top_p,
+    resolve_llama_seed, resolve_llama_single_gpu_device_id, resolve_llama_streaming_enabled,
+    resolve_llama_strict_mode, resolve_llama_swa_full, resolve_llama_threads,
+    resolve_llama_threads_batch, resolve_llama_xtc_probability, resolve_llama_xtc_threshold,
+    resolve_max_tokens, resolve_presence_penalty, resolve_temperature, resolve_top_k,
+    resolve_top_p,
 };
 
 fn build_llama_extra_fields(
@@ -60,6 +61,9 @@ fn build_llama_extra_fields(
     }
     if let Some(v) = resolve_llama_main_gpu(session, model, settings) {
         extra.insert("llamaMainGpu".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_single_gpu_device_id(session, model, settings) {
+        extra.insert("llamaSingleGpuDeviceId".to_string(), json!(v));
     }
     if let Some(v) = resolve_llama_priority_vram_limit_bytes(session, model, settings) {
         extra.insert("llamaPriorityVramLimitBytes".to_string(), json!(v));
@@ -182,6 +186,7 @@ mod tests {
             }]),
             llama_kv_placement: Some("pin".to_string()),
             llama_main_gpu: Some(0),
+            llama_single_gpu_device_id: Some(1),
             llama_priority_vram_limit_bytes: Some(8 * 1024 * 1024 * 1024),
             llama_threads: Some(8),
             llama_threads_batch: Some(8),
@@ -255,7 +260,7 @@ mod tests {
             .expect("fully populated llama settings should emit extra-body fields");
         assert_eq!(
             extra.len(),
-            38,
+            39,
             "unexpected llama extra-body key count; a resolver stopped emitting or a new field was added without updating this fixture: {:?}",
             extra.keys().collect::<Vec<_>>()
         );

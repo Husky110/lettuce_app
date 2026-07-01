@@ -455,6 +455,7 @@ export function EditModelPage() {
   const [showDistributionMenu, setShowDistributionMenu] = useState(false);
   const [showKvCacheMenu, setShowKvCacheMenu] = useState(false);
   const [showPinnedGpuMenu, setShowPinnedGpuMenu] = useState(false);
+  const [showSingleGpuMenu, setShowSingleGpuMenu] = useState(false);
   const [showTemplateOverlay, setShowTemplateOverlay] = useState(false);
   const [templateOverlayDraft, setTemplateOverlayDraft] = useState("");
   const [showEmbeddedTemplateViewer, setShowEmbeddedTemplateViewer] = useState(false);
@@ -1659,6 +1660,12 @@ export function EditModelPage() {
   const pinnedGpuMenuLabel = pinnedGpuDevice
     ? pinnedGpuDevice.description || pinnedGpuDevice.name || `GPU ${pinnedGpuDevice.index}`
     : "";
+  const singleGpuDeviceId = modelAdvancedDraft.llamaSingleGpuDeviceId ?? null;
+  const singleGpuDevice = eligibleGpuDevices.find((device) => device.index === singleGpuDeviceId);
+  const singleGpuMenuLabel =
+    singleGpuDeviceId !== null
+      ? singleGpuDevice?.description || singleGpuDevice?.name || `GPU ${singleGpuDeviceId}`
+      : t("runtimeDefaults.llamaSingleGpuAuto");
   const manualLayerByDevice = (deviceId: number): number | null =>
     modelAdvancedDraft.llamaGpuManualLayers?.find((entry) => entry.deviceId === deviceId)?.layers ??
     null;
@@ -1857,6 +1864,7 @@ export function EditModelPage() {
           llamaGpuDistributionMode: modelAdvancedDraft.llamaGpuDistributionMode ?? null,
           llamaGpuManualLayers: modelAdvancedDraft.llamaGpuManualLayers ?? null,
           llamaMainGpu: modelAdvancedDraft.llamaMainGpu ?? null,
+          llamaSingleGpuDeviceId: modelAdvancedDraft.llamaSingleGpuDeviceId ?? null,
           llamaKvPlacement: modelAdvancedDraft.llamaKvPlacement ?? null,
           llamaPriorityVramLimitBytes: modelAdvancedDraft.llamaPriorityVramLimitBytes ?? null,
           llamaMmprojPath: modelAdvancedDraft.llamaMmprojPath ?? null,
@@ -1898,6 +1906,7 @@ export function EditModelPage() {
     modelAdvancedDraft.llamaGpuDistributionMode,
     modelAdvancedDraft.llamaGpuManualLayers,
     modelAdvancedDraft.llamaMainGpu,
+    modelAdvancedDraft.llamaSingleGpuDeviceId,
     modelAdvancedDraft.llamaKvPlacement,
     modelAdvancedDraft.llamaPriorityVramLimitBytes,
     modelAdvancedDraft.llamaMmprojPath,
@@ -3928,6 +3937,83 @@ export function EditModelPage() {
                                         isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
                                       )}
                                     />
+                                    {eligibleGpuDevices.length > 0 && (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="space-y-0.5">
+                                          <span className="block text-[13px] font-medium text-fg/70">
+                                            {t("runtimeDefaults.llamaSingleGpuTitle")}
+                                          </span>
+                                          <span className="block text-[13px] text-fg/40">
+                                            {t("runtimeDefaults.llamaSingleGpuDescription")}
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowSingleGpuMenu(true)}
+                                          disabled={isCpuOnlyLlamaBackend}
+                                          className={cn(
+                                            selectInputClassName,
+                                            "flex w-48 items-center justify-between gap-2 py-2.5 text-left",
+                                            isCpuOnlyLlamaBackend && "cursor-not-allowed opacity-60",
+                                          )}
+                                        >
+                                          <span className="truncate">{singleGpuMenuLabel}</span>
+                                          <ChevronDown className="h-4 w-4 shrink-0 text-fg/40" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    <BottomMenu
+                                      isOpen={showSingleGpuMenu}
+                                      onClose={() => setShowSingleGpuMenu(false)}
+                                      title={t("runtimeDefaults.llamaSingleGpuTitle")}
+                                    >
+                                      <MenuSection>
+                                        <MenuButton
+                                          icon={Cpu}
+                                          title={t("runtimeDefaults.llamaSingleGpuAuto")}
+                                          description={t("runtimeDefaults.llamaSingleGpuAutoDesc")}
+                                          rightElement={
+                                            singleGpuDeviceId === null ? (
+                                              <Check className="h-4 w-4 text-accent" />
+                                            ) : undefined
+                                          }
+                                          onClick={() => {
+                                            setModelAdvancedDraft({
+                                              ...modelAdvancedDraft,
+                                              llamaSingleGpuDeviceId: null,
+                                            });
+                                            setShowSingleGpuMenu(false);
+                                          }}
+                                        />
+                                        {eligibleGpuDevices.map((device) => (
+                                          <MenuButton
+                                            key={device.index}
+                                            icon={Cpu}
+                                            title={
+                                              device.description ||
+                                              device.name ||
+                                              `GPU ${device.index}`
+                                            }
+                                            description={t("runtimeDefaults.llamaGpuMemory", {
+                                              free: (device.memoryFree / 1024 ** 3).toFixed(1),
+                                              total: (device.memoryTotal / 1024 ** 3).toFixed(1),
+                                            })}
+                                            rightElement={
+                                              singleGpuDeviceId === device.index ? (
+                                                <Check className="h-4 w-4 text-accent" />
+                                              ) : undefined
+                                            }
+                                            onClick={() => {
+                                              setModelAdvancedDraft({
+                                                ...modelAdvancedDraft,
+                                                llamaSingleGpuDeviceId: device.index,
+                                              });
+                                              setShowSingleGpuMenu(false);
+                                            }}
+                                          />
+                                        ))}
+                                      </MenuSection>
+                                    </BottomMenu>
                                   </div>
                                   )}
 
@@ -3953,10 +4039,15 @@ export function EditModelPage() {
                                         }
                                         onChange={(event) => {
                                           const value = event.target.value;
+                                          const nextEnabled =
+                                            value === "inherit" ? null : value === "enabled";
                                           setModelAdvancedDraft({
                                             ...modelAdvancedDraft,
-                                            llamaMultiGpuEnabled:
-                                              value === "inherit" ? null : value === "enabled",
+                                            llamaMultiGpuEnabled: nextEnabled,
+                                            llamaSingleGpuDeviceId:
+                                              nextEnabled === true
+                                                ? null
+                                                : modelAdvancedDraft.llamaSingleGpuDeviceId,
                                           });
                                         }}
                                         disabled={isCpuOnlyLlamaBackend || !multiGpuAvailable}

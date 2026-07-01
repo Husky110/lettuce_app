@@ -883,6 +883,11 @@ mod desktop {
             .or_else(|| body.get("llama_main_gpu"))
             .and_then(|v| v.as_u64())
             .and_then(|v| i32::try_from(v).ok());
+        let llama_single_gpu_device_id = body
+            .get("llamaSingleGpuDeviceId")
+            .or_else(|| body.get("llama_single_gpu_device_id"))
+            .and_then(|v| v.as_u64())
+            .and_then(|v| usize::try_from(v).ok());
         let llama_priority_vram_limit_bytes = body
             .get("llamaPriorityVramLimitBytes")
             .or_else(|| body.get("llama_priority_vram_limit_bytes"))
@@ -1064,7 +1069,11 @@ mod desktop {
 
         let result = (|| -> Result<(), String> {
             check_abort_signal(abort_rx.as_mut())?;
-            let multi_gpu_active = llama_multi_gpu_enabled && llama_gpu_device_ids.len() >= 2;
+            // A single-GPU device override forces plain single-GPU behavior on
+            // the chosen device and wins over any multi-GPU configuration.
+            let multi_gpu_active = llama_multi_gpu_enabled
+                && llama_gpu_device_ids.len() >= 2
+                && llama_single_gpu_device_id.is_none();
             // KV cache placement (multi-GPU only): drives both planning and the
             // runtime context's offload_kqv. "pin" makes the chosen GPU the main
             // device for shared scratch buffers; under layer split each layer's
@@ -1155,6 +1164,11 @@ mod desktop {
             let available_vram_bytes = if multi_gpu_active {
                 context::combined_effective_vram_bytes(&per_device_vram)
                     .or_else(get_available_vram_bytes)
+            } else if let Some(device_id) = llama_single_gpu_device_id {
+                context::combined_effective_vram_bytes(&context::get_aligned_per_device_vram(&[
+                    device_id,
+                ]))
+                .or_else(get_available_vram_bytes)
             } else {
                 get_available_vram_bytes()
             };
@@ -1187,7 +1201,10 @@ mod desktop {
                     manual_layers_aligned,
                 )
             } else {
-                "multiGpu=false".to_string()
+                format!(
+                    "multiGpu=false;singleDevice={:?}",
+                    llama_single_gpu_device_id
+                )
             };
             let mut multi_gpu_distribution: Option<offload::MultiGpuDistribution> = None;
             let mut effective_gpu_layers = llama_gpu_layers;
@@ -1465,6 +1482,13 @@ mod desktop {
                     .and_then(|dist| dist.main_gpu)
             });
 
+            if let Some(device_id) = llama_single_gpu_device_id {
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!("single-gpu override active: device={device_id}"),
+                );
+            }
             log_info(&app, "llama_cpp", "loading llama.cpp engine/model");
             let engine = load_engine(
                 Some(&app),
@@ -1476,6 +1500,8 @@ mod desktop {
                     multi_gpu_enabled: multi_gpu_active,
                     device_ids: if multi_gpu_active {
                         llama_gpu_device_ids.clone()
+                    } else if let Some(device_id) = llama_single_gpu_device_id {
+                        vec![device_id]
                     } else {
                         Vec::new()
                     },
@@ -1654,6 +1680,11 @@ mod desktop {
                 &mut runtime_report,
                 "smartOffloadPlanningConfig",
                 json!(smart_offload_planning_config),
+            );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "singleGpuDeviceId",
+                json!(llama_single_gpu_device_id),
             );
             update_runtime_report_field(
                 &mut runtime_report,
@@ -3450,6 +3481,7 @@ pub async fn llamacpp_context_info(
     llama_gpu_distribution_mode: Option<String>,
     llama_gpu_manual_layers: Option<Vec<crate::chat_manager::types::GpuLayerAssignment>>,
     llama_main_gpu: Option<i32>,
+    llama_single_gpu_device_id: Option<usize>,
     llama_kv_placement: Option<String>,
     llama_priority_vram_limit_bytes: Option<u64>,
     llama_mmproj_path: Option<String>,
@@ -3469,6 +3501,7 @@ pub async fn llamacpp_context_info(
             llama_gpu_distribution_mode,
             llama_gpu_manual_layers,
             llama_main_gpu,
+            llama_single_gpu_device_id,
             llama_kv_placement,
             llama_priority_vram_limit_bytes,
             llama_mmproj_path,
@@ -3496,6 +3529,7 @@ pub async fn llamacpp_context_info(
         let _ = llama_gpu_distribution_mode;
         let _ = llama_gpu_manual_layers;
         let _ = llama_main_gpu;
+        let _ = llama_single_gpu_device_id;
         let _ = llama_kv_placement;
         let _ = llama_priority_vram_limit_bytes;
         let _ = llama_mmproj_path;

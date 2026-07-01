@@ -208,6 +208,41 @@ pub(super) fn emit_model_load_failed(
     );
 }
 
+fn resolve_selected_gpu_device(
+    device_id: usize,
+) -> Result<llama_cpp_sys_2::ggml_backend_dev_t, String> {
+    let count = unsafe { ggml_backend_dev_count() };
+    if device_id >= count {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Selected GPU device index {} is not available.", device_id),
+        ));
+    }
+    let dev = unsafe { ggml_backend_dev_get(device_id) };
+    if dev.is_null() {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Selected GPU device index {} resolved to null.", device_id),
+        ));
+    }
+    let dev_type = unsafe { ggml_backend_dev_type(dev) };
+    let is_gpu_like =
+        dev_type == GGML_BACKEND_DEVICE_TYPE_GPU || dev_type == GGML_BACKEND_DEVICE_TYPE_ACCEL;
+    if !is_gpu_like {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!(
+                "Selected device index {} is not a discrete GPU device.",
+                device_id
+            ),
+        ));
+    }
+    Ok(dev)
+}
+
 fn load_model_with_progress(
     app: Option<&AppHandle>,
     request_id: Option<&str>,
@@ -241,37 +276,8 @@ fn load_model_with_progress(
                 "Multi-GPU mode requires at least two selected GPU devices.",
             ));
         }
-        let count = unsafe { ggml_backend_dev_count() };
         for device_id in &gpu_config.device_ids {
-            if *device_id >= count {
-                return Err(crate::utils::err_msg(
-                    module_path!(),
-                    line!(),
-                    format!("Selected GPU device index {} is not available.", device_id),
-                ));
-            }
-            let dev = unsafe { ggml_backend_dev_get(*device_id) };
-            if dev.is_null() {
-                return Err(crate::utils::err_msg(
-                    module_path!(),
-                    line!(),
-                    format!("Selected GPU device index {} resolved to null.", device_id),
-                ));
-            }
-            let dev_type = unsafe { ggml_backend_dev_type(dev) };
-            let is_gpu_like = dev_type == GGML_BACKEND_DEVICE_TYPE_GPU
-                || dev_type == GGML_BACKEND_DEVICE_TYPE_ACCEL;
-            if !is_gpu_like {
-                return Err(crate::utils::err_msg(
-                    module_path!(),
-                    line!(),
-                    format!(
-                        "Selected device index {} is not a discrete GPU device.",
-                        device_id
-                    ),
-                ));
-            }
-            selected_devices.push(dev);
+            selected_devices.push(resolve_selected_gpu_device(*device_id)?);
         }
         selected_devices.push(std::ptr::null_mut());
         params.devices = selected_devices.as_mut_ptr();
@@ -283,6 +289,12 @@ fn load_model_with_progress(
         if let Some(main_gpu) = gpu_config.main_gpu {
             params.main_gpu = main_gpu;
         }
+    } else if let [device_id] = gpu_config.device_ids[..] {
+        // Single-GPU override: restrict llama.cpp to exactly this device.
+        selected_devices.push(resolve_selected_gpu_device(device_id)?);
+        selected_devices.push(std::ptr::null_mut());
+        params.devices = selected_devices.as_mut_ptr();
+        params.main_gpu = 0;
     }
 
     let progress_ctx = app.map(|app| {

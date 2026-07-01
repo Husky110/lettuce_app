@@ -5930,6 +5930,10 @@ export const enMessages = {
     llamaKvPinDesc:
       "Route shared scratch buffers to one chosen main GPU. Each layer's KV cache stays on that layer's GPU.",
     llamaPinnedGpu: "Main GPU",
+    llamaSingleGpuTitle: "GPU device",
+    llamaSingleGpuDescription: "Run this model on one specific GPU instead of the default device.",
+    llamaSingleGpuAuto: "Auto",
+    llamaSingleGpuAutoDesc: "Let llama.cpp pick the default GPU.",
     llamaManualPerModelNote: "Manual per-GPU layer counts are set per model in the model editor.",
     llamaMultiGpuInherit: "Inherit",
     llamaMultiGpuSplitHint:

@@ -30,6 +30,7 @@ fn supported_extra_body_keys(provider_id: &str) -> &'static [&'static str] {
             "llamaGpuManualLayers",
             "llamaKvPlacement",
             "llamaMainGpu",
+            "llamaSingleGpuDeviceId",
             "llamaPriorityVramLimitBytes",
             "llamaThreads",
             "llamaThreadsBatch",
