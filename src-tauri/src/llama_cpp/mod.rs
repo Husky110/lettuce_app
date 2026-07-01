@@ -1301,6 +1301,36 @@ mod desktop {
                         "multi-gpu manual distribution: all layer counts are zero — llamaGpuManualLayers may be missing or device IDs may not match; falling through to CPU",
                     );
                 }
+                if let Ok(metadata) = offload::load_model_metadata(model_path) {
+                    let gib = 1024.0 * 1024.0 * 1024.0;
+                    let bytes_per_layer = metadata
+                        .model_size_bytes
+                        .checked_div(u64::from(metadata.layer_count.max(1)))
+                        .unwrap_or(0);
+                    for (position, layers) in manual_layers_aligned.iter().enumerate() {
+                        let projected = bytes_per_layer.saturating_mul(u64::from(*layers));
+                        let capacity = per_device_vram
+                            .get(position)
+                            .map(|(_, free, total)| (*free).max(*total))
+                            .unwrap_or(0);
+                        if capacity > 0 && projected > capacity {
+                            log_warn(
+                                &app,
+                                "llama_cpp",
+                                format!(
+                                    "multi-gpu manual distribution: {} layers put ~{:.1} GiB of weights on device {} which reports {:.1} GiB total; the load will likely fail and fall back to CPU",
+                                    layers,
+                                    projected as f64 / gib,
+                                    llama_gpu_device_ids
+                                        .get(position)
+                                        .copied()
+                                        .unwrap_or(position),
+                                    capacity as f64 / gib,
+                                ),
+                            );
+                        }
+                    }
+                }
                 let dist = offload::plan_multi_gpu_distribution(
                     "manual",
                     &device_free_aligned,
