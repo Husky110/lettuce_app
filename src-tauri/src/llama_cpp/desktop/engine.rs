@@ -1043,6 +1043,25 @@ pub(crate) fn unload_engine(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn unload_engine_if_model_differs(
+    app: &AppHandle,
+    model_path: &str,
+) -> Result<bool, String> {
+    let loaded_path = ENGINE.get().and_then(|engine| {
+        engine
+            .lock()
+            .ok()
+            .and_then(|guard| guard.model_path.clone())
+    });
+    match loaded_path {
+        Some(loaded) if loaded != model_path => {
+            unload_engine(app)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 pub(crate) fn consume_kqv_fallback_toast(
     _app: &AppHandle,
     model_path: &str,

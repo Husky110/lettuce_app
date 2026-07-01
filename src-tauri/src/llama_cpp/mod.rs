@@ -1069,6 +1069,13 @@ mod desktop {
 
         let result = (|| -> Result<(), String> {
             check_abort_signal(abort_rx.as_mut())?;
+            if engine::unload_engine_if_model_differs(&app, model_path)? {
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    "unloaded previous llama.cpp model before planning (model changed)",
+                );
+            }
             // A single-GPU device override forces plain single-GPU behavior on
             // the chosen device and wins over any multi-GPU configuration.
             let multi_gpu_active = llama_multi_gpu_enabled
