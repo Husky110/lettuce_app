@@ -1070,12 +1070,31 @@ mod desktop {
         const KV_LAYER_RETRY_PREFIX: &str = "__kv_layer_retry__:";
         let mut run_generation = |forced_smart_gpu_layers: Option<u32>| -> Result<(), String> {
             check_abort_signal(abort_rx.as_mut())?;
+            failure_stage = "load_engine";
+            if forced_smart_gpu_layers.is_some() {
+                for field in [
+                    "actualGpuLayersUsed",
+                    "backendPathUsed",
+                    "gpuLoadFallbackActivated",
+                    "gpuFallbackReason",
+                    "smartGpuLayerFallbackActivated",
+                    "smartOffloadCacheHit",
+                    "smartOffloadCachedGpuLayers",
+                ] {
+                    update_runtime_report_field(&mut runtime_report, field, json!(null));
+                }
+            }
+            // Planning reads free RAM/VRAM, so a resident model (including the
+            // first attempt of a KV-aware retry) must not count against the
+            // budget or skew the per-device split of the model replacing it.
             if engine::unload_engine_if_model_differs(&app, model_path)? {
                 log_info(
                     &app,
                     "llama_cpp",
                     "unloaded previous llama.cpp model before planning (model changed)",
                 );
+            } else if forced_smart_gpu_layers.is_some() {
+                engine::unload_engine(&app)?;
             }
             // A single-GPU device override forces plain single-GPU behavior on
             // the chosen device and wins over any multi-GPU configuration.
@@ -1092,7 +1111,18 @@ mod desktop {
                     Some("split") => Some(true),
                     Some("systemRam") => Some(false),
                     Some("pin") => {
-                        kv_main_gpu = llama_main_gpu;
+                        // params.main_gpu is positional within params.devices,
+                        // but the UI stores the global ggml device index. A
+                        // pinned device outside the selected set falls back to
+                        // the distribution default.
+                        kv_main_gpu = llama_main_gpu.and_then(|id| {
+                            usize::try_from(id).ok().and_then(|id| {
+                                llama_gpu_device_ids
+                                    .iter()
+                                    .position(|dev| *dev == id)
+                                    .map(|pos| pos as i32)
+                            })
+                        });
                         Some(true)
                     }
                     _ => None,
@@ -1317,12 +1347,12 @@ mod desktop {
                         .and_then(|value| value.as_str());
                     let cached_status = report.get("status").and_then(|value| value.as_str());
                     let cached_context_bucket = report
-                        .get("requestedContext")
+                        .get("smartOffloadPlannedContext")
                         .and_then(|value| value.as_u64())
                         .and_then(|value| u32::try_from(value).ok())
                         .or_else(|| {
                             report
-                                .get("smartOffloadPlannedContext")
+                                .get("requestedContext")
                                 .and_then(|value| value.as_u64())
                                 .and_then(|value| u32::try_from(value).ok())
                         })
@@ -1404,7 +1434,6 @@ mod desktop {
                 }
                 effective_gpu_layers = smart_offload_plan.candidate_gpu_layers.first().copied();
                 smart_gpu_layer_candidates = Some(smart_offload_plan.candidate_gpu_layers.clone());
-                smart_kv_aware_layer_estimate = Some(smart_offload_plan.estimated_gpu_layers);
                 if multi_gpu_active {
                     // Split mode is always LLAMA_SPLIT_MODE_LAYER, so each layer's
                     // KV lives on that layer's device regardless of placement. Pin
@@ -1795,7 +1824,11 @@ mod desktop {
             update_runtime_report_field(
                 &mut runtime_report,
                 "llamaMainGpu",
-                json!(multi_gpu_main_gpu),
+                json!(if multi_gpu_active {
+                    llama_main_gpu
+                } else {
+                    None
+                }),
             );
             update_runtime_report_field(
                 &mut runtime_report,

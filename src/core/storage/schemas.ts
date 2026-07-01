@@ -368,6 +368,7 @@ export const LlamaLastRuntimeReportSchema = z.object({
   firstTokenMs: z.number().int().nonnegative().nullable().optional(),
   tokensPerSecond: z.number().nonnegative().nullable().optional(),
   promptTemplateSource: z.string().trim().min(1).nullable().optional(),
+  mtpStats: MtpStatsSchema.nullable().optional(),
   suggestedSettings: LlamaRuntimeSuggestedSettingsSchema.nullish().optional(),
 });
 export type LlamaLastRuntimeReport = z.infer<typeof LlamaLastRuntimeReportSchema>;
