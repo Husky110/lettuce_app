@@ -161,9 +161,41 @@ pub fn model_upsert(app: tauri::AppHandle, model_json: String) -> Result<String,
     });
     let input_scopes = normalize_scopes(input_scopes);
     let output_scopes = normalize_scopes(output_scopes);
-    let adv = model
-        .get("advancedModelSettings")
-        .map(|v| serde_json::to_string(v).unwrap_or("null".into()));
+    let existing_row: Option<(i64, Option<String>)> = conn
+        .query_row(
+            "SELECT created_at, advanced_model_settings FROM models WHERE id = ?",
+            params![&id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let (existing_created, existing_advanced) = match existing_row {
+        Some((created, advanced)) => (Some(created), advanced),
+        None => (None, None),
+    };
+    // llamaLastRuntimeReport is backend-owned: generations write it through
+    // model_set_llama_runtime_report after the client loaded its draft, so a
+    // client-provided copy is stale by construction and must not overwrite it.
+    let existing_report = existing_advanced
+        .as_deref()
+        .and_then(|value| serde_json::from_str::<JsonValue>(value).ok())
+        .and_then(|value| value.get("llamaLastRuntimeReport").cloned())
+        .filter(|value| !value.is_null());
+    let adv_value = match model.get("advancedModelSettings") {
+        Some(v) if !v.is_null() => Some(v.clone()),
+        _ => existing_report
+            .is_some()
+            .then(|| JsonValue::Object(JsonMap::new())),
+    };
+    let adv = adv_value.map(|mut value| {
+        if let Some(map) = value.as_object_mut() {
+            map.remove("llamaLastRuntimeReport");
+            if let Some(report) = existing_report {
+                map.insert("llamaLastRuntimeReport".into(), report);
+            }
+        }
+        serde_json::to_string(&value).unwrap_or("null".into())
+    });
     let prompt_template_id = model
         .get("promptTemplateId")
         .and_then(|v| v.as_str())
@@ -172,14 +204,6 @@ pub fn model_upsert(app: tauri::AppHandle, model_json: String) -> Result<String,
         .get("systemPrompt")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let existing_created: Option<i64> = conn
-        .query_row(
-            "SELECT created_at FROM models WHERE id = ?",
-            params![&id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let created_at = existing_created.unwrap_or(now_ms() as i64);
     let provider_credential_id = provider_credential_id.or_else(|| {
         conn.query_row(

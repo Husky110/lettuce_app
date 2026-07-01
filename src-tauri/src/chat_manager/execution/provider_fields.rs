@@ -170,8 +170,7 @@ mod tests {
     };
     use crate::providers::config::supported_extra_body_keys_for_provider;
 
-    #[test]
-    fn every_llama_extra_body_key_is_in_the_llamacpp_allowlist() {
+    fn populated_llama_fixture() -> (Session, Model, Settings) {
         let advanced = AdvancedModelSettings {
             llama_gpu_layers: Some(32),
             llama_multi_gpu_enabled: Some(true),
@@ -246,7 +245,12 @@ mod tests {
             "models": []
         }))
         .expect("settings fixture should deserialize");
+        (session, model, settings)
+    }
 
+    #[test]
+    fn every_llama_extra_body_key_is_in_the_llamacpp_allowlist() {
+        let (session, model, settings) = populated_llama_fixture();
         let extra = build_llama_extra_fields(&session, &model, &settings)
             .expect("fully populated llama settings should emit extra-body fields");
         assert_eq!(
@@ -263,6 +267,28 @@ mod tests {
                 "extra-body key '{key}' is missing from supported_extra_body_keys(\"llamacpp\") in providers/config.rs and would be silently stripped from every llama.cpp request"
             );
         }
+    }
+
+    #[test]
+    fn group_chat_emits_the_same_llama_extra_body_keys_as_chat() {
+        let (session, model, settings) = populated_llama_fixture();
+        let chat_keys: std::collections::BTreeSet<String> =
+            build_llama_extra_fields(&session, &model, &settings)
+                .unwrap_or_default()
+                .into_keys()
+                .filter(|key| key.starts_with("llama"))
+                .collect();
+        let group_keys: std::collections::BTreeSet<String> =
+            crate::group_chat_manager::build_llama_extra_fields(&model, &settings)
+                .unwrap_or_default()
+                .into_keys()
+                .filter(|key| key.starts_with("llama"))
+                .collect();
+
+        assert_eq!(
+            chat_keys, group_keys,
+            "group_chat_manager::build_llama_extra_fields drifted from the chat builder; llama settings missing on either side silently stop applying in that chat mode"
+        );
     }
 }
 

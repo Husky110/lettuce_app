@@ -571,7 +571,10 @@ fn llama_sampler_profile_defaults(profile: &str) -> LlamaSamplerProfileDefaults 
     }
 }
 
-fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMap<String, Value>> {
+pub(crate) fn build_llama_extra_fields(
+    model: &Model,
+    settings: &Settings,
+) -> Option<HashMap<String, Value>> {
     let mut extra = HashMap::new();
     let sampler_profile = resolve_llama_sampler_profile(model, settings);
     let sampler_defaults = llama_sampler_profile_defaults(&sampler_profile);
@@ -626,7 +629,12 @@ fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMa
                 .clone()
         })
         .map(|v| v.trim().to_ascii_lowercase())
-        .filter(|v| matches!(v.as_str(), "balanced" | "proportional" | "priority" | "manual"))
+        .filter(|v| {
+            matches!(
+                v.as_str(),
+                "balanced" | "proportional" | "priority" | "manual"
+            )
+        })
     {
         extra.insert("llamaGpuDistributionMode".to_string(), json!(v));
     }
@@ -844,6 +852,14 @@ fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMa
             .llama_raw_completion_fallback)
     {
         extra.insert("llamaRawCompletionFallback".to_string(), json!(v));
+    }
+    if let Some(v) = model
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|a| a.llama_streaming_enabled)
+        .or(settings.advanced_model_settings.llama_streaming_enabled)
+    {
+        extra.insert("llamaStreamingEnabled".to_string(), json!(v));
     }
     if let Some(v) = model
         .advanced_model_settings
@@ -2198,9 +2214,10 @@ async fn migrate_group_memory_embeddings_if_needed(
 
     let (target_source_version, target_dimensions) =
         embedding::resolve_active_embedding_signature(app)?;
-    let needs_stale_migration = session.memory_embeddings.iter().any(|memory| {
-        memory_embedding_is_stale(memory, &target_source_version, target_dimensions)
-    });
+    let needs_stale_migration = session
+        .memory_embeddings
+        .iter()
+        .any(|memory| memory_embedding_is_stale(memory, &target_source_version, target_dimensions));
     let needs_pending_embed = session
         .memory_embeddings
         .iter()
@@ -3978,15 +3995,16 @@ async fn run_group_memory_tool_update(
                             }
                         };
 
-                        let (embedding_source_version, embedding_dimensions) =
-                            match embedding.as_ref() {
-                                Some(vector) if !vector.is_empty() => {
-                                    let (version, dimensions) =
-                                        embedding::embedding_signature_for_result(app, Some(vector));
-                                    (Some(version), Some(dimensions))
-                                }
-                                _ => (None, None),
-                            };
+                        let (embedding_source_version, embedding_dimensions) = match embedding
+                            .as_ref()
+                        {
+                            Some(vector) if !vector.is_empty() => {
+                                let (version, dimensions) =
+                                    embedding::embedding_signature_for_result(app, Some(vector));
+                                (Some(version), Some(dimensions))
+                            }
+                            _ => (None, None),
+                        };
                         let _now = now_millis().unwrap_or_default();
                         session.memory_embeddings.push(MemoryEmbedding {
                             id: mem_id.clone(),
@@ -4437,15 +4455,15 @@ async fn run_group_memory_tool_update(
 
                     let token_count =
                         crate::embedding::tokenizer::count_tokens(app, &text).unwrap_or(0);
-                    let (embedding_source_version, embedding_dimensions) =
-                        match embedding.as_ref() {
-                            Some(vector) if !vector.is_empty() => {
-                                let (version, dimensions) =
-                                    embedding::embedding_signature_for_result(app, Some(vector));
-                                (Some(version), Some(dimensions))
-                            }
-                            _ => (None, None),
-                        };
+                    let (embedding_source_version, embedding_dimensions) = match embedding.as_ref()
+                    {
+                        Some(vector) if !vector.is_empty() => {
+                            let (version, dimensions) =
+                                embedding::embedding_signature_for_result(app, Some(vector));
+                            (Some(version), Some(dimensions))
+                        }
+                        _ => (None, None),
+                    };
                     let now = now_millis().unwrap_or_default();
                     session.memory_embeddings.push(MemoryEmbedding {
                         id: mem_id.clone(),
@@ -6779,7 +6797,10 @@ async fn generate_character_response(
         total_tokens: u.total_tokens.map(|v| v as i32),
         first_token_ms: u.first_token_ms.map(|v| v as i64),
         tokens_per_second: u.tokens_per_second,
-        mtp_stats: u.mtp_stats.as_ref().and_then(|s| serde_json::to_value(s).ok()),
+        mtp_stats: u
+            .mtp_stats
+            .as_ref()
+            .and_then(|s| serde_json::to_value(s).ok()),
     });
 
     record_group_usage(
