@@ -1067,7 +1067,8 @@ mod desktop {
             "targetNewTokens": max_tokens,
         });
 
-        let result = (|| -> Result<(), String> {
+        const KV_LAYER_RETRY_PREFIX: &str = "__kv_layer_retry__:";
+        let mut run_generation = |forced_smart_gpu_layers: Option<u32>| -> Result<(), String> {
             check_abort_signal(abort_rx.as_mut())?;
             if engine::unload_engine_if_model_differs(&app, model_path)? {
                 log_info(
@@ -1163,11 +1164,10 @@ mod desktop {
             } else {
                 Vec::new()
             };
-            // cudaMemGetInfo's free is pessimistic on newer GPU architectures
-            // (e.g. Blackwell) where the driver reserve does not reflect real
-            // allocation pressure, so the planning budget allows a small bounded
-            // headroom above free (see combined_effective_vram_bytes). Free VRAM
-            // held by other processes stays out of the budget.
+            // The planning budget is per-device reported capacity rather than
+            // current free VRAM (see combined_effective_vram_bytes for the
+            // tradeoff); the resident model was already unloaded above so our
+            // own memory does not skew the numbers.
             let available_vram_bytes = if multi_gpu_active {
                 context::combined_effective_vram_bytes(&per_device_vram)
                     .or_else(get_available_vram_bytes)
@@ -1216,6 +1216,7 @@ mod desktop {
             let mut multi_gpu_distribution: Option<offload::MultiGpuDistribution> = None;
             let mut effective_gpu_layers = llama_gpu_layers;
             let mut smart_gpu_layer_candidates: Option<Vec<u32>> = None;
+            let mut smart_kv_aware_layer_estimate: Option<u32> = None;
             let cached_runtime_report =
                 crate::storage_manager::models::model_get_llama_runtime_report(&app, model_path)
                     .ok()
@@ -1371,6 +1372,7 @@ mod desktop {
                 }
                 effective_gpu_layers = smart_offload_plan.candidate_gpu_layers.first().copied();
                 smart_gpu_layer_candidates = Some(smart_offload_plan.candidate_gpu_layers.clone());
+                smart_kv_aware_layer_estimate = Some(smart_offload_plan.estimated_gpu_layers);
                 if multi_gpu_active {
                     // Split mode is always LLAMA_SPLIT_MODE_LAYER, so each layer's
                     // KV lives on that layer's device regardless of placement. Pin
@@ -1495,6 +1497,17 @@ mod desktop {
                     "llama_cpp",
                     format!("single-gpu override active: device={device_id}"),
                 );
+            }
+            if let Some(forced) = forced_smart_gpu_layers {
+                log_warn(
+                    &app,
+                    "llama_cpp",
+                    format!(
+                        "retrying model load at KV-aware layer estimate {forced} after GPU KV context OOM"
+                    ),
+                );
+                effective_gpu_layers = Some(forced);
+                smart_gpu_layer_candidates = None;
             }
             log_info(&app, "llama_cpp", "loading llama.cpp engine/model");
             let engine = load_engine(
@@ -2091,6 +2104,15 @@ mod desktop {
                     && preferred_offload_kqv == Some(true)
                     && attempt_offload_kqv == Some(false)
                 {
+                    if forced_smart_gpu_layers.is_none() {
+                        if let (Some(estimate), Some(actual)) =
+                            (smart_kv_aware_layer_estimate, actual_gpu_layers_used)
+                        {
+                            if estimate > 0 && estimate < actual {
+                                return Err(format!("{KV_LAYER_RETRY_PREFIX}{estimate}"));
+                            }
+                        }
+                    }
                     log_warn(
                         &app,
                         "llama_cpp",
@@ -2568,7 +2590,7 @@ mod desktop {
                 dry_base,
                 dry_allowed_length,
                 dry_penalty_last_n,
-                dry_sequence_breakers,
+                dry_sequence_breakers: dry_sequence_breakers.clone(),
                 xtc_probability,
                 xtc_threshold,
                 frequency_penalty,
@@ -3132,7 +3154,28 @@ mod desktop {
             }
 
             Ok(())
-        })();
+        };
+        // One-shot retry: when context creation cannot fit the GPU KV cache at
+        // the optimistic layer count, rerun the whole load at the KV-aware
+        // estimate instead of dropping the entire KV cache to system RAM.
+        let mut forced_smart_gpu_layers: Option<u32> = None;
+        let result = loop {
+            let attempt = run_generation(forced_smart_gpu_layers);
+            match attempt {
+                Err(err)
+                    if forced_smart_gpu_layers.is_none()
+                        && err.starts_with(KV_LAYER_RETRY_PREFIX) =>
+                {
+                    match err[KV_LAYER_RETRY_PREFIX.len()..].parse::<u32>() {
+                        Ok(layers) => {
+                            forced_smart_gpu_layers = Some(layers);
+                        }
+                        Err(_) => break Err(err),
+                    }
+                }
+                attempt => break attempt,
+            }
+        };
 
         if let Some(ref id) = request_id {
             use tauri::Manager;

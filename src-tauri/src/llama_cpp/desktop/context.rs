@@ -364,10 +364,7 @@ pub(crate) fn align_per_device_vram(
 pub(crate) fn combined_effective_vram_bytes(per_device_vram: &[(usize, u64, u64)]) -> Option<u64> {
     let combined: u64 = per_device_vram
         .iter()
-        .map(|(_, free, total)| {
-            let driver_reserve_headroom = total.saturating_sub(*free).min(total / 8);
-            free.saturating_add(driver_reserve_headroom)
-        })
+        .map(|(_, free, total)| (*free).max(*total))
         .sum();
     (combined > 0).then_some(combined)
 }
@@ -637,18 +634,18 @@ mod tests {
     }
 
     #[test]
-    fn combined_effective_vram_allows_bounded_headroom_over_free() {
+    fn combined_effective_vram_prefers_reported_capacity_per_device() {
         let per_device = vec![(0, 10, 12), (1, 14, 0)];
 
-        assert_eq!(combined_effective_vram_bytes(&per_device), Some(25));
+        assert_eq!(combined_effective_vram_bytes(&per_device), Some(26));
     }
 
     #[test]
-    fn combined_effective_vram_excludes_vram_held_by_other_processes() {
+    fn combined_effective_vram_budgets_capacity_over_current_free() {
         let gib = 1024_u64 * 1024 * 1024;
         let per_device = vec![(0, 4 * gib, 24 * gib)];
 
-        assert_eq!(combined_effective_vram_bytes(&per_device), Some(7 * gib));
+        assert_eq!(combined_effective_vram_bytes(&per_device), Some(24 * gib));
     }
 
     #[test]
