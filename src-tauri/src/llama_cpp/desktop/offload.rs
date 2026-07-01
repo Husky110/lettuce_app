@@ -165,8 +165,10 @@ fn estimated_runtime_reserve_bytes(
     flash_attention_policy: llama_flash_attn_type,
 ) -> u64 {
     let floor = (available_vram_bytes / 20).max(COMPUTE_RESERVE_FLOOR_BYTES);
+    // AUTO (-1) means llama.cpp will use flash attention when the backend supports it
+    // (always true on CUDA). Only reserve the full attention matrix for the DISABLED case.
     let attention_reserve =
-        if flash_attention_policy == llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_ENABLED {
+        if flash_attention_policy != llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_DISABLED {
             0
         } else {
             u64::from(planned_context.max(1))
@@ -189,6 +191,11 @@ fn candidate_gpu_layers(total_layers: u32, estimated_gpu_layers: u32) -> Vec<u32
     }
 
     let mut candidates = Vec::new();
+    // If the estimate is within 10% of total, optimistically try all layers first.
+    // The smart fallback ladder will step down gracefully on OOM.
+    if estimate >= total_layers.saturating_mul(9) / 10 {
+        push_unique(&mut candidates, total_layers);
+    }
     push_unique(&mut candidates, estimate);
     push_unique(&mut candidates, estimate.saturating_mul(3) / 4);
     push_unique(&mut candidates, estimate / 2);
@@ -328,22 +335,33 @@ pub(super) fn plan_smart_gpu_offload(
     let mut selected_plan: Option<(Option<bool>, bool, u64, u32)> = None;
     for planning_offload_kqv in planning_modes {
         let kqv_vram_reserved = *planning_offload_kqv == Some(true);
-        let estimated_kv_bytes = if kqv_vram_reserved {
-            kv_bytes_per_token.saturating_mul(u64::from(planned_context))
+        // When KV is GPU-resident, only the GPU-resident layers' KV goes to VRAM —
+        // not the full model's KV. Include KV cost in the per-layer price so the
+        // estimate self-corrects: more layers → more KV, fewer layers → less KV.
+        let kv_bytes_per_layer = if kqv_vram_reserved {
+            kv_bytes_per_token
+                .saturating_mul(u64::from(planned_context))
+                .checked_div(u64::from(total_layers.max(1)))
+                .unwrap_or(0)
         } else {
             0
         };
-        let available_for_layers = effective_vram_budget_bytes
+        let effective_bytes_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
+        let available_base = effective_vram_budget_bytes
             .saturating_sub(estimated_runtime_reserve_bytes)
-            .saturating_sub(sidecar_vram_reserve_bytes)
-            .saturating_sub(estimated_kv_bytes);
-        let estimated_gpu_layers = if available_for_layers == 0 || bytes_per_layer == 0 {
+            .saturating_sub(sidecar_vram_reserve_bytes);
+        let estimated_gpu_layers = if available_base == 0 || effective_bytes_per_layer == 0 {
             0
         } else {
-            u32::try_from((available_for_layers / bytes_per_layer).min(u64::from(total_layers)))
-                .unwrap_or(total_layers)
-                .min(total_layers)
+            u32::try_from(
+                (available_base / effective_bytes_per_layer).min(u64::from(total_layers)),
+            )
+            .unwrap_or(total_layers)
+            .min(total_layers)
         };
+        // Report the KV bytes that will actually land on GPU (scales with GPU layers).
+        let estimated_kv_bytes =
+            kv_bytes_per_layer.saturating_mul(u64::from(estimated_gpu_layers));
 
         if selected_plan.is_none() {
             selected_plan = Some((

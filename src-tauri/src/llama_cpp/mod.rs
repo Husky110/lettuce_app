@@ -1094,32 +1094,98 @@ mod desktop {
                 LLAMA_FLASH_ATTN_TYPE_AUTO
             };
             let available_memory_bytes = get_available_memory_bytes();
-            let available_vram_bytes = if multi_gpu_active {
-                context::get_available_vram_bytes_for_devices(&llama_gpu_device_ids)
-                    .or_else(get_available_vram_bytes)
-            } else {
-                get_available_vram_bytes()
-            };
             let distribution_mode = llama_gpu_distribution_mode
                 .clone()
                 .unwrap_or_else(|| "balanced".to_string());
             let manual_distribution = multi_gpu_active && distribution_mode == "manual";
             // Per-device free VRAM and manual layer counts, aligned to the selected
             // device-id order so they line up with `params.devices` at load time.
-            let device_free_aligned: Vec<u64> = if multi_gpu_active {
-                let per_device = context::get_per_device_free_vram(&llama_gpu_device_ids);
+            let per_device_vram_raw = if multi_gpu_active {
+                context::get_per_device_free_vram(&llama_gpu_device_ids)
+            } else {
+                Vec::new()
+            };
+            // Some GPUs (notably Blackwell/RTX 5xxx with CUDA 13+) return total==0
+            // from ggml_backend_dev_memory and get silently skipped. For any selected
+            // device that is missing from the query result, impute its capacity from
+            // the largest successfully-reported device so the planning budget accounts
+            // for all selected GPUs. Log what we see so misconfigured setups are visible.
+            // Use free as a proxy for total when all totals are 0 (Blackwell/CUDA 13 bug:
+            // ggml_backend_dev_memory sets total=0 while free is correct).
+            let max_reported_total: u64 = per_device_vram_raw
+                .iter()
+                .map(|(_, _, t)| *t)
+                .max()
+                .unwrap_or(0);
+            let max_reported_free: u64 = per_device_vram_raw
+                .iter()
+                .map(|(_, f, _)| *f)
+                .max()
+                .unwrap_or(0);
+            let impute_capacity = if max_reported_total > 0 {
+                max_reported_total
+            } else {
+                max_reported_free
+            };
+            let per_device_vram: Vec<(usize, u64, u64)> = if multi_gpu_active {
                 llama_gpu_device_ids
                     .iter()
                     .map(|id| {
-                        per_device
-                            .iter()
-                            .find(|(dev, _, _)| dev == id)
-                            .map(|(_, free, _)| *free)
-                            .unwrap_or(0)
+                        if let Some(entry) = per_device_vram_raw.iter().find(|(dev, _, _)| dev == id) {
+                            *entry
+                        } else {
+                            // Device missing or returned total=0 — impute from largest known GPU.
+                            // On Blackwell+CUDA 13, ggml_backend_dev_memory may return total=0
+                            // while free is correct; get_per_device_free_vram now preserves free
+                            // in that case, so this path handles genuinely-absent devices.
+                            log_warn(
+                                &app,
+                                "llama_cpp",
+                                format!(
+                                    "multi-gpu vram query: device {} not in ggml query results; imputing capacity ({} bytes)",
+                                    id, impute_capacity
+                                ),
+                            );
+                            (*id, impute_capacity, impute_capacity)
+                        }
                     })
                     .collect()
             } else {
                 Vec::new()
+            };
+            log_info(
+                &app,
+                "llama_cpp",
+                format!(
+                    "multi-gpu vram query: {}",
+                    per_device_vram
+                        .iter()
+                        .map(|(id, free, total)| format!("device={id} free={free} total={total}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            );
+            let device_free_aligned: Vec<u64> = if multi_gpu_active {
+                per_device_vram
+                    .iter()
+                    .map(|(_, free, _)| *free)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            // For smart-offload planning use the CUDA-reported total per-device VRAM
+            // rather than free VRAM. cudaMemGetInfo's free is pessimistic on newer GPU
+            // architectures (e.g. Blackwell) where the driver reserves a large fraction
+            // of VRAM for internal use that is NOT actually consumed by allocations.
+            // Using total gives a realistic picture of how much the model load can use.
+            // The smart fallback ladder handles actual OOM if the estimate is too high.
+            let available_vram_bytes = if multi_gpu_active {
+                let total_combined: u64 = per_device_vram.iter().map(|(_, _, t)| *t).sum();
+                let free_combined: u64 = per_device_vram.iter().map(|(_, f, _)| *f).sum();
+                let best = total_combined.max(free_combined);
+                if best > 0 { Some(best) } else { get_available_vram_bytes() }
+            } else {
+                get_available_vram_bytes()
             };
             let manual_layers_aligned: Vec<u32> = if manual_distribution {
                 llama_gpu_device_ids
@@ -1177,6 +1243,21 @@ mod desktop {
 
             if manual_distribution && backend_supports_gpu_offload {
                 // Manual mode: fixed per-GPU layer counts, no smart backoff ladder.
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!(
+                        "multi-gpu manual distribution: devices={:?} manual_layers={:?}",
+                        llama_gpu_device_ids, manual_layers_aligned
+                    ),
+                );
+                if manual_layers_aligned.iter().all(|&l| l == 0) {
+                    log_warn(
+                        &app,
+                        "llama_cpp",
+                        "multi-gpu manual distribution: all layer counts are zero — llamaGpuManualLayers may be missing or device IDs may not match; falling through to CPU",
+                    );
+                }
                 let dist = offload::plan_multi_gpu_distribution(
                     "manual",
                     &device_free_aligned,
@@ -1236,9 +1317,27 @@ mod desktop {
                     if let (Some(cached_layers), Some(bucket)) =
                         (cached_gpu_layers, cached_context_bucket)
                     {
+                        let cached_multi_gpu = report
+                            .get("multiGpuEnabled")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let cached_device_ids: Vec<usize> = report
+                            .get("multiGpuDeviceIds")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| {
+                                        v.as_u64().and_then(|n| usize::try_from(n).ok())
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let multi_gpu_config_matches = cached_multi_gpu == multi_gpu_active
+                            && cached_device_ids == llama_gpu_device_ids;
                         if cached_status == Some("succeeded")
                             && cached_backend_path == Some("gpu_offload")
                             && bucket == current_context_bucket
+                            && multi_gpu_config_matches
                         {
                             let merged_candidates = merge_cached_candidate_layers(
                                 smart_offload_plan.total_layers,
@@ -1570,6 +1669,16 @@ mod desktop {
                 &mut runtime_report,
                 "actualGpuLayersUsed",
                 json!(actual_gpu_layers_used),
+            );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "multiGpuEnabled",
+                json!(multi_gpu_active),
+            );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "multiGpuDeviceIds",
+                json!(if multi_gpu_active { llama_gpu_device_ids.clone() } else { vec![] }),
             );
             update_runtime_report_field(
                 &mut runtime_report,

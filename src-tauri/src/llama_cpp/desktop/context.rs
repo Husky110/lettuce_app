@@ -359,10 +359,15 @@ pub(crate) fn get_per_device_free_vram(device_ids: &[usize]) -> Vec<(usize, u64,
             let mut free: usize = 0;
             let mut total: usize = 0;
             ggml_backend_dev_memory(dev, &mut free, &mut total);
-            if total == 0 {
+            if free == 0 && total == 0 {
+                // Device is genuinely inaccessible — skip.
                 continue;
             }
-            out.push((*device_id, free as u64, total as u64));
+            // Some GPUs (Blackwell + CUDA 13.x) report total=0 while free is
+            // correct. Use free as a conservative capacity stand-in so the
+            // device is not silently dropped from multi-GPU VRAM planning.
+            let effective_total = if total == 0 { free } else { total };
+            out.push((*device_id, free as u64, effective_total as u64));
         }
     }
     out

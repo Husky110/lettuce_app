@@ -170,6 +170,21 @@ fn initialize_database(app: &mut tauri::App) {
         }
         Err(err) => panic!("Failed to initialize database pool: {}", err),
     }
+
+    // Clear stale smart-offload layer caches on every startup. The cached
+    // layer counts are VRAM-availability snapshots from the previous session;
+    // available VRAM can differ significantly across restarts (GPU config
+    // changes, other apps, driver state). Clearing here ensures the first
+    // generation of each session re-estimates from scratch.
+    match storage_manager::models::clear_all_llama_runtime_reports(app.handle()) {
+        Ok(n) if n > 0 => {
+            eprintln!("[INFO] Cleared stale llama runtime report cache for {n} model(s)");
+        }
+        Err(err) => {
+            eprintln!("[WARN] Failed to clear llama runtime report cache on startup: {err}");
+        }
+        _ => {}
+    }
 }
 
 fn start_usage_flush_task(

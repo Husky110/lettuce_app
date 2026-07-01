@@ -280,6 +280,20 @@ pub fn model_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+pub fn clear_all_llama_runtime_reports(app: &tauri::AppHandle) -> Result<usize, String> {
+    let conn = open_db(app)?;
+    let rows = conn
+        .execute(
+            "UPDATE models
+             SET advanced_model_settings = json_remove(advanced_model_settings, '$.llamaLastRuntimeReport')
+             WHERE provider_id = 'llamacpp'
+               AND json_extract(advanced_model_settings, '$.llamaLastRuntimeReport') IS NOT NULL",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(rows)
+}
+
 #[tauri::command]
 pub fn model_export_as_usc(model_json: String) -> Result<String, String> {
     let model: crate::chat_manager::types::Model =
