@@ -395,6 +395,7 @@ pub(super) fn load_engine(
     strict_mode: bool,
     mmproj_path: Option<&str>,
     mtp_model_path: Option<&str>,
+    mtp_drafter_on_gpu: bool,
 ) -> Result<LoadedEngine, String> {
     let engine = ENGINE.get_or_init(|| {
         Mutex::new(LlamaState {
@@ -492,7 +493,10 @@ pub(super) fn load_engine(
             .map(|value| value.to_string())
             .collect::<Vec<_>>()
             .join(","),
-        gpu_config.distribution_mode.as_deref().unwrap_or("balanced"),
+        gpu_config
+            .distribution_mode
+            .as_deref()
+            .unwrap_or("balanced"),
         gpu_config
             .tensor_split
             .iter()
@@ -679,7 +683,9 @@ pub(super) fn load_engine(
                                 format!(
                                     "Smart GPU offload exhausted GPU layer candidates {:?}, falling back to CPU: {}",
                                     candidates,
-                                    gpu_attempt_error.as_deref().unwrap_or("unknown GPU load error")
+                                    gpu_attempt_error
+                                        .as_deref()
+                                        .unwrap_or("unknown GPU load error")
                                 ),
                             );
                             let _ = app.emit(
@@ -944,7 +950,14 @@ pub(super) fn load_engine(
                 ));
             }
 
-            let drafter_gpu_layers = if guard.backend_path_used.as_deref() == Some("gpu_offload") {
+            // Measured on the RTX 4060 (mtp_probe): a GPU-resident drafter
+            // attending CPU-resident KV forces ~345 MiB of cross-backend
+            // staging into its compute buffer; keeping the drafter beside the
+            // KV eliminates it. The drafter is ~227 MB, so CPU decode of the
+            // few draft tokens per round is negligible.
+            let drafter_gpu_layers = if mtp_drafter_on_gpu
+                && guard.backend_path_used.as_deref() == Some("gpu_offload")
+            {
                 Some(1000)
             } else {
                 Some(0)

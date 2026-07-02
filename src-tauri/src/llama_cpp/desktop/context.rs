@@ -728,7 +728,10 @@ pub(crate) async fn llamacpp_context_info(
     let available_vram_bytes = if multi_gpu_active {
         combined_effective_vram_bytes(&aligned_per_device_vram).or_else(get_available_vram_bytes)
     } else if let Some(device_id) = llama_single_gpu_device_id {
-        combined_effective_vram_bytes(&get_aligned_per_device_vram(&[device_id]))
+        get_aligned_per_device_vram(&[device_id])
+            .first()
+            .map(|(_, free, _)| *free)
+            .filter(|free| *free > 0)
             .or_else(get_available_vram_bytes)
     } else {
         get_available_vram_bytes()

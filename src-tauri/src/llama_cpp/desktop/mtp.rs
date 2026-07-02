@@ -16,6 +16,7 @@ pub(super) struct MtpRuntime<'m> {
     pub(super) shared: bool,
     pub(super) primed: bool,
     pub(super) draft_n: usize,
+    pub(super) max_batch: usize,
     pub(super) n_embd: usize,
     pub(super) carry_hidden: Vec<f32>,
     pub(super) h_last: Vec<f32>,
@@ -99,9 +100,13 @@ pub(super) fn create_runtime<'m>(
         ));
     };
 
+    let max_batch = draft_n.max(1) as u32 + 1;
     let mut params = draft_params
         .with_ctx_type(LlamaContextType::Mtp)
-        .with_ctx_other(target_ctx);
+        .with_ctx_other(target_ctx)
+        .with_n_batch(max_batch)
+        .with_n_ubatch(max_batch)
+        .with_n_outputs_max(max_batch);
     if shared {
         params = params.with_n_rs_seq(0);
     }
@@ -116,6 +121,7 @@ pub(super) fn create_runtime<'m>(
         shared,
         primed: false,
         draft_n: draft_n.max(1),
+        max_batch: max_batch as usize,
         n_embd,
         carry_hidden: vec![0.0; n_embd],
         h_last: vec![0.0; n_embd],
@@ -148,6 +154,32 @@ pub(super) fn prefill_draft_chunk(
     chunk_start_pos: i32,
     is_final_chunk: bool,
 ) -> Result<(), String> {
+    if !rt.shared && chunk_tokens.len() > rt.max_batch {
+        for (sub_index, subchunk) in chunk_tokens.chunks(rt.max_batch).enumerate() {
+            let sub_start = sub_index
+                .checked_mul(rt.max_batch)
+                .and_then(|offset| i32::try_from(offset).ok())
+                .and_then(|offset| chunk_start_pos.checked_add(offset))
+                .ok_or_else(|| "MTP draft prefill position overflowed i32".to_string())?;
+            let sub_end = (sub_index + 1).saturating_mul(rt.max_batch);
+            let sub_is_final = is_final_chunk && sub_end >= chunk_tokens.len();
+            let row_offset = (sub_index * rt.max_batch) as i32;
+            prefill_draft_chunk_inner(rt, target, subchunk, sub_start, sub_is_final, row_offset)?;
+        }
+        return Ok(());
+    }
+
+    prefill_draft_chunk_inner(rt, target, chunk_tokens, chunk_start_pos, is_final_chunk, 0)
+}
+
+fn prefill_draft_chunk_inner(
+    rt: &mut MtpRuntime<'_>,
+    target: &LlamaContext<'_>,
+    chunk_tokens: &[LlamaToken],
+    chunk_start_pos: i32,
+    is_final_chunk: bool,
+    target_row_offset: i32,
+) -> Result<(), String> {
     if chunk_tokens.is_empty() {
         return Ok(());
     }
@@ -171,7 +203,7 @@ pub(super) fn prefill_draft_chunk(
             &rt.carry_hidden
         } else {
             target
-                .embeddings_nextn_ith(i as i32 - 1)
+                .embeddings_nextn_ith(target_row_offset + i as i32 - 1)
                 .map_err(|e| format!("failed to read target nextn embeddings: {e}"))?
         };
         let logits = is_final_chunk && i + 1 == chunk_tokens.len();
@@ -185,7 +217,7 @@ pub(super) fn prefill_draft_chunk(
         .map_err(|e| format!("MTP draft prefill decode failed: {e}"))?;
 
     rt.carry_hidden = target
-        .embeddings_nextn_ith(chunk_tokens.len() as i32 - 1)
+        .embeddings_nextn_ith(target_row_offset + chunk_tokens.len() as i32 - 1)
         .map_err(|e| format!("failed to read target nextn embeddings: {e}"))?
         .to_vec();
     rt.draft_last_row = chunk_tokens.len() as i32 - 1;

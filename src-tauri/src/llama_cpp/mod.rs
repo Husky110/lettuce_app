@@ -1202,10 +1202,14 @@ mod desktop {
                 context::combined_effective_vram_bytes(&per_device_vram)
                     .or_else(get_available_vram_bytes)
             } else if let Some(device_id) = llama_single_gpu_device_id {
-                context::combined_effective_vram_bytes(&context::get_aligned_per_device_vram(&[
-                    device_id,
-                ]))
-                .or_else(get_available_vram_bytes)
+                // The override targets one device, often the display GPU where
+                // desktop usage never frees; budget from its free VRAM like the
+                // default single-GPU path, not from capacity.
+                context::get_aligned_per_device_vram(&[device_id])
+                    .first()
+                    .map(|(_, free, _)| *free)
+                    .filter(|free| *free > 0)
+                    .or_else(get_available_vram_bytes)
             } else {
                 get_available_vram_bytes()
             };
@@ -1274,11 +1278,15 @@ mod desktop {
                     .and_then(|path| std::fs::metadata(path).ok())
                     .map(|meta| meta.len())
                     .unwrap_or(0);
-                let mtp_reserve = llama_mtp_external_path
-                    .as_deref()
-                    .and_then(|path| std::fs::metadata(path).ok())
-                    .map(|meta| meta.len())
-                    .unwrap_or(0);
+                let mtp_reserve = if resolved_offload_kqv == Some(false) {
+                    0
+                } else {
+                    llama_mtp_external_path
+                        .as_deref()
+                        .and_then(|path| std::fs::metadata(path).ok())
+                        .map(|meta| meta.len())
+                        .unwrap_or(0)
+                };
                 mmproj_reserve.saturating_add(mtp_reserve)
             } else {
                 0
@@ -1423,7 +1431,9 @@ mod desktop {
                                 "llama_cpp",
                                 format!(
                                     "smart gpu offload cache invalidated: config_match={} kqv_fallback={} vram_budget_match={}",
-                                    planning_config_matches, cached_kqv_fallback, vram_budget_matches
+                                    planning_config_matches,
+                                    cached_kqv_fallback,
+                                    vram_budget_matches
                                 ),
                             );
                         }
@@ -1635,6 +1645,7 @@ mod desktop {
                 llama_strict_mode,
                 llama_mmproj_path.as_deref(),
                 llama_mtp_external_path.as_deref(),
+                resolved_offload_kqv != Some(false),
             )?;
             let llama_mtp_draft_model = engine.mtp_model.clone();
             let model = engine.model.as_ref();
@@ -2129,8 +2140,7 @@ mod desktop {
             if prompt_eval_span as u32 >= ctx_size {
                 return Err(format!(
                     "Prompt is too long for the context window (prompt tokens: {}, context: {}). Reduce messages or lower context length.",
-                    prompt_tokens,
-                    ctx_size
+                    prompt_tokens, ctx_size
                 ));
             }
 
@@ -2360,6 +2370,12 @@ mod desktop {
                 if let Some(offload) = resolved_offload_kqv {
                     draft_params = draft_params.with_offload_kqv(offload);
                 }
+                if resolved_offload_kqv == Some(false) {
+                    // The drafter runs on CPU beside the KV in this mode; ggml's
+                    // op offload would otherwise reserve ~194 MiB of GPU compute
+                    // (measured) to accelerate ops for a <=draft_n+1 token batch.
+                    draft_params = draft_params.with_op_offload(false);
+                }
                 if let Some(swa_full) = llama_swa_full {
                     draft_params = draft_params.with_swa_full(swa_full);
                 }
@@ -2372,6 +2388,25 @@ mod desktop {
                 if let Some(scale) = llama_rope_freq_scale {
                     draft_params = draft_params.with_rope_freq_scale(scale as f32);
                 }
+
+                let mtp_batch = llama_mtp_draft_tokens.max(1) + 1;
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!(
+                        "creating MTP draft context: mode={} ctx={} n_batch={} n_ubatch={} n_outputs_max={} offload_kqv={:?}",
+                        if llama_mtp_draft_model.is_some() {
+                            "external"
+                        } else {
+                            "embedded"
+                        },
+                        resolved_ctx_size,
+                        mtp_batch,
+                        mtp_batch,
+                        mtp_batch,
+                        resolved_offload_kqv
+                    ),
+                );
 
                 match mtp::create_runtime(
                     model,
@@ -2395,7 +2430,7 @@ mod desktop {
                                     },
                                     llama_mtp_draft_tokens,
                                     resolved_ctx_size,
-                                    resolved_n_batch
+                                    runtime.max_batch
                                 ),
                             );
                             Some(runtime)
