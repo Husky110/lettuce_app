@@ -1694,6 +1694,15 @@ mod desktop {
                     "llama_cpp",
                     "MTP requested but disabled for this request because vision input is active",
                 );
+                let _ = app.emit(
+                    "app://toast",
+                    json!({
+                        "id": "llama-mtp-vision-disabled",
+                        "variant": "warning",
+                        "title": "MTP disabled for vision",
+                        "description": "MTP is not available for image requests yet, so this run will continue without MTP."
+                    }),
+                );
             }
             let model_reloaded = engine.model_reloaded;
             let max_ctx = model.n_ctx_train().max(1);
