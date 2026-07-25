@@ -5396,6 +5396,8 @@ fn build_group_system_prompt(
         info_source: PromptEntryInfoSource::Messages,
         scene_generation_enabled: group_scene_generation_enabled(settings),
         avatar_generation_enabled: group_avatar_generation_enabled(settings),
+        is_local_image_generation_model: false,
+        is_scene_generation_local_image_model: false,
         has_scene,
         has_scene_direction,
         has_persona: persona.is_some(),

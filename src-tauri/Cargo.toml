@@ -53,6 +53,7 @@ futures-util = "0.3"
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["std"] }
 rand = "0.8"
 blake3 = "1"
+sha2 = "0.10"
 whoami = "1"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-app-events = "0.2.0"
@@ -131,6 +132,8 @@ esaxx-rs = { path = "crates/esaxx-rs-0.1.10" }
 whisper-rs = { git = "https://codeberg.org/MegalithOfficial/whisper-rs.git" }
 whisper-rs-sys = { git = "https://codeberg.org/MegalithOfficial/whisper-rs.git" }
 
+[profile.dev.package.sha2]
+opt-level = 3
 [profile.dev]
 debug = "line-tables-only"
 
