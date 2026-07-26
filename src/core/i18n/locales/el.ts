@@ -10410,6 +10410,10 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Άγνωστο μοντέλο",
+      rangeOfTotal: "{{from}}-{{to}} από {{total}}",
+      previousPage: "Προηγούμενη σελίδα",
+      nextPage: "Επόμενη σελίδα",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

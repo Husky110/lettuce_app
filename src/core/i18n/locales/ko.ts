@@ -10411,6 +10411,10 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "알 수 없는 모델",
+      rangeOfTotal: "{{from}}-{{to}} / {{total}}",
+      previousPage: "이전 페이지",
+      nextPage: "다음 페이지",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

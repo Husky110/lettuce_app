@@ -10411,6 +10411,10 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "不明なモデル",
+      rangeOfTotal: "{{from}}-{{to}} / {{total}}",
+      previousPage: "前のページ",
+      nextPage: "次のページ",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

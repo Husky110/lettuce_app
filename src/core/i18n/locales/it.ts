@@ -10410,6 +10410,10 @@ export const itMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Modello sconosciuto",
+      rangeOfTotal: "{{from}}-{{to}} di {{total}}",
+      previousPage: "Pagina precedente",
+      nextPage: "Pagina successiva",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

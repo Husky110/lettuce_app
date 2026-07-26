@@ -10411,6 +10411,10 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Mô hình không xác định",
+      rangeOfTotal: "{{from}}-{{to}} trên {{total}}",
+      previousPage: "Trang trước",
+      nextPage: "Trang tiếp theo",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

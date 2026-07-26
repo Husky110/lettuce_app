@@ -10410,6 +10410,10 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Onbekend model",
+      rangeOfTotal: "{{from}}-{{to}} van {{total}}",
+      previousPage: "Vorige pagina",
+      nextPage: "Volgende pagina",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

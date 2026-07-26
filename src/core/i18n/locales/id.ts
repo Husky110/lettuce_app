@@ -10411,6 +10411,10 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/d",
       ttft: "{{value}} ms",
       unknownModel: "Model tidak dikenal",
+      rangeOfTotal: "{{from}}-{{to}} dari {{total}}",
+      previousPage: "Halaman sebelumnya",
+      nextPage: "Halaman berikutnya",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

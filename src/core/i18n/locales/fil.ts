@@ -10411,6 +10411,10 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Hindi kilalang modelo",
+      rangeOfTotal: "{{from}}-{{to}} ng {{total}}",
+      previousPage: "Nakaraang pahina",
+      nextPage: "Susunod na pahina",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

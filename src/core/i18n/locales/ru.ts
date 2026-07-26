@@ -10410,6 +10410,10 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} мс",
       unknownModel: "Неизвестная модель",
+      rangeOfTotal: "{{from}}-{{to}} из {{total}}",
+      previousPage: "Предыдущая страница",
+      nextPage: "Следующая страница",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

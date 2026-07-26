@@ -10411,6 +10411,10 @@ export const trMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Bilinmeyen model",
+      rangeOfTotal: "{{from}}-{{to}} / {{total}}",
+      previousPage: "Önceki sayfa",
+      nextPage: "Sonraki sayfa",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

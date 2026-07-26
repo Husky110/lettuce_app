@@ -10411,6 +10411,10 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "अज्ञात मॉडल",
+      rangeOfTotal: "{{from}}-{{to}} / {{total}}",
+      previousPage: "पिछला पेज",
+      nextPage: "अगला पेज",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

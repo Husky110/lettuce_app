@@ -10410,6 +10410,10 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} 毫秒 (ms)",
       unknownModel: "未知模型",
+      rangeOfTotal: "{{from}}-{{to}} / {{total}}",
+      previousPage: "上一頁",
+      nextPage: "下一頁",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 };

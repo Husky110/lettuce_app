@@ -11117,6 +11117,10 @@ export const enMessages = {
       speed: "{{value}} tok/s",
       ttft: "{{value}} ms",
       unknownModel: "Unknown model",
+      rangeOfTotal: "{{from}}-{{to}} of {{total}}",
+      previousPage: "Previous page",
+      nextPage: "Next page",
+      pageOf: "{{page}} / {{total}}",
     },
   },
 } as const;
