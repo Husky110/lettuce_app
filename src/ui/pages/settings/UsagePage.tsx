@@ -18,8 +18,6 @@ import {
 } from "../../../core/usage";
 import {
   Download,
-  TrendingUp,
-  TrendingDown,
   Activity,
   Clock,
   Filter,
@@ -29,10 +27,13 @@ import {
   X,
   Loader2,
   ChevronDown,
+  Gauge,
 } from "lucide-react";
 import { BottomMenu } from "../../components";
 import { useI18n } from "../../../core/i18n/context";
 import {
+  SectionCard,
+  StatTile,
   UsageRequestDetailSheet,
   formatCompactNumber,
   formatCurrency,
@@ -42,6 +43,7 @@ import {
   getRelativeTime,
 } from "./UsageActivityShared";
 import { cn } from "../../design-tokens";
+import { NanoGptUsagePanel } from "./NanoGptUsagePanel";
 
 // =============================================================================
 // Helpers
@@ -68,7 +70,7 @@ function dayKeyFromDate(date: Date): string {
 }
 
 type DatePreset = "today" | "week" | "month" | "all" | "custom";
-type ViewMode = "dashboard" | "appTime";
+type ViewMode = "dashboard" | "appTime" | "nanogpt";
 
 function getDateRange(preset: DatePreset): { start: Date; end: Date } {
   const now = new Date();
@@ -131,92 +133,6 @@ const TimeTooltip = makeChartTooltip(formatDurationMs);
 // =============================================================================
 // Atoms
 // =============================================================================
-
-function StatTile({
-  label,
-  value,
-  sub,
-  trend,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  trend?: { value: number; isUp: boolean } | null;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-xl border px-3.5 py-3",
-        highlight
-          ? "border-accent/25 bg-accent/[0.06]"
-          : "border-fg/8 bg-fg/[0.025]",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg/40">
-          {label}
-        </span>
-        {trend && trend.value > 0 && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-              trend.isUp
-                ? "bg-accent/12 text-accent"
-                : "bg-danger/12 text-danger",
-            )}
-          >
-            {trend.isUp ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-            {trend.value.toFixed(0)}%
-          </span>
-        )}
-      </div>
-      <div
-        className={cn(
-          "mt-1.5 truncate text-[20px] font-semibold tracking-tight tabular-nums",
-          highlight ? "text-accent" : "text-fg",
-        )}
-      >
-        {value}
-      </div>
-      {sub && (
-        <div className="mt-0.5 truncate text-[11.5px] text-fg/45">{sub}</div>
-      )}
-    </div>
-  );
-}
-
-function SectionCard({
-  title,
-  subtitle,
-  right,
-  children,
-  bodyClassName,
-}: {
-  title: string;
-  subtitle?: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
-  bodyClassName?: string;
-}) {
-  return (
-    <section className="rounded-xl border border-fg/8 bg-fg/[0.02]">
-      <header className="flex items-center justify-between gap-3 border-b border-fg/8 px-4 py-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-[13px] font-semibold tracking-tight text-fg">
-            {title}
-          </h3>
-          {subtitle && (
-            <p className="mt-0.5 truncate text-[11.5px] text-fg/45">{subtitle}</p>
-          )}
-        </div>
-        {right && <div className="shrink-0">{right}</div>}
-      </header>
-      <div className={cn("p-4", bodyClassName)}>{children}</div>
-    </section>
-  );
-}
 
 function RankedBarList({
   items,
@@ -782,6 +698,11 @@ export function UsagePage() {
       label: t("usageAnalytics.page.appTime"),
       icon: <Clock size={12} />,
     },
+    {
+      key: "nanogpt",
+      label: t("usageAnalytics.page.nanoGpt.tab"),
+      icon: <Gauge size={12} />,
+    },
   ];
 
   return (
@@ -801,7 +722,9 @@ export function UsagePage() {
           <p className="mt-1 text-[12.5px] text-fg/50">
             {viewMode === "dashboard"
               ? t("usageAnalytics.page.tokenConsumptionOverTime")
-              : t("usageAnalytics.page.usageDurationPerDay")}
+              : viewMode === "appTime"
+                ? t("usageAnalytics.page.usageDurationPerDay")
+                : t("usageAnalytics.page.nanoGpt.subtitle")}
           </p>
         </div>
 
@@ -835,62 +758,64 @@ export function UsagePage() {
       </header>
 
       {/* ---- Toolbar ---- */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PresetPills
-          value={viewMode === "dashboard" ? datePreset : appTimePreset}
-          onChange={(v) =>
-            viewMode === "dashboard" ? setDatePreset(v) : setAppTimePreset(v)
-          }
-          onCustom={() => setShowCustomDatePicker(true)}
-          options={presetOptions}
-          customLabel={t("usageAnalytics.page.custom")}
-          customActive={
-            viewMode === "dashboard"
-              ? datePreset === "custom"
-              : appTimePreset === "custom"
-          }
-        />
-
-        <div className="flex items-center gap-2">
-          {viewMode === "dashboard" && (
-            <button
-              onClick={() => setShowFilters(true)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px] font-medium transition",
-                activeFilterCount > 0
-                  ? "border-accent/30 bg-accent/10 text-accent"
-                  : "border-fg/8 bg-fg/[0.02] text-fg/60 hover:border-fg/15 hover:bg-fg/5 hover:text-fg",
-              )}
-            >
-              <Filter size={12} />
-              {activeFilterCount > 0
-                ? t("usageAnalytics.page.filtersCount", { count: activeFilterCount })
-                : t("usageAnalytics.page.filters")}
-            </button>
-          )}
-
-          {viewMode === "dashboard" && (
-            <IconButton
-              icon={<Download size={14} />}
-              label={t("common.buttons.export")}
-              onClick={() => void handleExport()}
-              disabled={exporting || filteredRecords.length === 0}
-              spinning={exporting}
-            />
-          )}
-
-          <IconButton
-            icon={<RefreshCw size={14} />}
-            label={t("common.buttons.refresh")}
-            onClick={() => {
-              if (viewMode === "dashboard") void loadDashboard("refresh");
-              else void loadAppUsage();
-            }}
-            disabled={refreshing}
-            spinning={refreshing}
+      {viewMode !== "nanogpt" && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PresetPills
+            value={viewMode === "dashboard" ? datePreset : appTimePreset}
+            onChange={(v) =>
+              viewMode === "dashboard" ? setDatePreset(v) : setAppTimePreset(v)
+            }
+            onCustom={() => setShowCustomDatePicker(true)}
+            options={presetOptions}
+            customLabel={t("usageAnalytics.page.custom")}
+            customActive={
+              viewMode === "dashboard"
+                ? datePreset === "custom"
+                : appTimePreset === "custom"
+            }
           />
+
+          <div className="flex items-center gap-2">
+            {viewMode === "dashboard" && (
+              <button
+                onClick={() => setShowFilters(true)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px] font-medium transition",
+                  activeFilterCount > 0
+                    ? "border-accent/30 bg-accent/10 text-accent"
+                    : "border-fg/8 bg-fg/[0.02] text-fg/60 hover:border-fg/15 hover:bg-fg/5 hover:text-fg",
+                )}
+              >
+                <Filter size={12} />
+                {activeFilterCount > 0
+                  ? t("usageAnalytics.page.filtersCount", { count: activeFilterCount })
+                  : t("usageAnalytics.page.filters")}
+              </button>
+            )}
+
+            {viewMode === "dashboard" && (
+              <IconButton
+                icon={<Download size={14} />}
+                label={t("common.buttons.export")}
+                onClick={() => void handleExport()}
+                disabled={exporting || filteredRecords.length === 0}
+                spinning={exporting}
+              />
+            )}
+
+            <IconButton
+              icon={<RefreshCw size={14} />}
+              label={t("common.buttons.refresh")}
+              onClick={() => {
+                if (viewMode === "dashboard") void loadDashboard("refresh");
+                else void loadAppUsage();
+              }}
+              disabled={refreshing}
+              spinning={refreshing}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ---- Body ---- */}
       <AnimatePresence mode="wait">
@@ -1088,7 +1013,7 @@ export function UsagePage() {
               </>
             )}
           </motion.div>
-        ) : (
+        ) : viewMode === "appTime" ? (
           <motion.div
             key="appTime"
             initial={{ opacity: 0, y: 4 }}
@@ -1179,6 +1104,16 @@ export function UsagePage() {
                 </ResponsiveContainer>
               </div>
             </SectionCard>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="nanogpt"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+          >
+            <NanoGptUsagePanel />
           </motion.div>
         )}
       </AnimatePresence>

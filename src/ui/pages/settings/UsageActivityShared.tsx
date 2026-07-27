@@ -1,4 +1,4 @@
-import { Zap, ChevronRight } from "lucide-react";
+import { Zap, ChevronRight, TrendingUp, TrendingDown } from "lucide-react";
 import { BottomMenu } from "../../components";
 import { RequestUsage } from "../../../core/usage";
 import { useI18n } from "../../../core/i18n/context";
@@ -95,6 +95,92 @@ function parseMetadataNumber(metadata: RequestUsage["metadata"], key: string): n
   if (!raw) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function StatTile({
+  label,
+  value,
+  sub,
+  trend,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  trend?: { value: number; isUp: boolean } | null;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border px-3.5 py-3",
+        highlight
+          ? "border-accent/25 bg-accent/[0.06]"
+          : "border-fg/8 bg-fg/[0.025]",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg/40">
+          {label}
+        </span>
+        {trend && trend.value > 0 && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+              trend.isUp
+                ? "bg-accent/12 text-accent"
+                : "bg-danger/12 text-danger",
+            )}
+          >
+            {trend.isUp ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+            {trend.value.toFixed(0)}%
+          </span>
+        )}
+      </div>
+      <div
+        className={cn(
+          "mt-1.5 truncate text-[20px] font-semibold tracking-tight tabular-nums",
+          highlight ? "text-accent" : "text-fg",
+        )}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div className="mt-0.5 truncate text-[11.5px] text-fg/45">{sub}</div>
+      )}
+    </div>
+  );
+}
+
+export function SectionCard({
+  title,
+  subtitle,
+  right,
+  children,
+  bodyClassName,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  bodyClassName?: string;
+}) {
+  return (
+    <section className="rounded-xl border border-fg/8 bg-fg/[0.02]">
+      <header className="flex items-center justify-between gap-3 border-b border-fg/8 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-[13px] font-semibold tracking-tight text-fg">
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="mt-0.5 truncate text-[11.5px] text-fg/45">{subtitle}</p>
+          )}
+        </div>
+        {right && <div className="shrink-0">{right}</div>}
+      </header>
+      <div className={cn("p-4", bodyClassName)}>{children}</div>
+    </section>
+  );
 }
 
 function DetailStat({

@@ -74,6 +74,7 @@ import {
 } from "./ui/pages/chats";
 import { ThemeProvider } from "./core/theme/ThemeContext";
 import { toast } from "./ui/components/toast";
+import { NanoGptQuotaMonitor } from "./ui/components/NanoGptQuotaMonitor";
 import { DownloadQueueProvider } from "./core/downloads/DownloadQueueContext";
 import {
   CreateCharacterPage,
@@ -614,6 +615,7 @@ function App() {
                 descriptionClassName: "text-xs text-fg/70",
               }}
             />
+            <NanoGptQuotaMonitor />
             <ConfirmBottomMenuHost />
             <WhatsNewDrawer isOpen={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
             <DownloadQueueProvider>

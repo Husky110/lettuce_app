@@ -14,6 +14,7 @@ macro_rules! invoke_handler {
             crate::providers::verify_provider_api_key,
             crate::providers::get_provider_configs,
             crate::providers::commands::get_remote_models,
+            crate::providers::nanogpt_usage::nanogpt_subscription_usage,
             crate::providers::openrouter::get_openrouter_models,
             crate::providers::openrouter::get_openrouter_endpoints,
             crate::asr_manager::asr_vocabulary_list,

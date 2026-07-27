@@ -210,6 +210,11 @@ pub async fn generate_image(
             &request.credential_id,
         )?;
         provider_label = provider_cred.label.clone();
+        crate::providers::nanogpt_usage::note_request(
+            &app,
+            &provider_cred.provider_id,
+            &provider_cred.id,
+        );
 
         if request.provider_id == "sdcpp" {
             let response = super::sdcpp::generate(&app, &request).await?;

@@ -205,6 +205,11 @@ pub fn require_api_key(
     // Prefer inline api_key on the credential
     if let Some(ref key) = credential.api_key {
         if !key.is_empty() {
+            crate::providers::nanogpt_usage::note_request(
+                app,
+                &credential.provider_id,
+                &credential.id,
+            );
             return Ok(key.clone());
         }
     }
