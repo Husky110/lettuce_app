@@ -1409,7 +1409,7 @@ function AppContent() {
           <AppNav
             style={effectiveNavStyle}
             side={navSide}
-            align={isDesktopPlatform ? navAlign : "start"}
+            align={isDesktopPlatform ? navAlign : "center"}
             edge={isDesktopPlatform ? navEdge : "bottom"}
             items={isDesktopPlatform ? navItems : null}
             onCreateClick={() => setShowCreateMenu(true)}
