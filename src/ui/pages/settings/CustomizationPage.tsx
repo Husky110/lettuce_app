@@ -812,7 +812,7 @@ export function CustomizationPage() {
               </div>
             </div>
           )}
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-3">
+          <div className="mt-2 flex flex-col gap-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="text-sm font-medium text-fg">
                 {t("accessibility.navigation.header")}
@@ -821,14 +821,14 @@ export function CustomizationPage() {
                 {t("accessibility.navigation.headerDesc")}
               </div>
             </div>
-            <div className="flex shrink-0 gap-1 rounded-lg border border-fg/10 bg-fg/5 p-1">
+            <div className="flex w-full shrink-0 gap-1 rounded-lg border border-fg/10 bg-fg/5 p-1 sm:w-auto">
               {HEADER_STYLE_OPTIONS.filter((style) => !isMobile || style !== "inline").map((style) => (
                 <button
                   key={style}
                   type="button"
                   onClick={() => void persistHeaderStyle(style)}
                   className={cn(
-                    "rounded-md px-3 py-1 text-xs font-medium",
+                    "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-[11px] font-medium sm:flex-none sm:px-3 sm:py-1 sm:text-xs",
                     interactive.transition.fast,
                     headerStyle === style
                       ? "bg-accent/20 text-accent"
