@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::{deepseek::DeepSeekAdapter, ProviderAdapter};
 use crate::chat_manager::tooling::ToolConfig;
@@ -56,7 +56,7 @@ impl ProviderAdapter for NanoGPTAdapter {
         reasoning_effort: Option<String>,
         reasoning_budget: Option<u32>,
     ) -> Value {
-        DeepSeekAdapter.body(
+        let mut body = DeepSeekAdapter.body(
             model_name,
             messages_for_api,
             system_prompt,
@@ -72,6 +72,50 @@ impl ProviderAdapter for NanoGPTAdapter {
             reasoning_enabled,
             reasoning_effort,
             reasoning_budget,
+        );
+        if should_stream {
+            if let Some(object) = body.as_object_mut() {
+                object.insert("stream_options".into(), json!({ "include_usage": true }));
+            }
+        }
+        body
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn body_for(should_stream: bool) -> Value {
+        NanoGPTAdapter.body(
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            &vec![json!({ "role": "user", "content": "hi" })],
+            None,
+            None,
+            None,
+            2048,
+            None,
+            should_stream,
+            None,
+            None,
+            None,
+            None,
+            false,
+            None,
+            None,
         )
+    }
+
+    #[test]
+    fn requests_usage_on_streamed_completions() {
+        assert_eq!(
+            body_for(true).get("stream_options"),
+            Some(&json!({ "include_usage": true }))
+        );
+    }
+
+    #[test]
+    fn omits_stream_options_when_not_streaming() {
+        assert_eq!(body_for(false).get("stream_options"), None);
     }
 }
