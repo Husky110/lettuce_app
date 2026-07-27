@@ -52,6 +52,13 @@ function quotaWindowStart(
   return start.getTime();
 }
 
+function quotaToneColor(percent: number | null): string {
+  if (percent === null) return "var(--color-accent)";
+  if (percent * 100 >= 90) return "var(--color-danger)";
+  if (percent * 100 >= 75) return "var(--color-warning)";
+  return "var(--color-accent)";
+}
+
 function formatQuotaValue(value?: number | null): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat(undefined, {
@@ -129,12 +136,12 @@ function QuotaRing({
             cy={RING_SIZE / 2}
             r={RING_RADIUS}
             fill="none"
-            stroke="var(--color-accent)"
+            stroke={quotaToneColor(percent)}
             strokeWidth={RING_STROKE}
             strokeLinecap="round"
             strokeDasharray={RING_CIRCUMFERENCE}
             strokeDashoffset={RING_CIRCUMFERENCE * (1 - filled)}
-            className="transition-[stroke-dashoffset] duration-700 ease-out"
+            className="transition-[stroke-dashoffset,stroke] duration-700 ease-out"
             style={{ opacity: filled === 0 ? 0 : 1 }}
           />
         </svg>
@@ -171,8 +178,11 @@ function SecondaryWindow({ label, window }: { label: string; window: NanoGptQuot
       </div>
       <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-fg/8">
         <div
-          className="h-full rounded-full bg-accent transition-[width] duration-500"
-          style={{ width: `${(percent ?? 0) * 100}%` }}
+          className="h-full rounded-full transition-[width,background-color] duration-500"
+          style={{
+            width: `${(percent ?? 0) * 100}%`,
+            backgroundColor: quotaToneColor(percent),
+          }}
         />
       </div>
       <div className="mt-2 flex justify-between text-[11px] tabular-nums text-fg/45">
@@ -462,12 +472,6 @@ export function NanoGptUsagePanel() {
   const resetLabel = resetDate
     ? `${resetDate.toLocaleDateString(undefined, { dateStyle: "medium" })} · ${resetDate.toLocaleTimeString(undefined, { timeStyle: "short" })}`
     : t("usageAnalytics.page.nanoGpt.notReported");
-  const statusLabel = useMemo(() => {
-    if (usage?.active === false) return t("usageAnalytics.page.nanoGpt.inactive");
-    if (usage?.state) return usage.state;
-    return t("usageAnalytics.page.nanoGpt.active");
-  }, [t, usage]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -544,14 +548,9 @@ export function NanoGptUsagePanel() {
             />
 
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-[13px] font-semibold tracking-tight text-fg">
-                  {t(`usageAnalytics.page.nanoGpt.${primary.kind}`)}
-                </h4>
-                <span className="rounded-full border border-accent/20 bg-accent/[0.07] px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-accent">
-                  {statusLabel}
-                </span>
-              </div>
+              <h4 className="text-[13px] font-semibold tracking-tight text-fg">
+                {t(`usageAnalytics.page.nanoGpt.${primary.kind}`)}
+              </h4>
 
               <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                 <StatTile
@@ -568,12 +567,10 @@ export function NanoGptUsagePanel() {
                 />
               </div>
 
-              <div className="mt-3 flex items-center gap-1.5 text-[11.5px] text-fg/45">
-                <CalendarClock size={13} className="shrink-0 text-fg/35" />
-                <span className="truncate">
-                  {t("usageAnalytics.page.nanoGpt.resets")} {resetLabel}
-                </span>
-              </div>
+              <p className="mt-3 truncate text-[11.5px] text-fg/45">
+                <CalendarClock size={13} className="mr-1.5 inline align-[-0.18em] text-fg/35" />
+                {t("usageAnalytics.page.nanoGpt.resets")} {resetLabel}
+              </p>
             </div>
           </div>
         ) : usage ? (
