@@ -47,6 +47,5 @@ pub(crate) use platform::android_monitor;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
     app::run();
 }

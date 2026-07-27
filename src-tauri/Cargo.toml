@@ -29,8 +29,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 zip = "2"
 anyhow = "1"
 flate2 = "1.0"
@@ -38,15 +37,14 @@ tar = "0.4"
 serde_json = "1"
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "rustls-tls"] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unified-entity-card = "0.2.0"
 tauri-plugin-aptabase = { path = "crates/tauri-plugin-aptabase" }
-reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "multipart", "query", "rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 tower-http = { version = "0.6", default-features = false, features = ["cors"] }
 futures-util = "0.3"
