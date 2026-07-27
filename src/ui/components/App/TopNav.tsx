@@ -714,15 +714,21 @@ export function TopNav({
   useLayoutEffect(() => {
     const el = headerRef.current;
     if (!el) return;
-    const gap = floating ? 12 : 0;
     const publish = () => {
-      document.documentElement.style.setProperty("--topnav-h", `${el.offsetHeight + gap}px`);
+      const titlebar =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--titlebar-h"),
+        ) || 0;
+      const extent = el.getBoundingClientRect().bottom - titlebar;
+      document.documentElement.style.setProperty("--topnav-h", `${Math.max(0, extent)}px`);
     };
     publish();
     const ro = new ResizeObserver(publish);
     ro.observe(el);
+    window.addEventListener("resize", publish);
     return () => {
       ro.disconnect();
+      window.removeEventListener("resize", publish);
       document.documentElement.style.setProperty("--topnav-h", "0px");
     };
   }, [floating]);
@@ -736,12 +742,16 @@ export function TopNav({
             "fixed left-[calc(var(--appnav-top-w,0px)+2rem)] right-[calc(var(--appnav-top-wr,0px)+2rem)]",
             "lg:left-[calc(var(--appnav-top-w,0px)+3rem)] lg:right-[calc(var(--appnav-top-wr,0px)+3rem)] lg:mx-auto",
             CONTENT_INNER_MAX_W_LG,
-            "top-[calc(var(--titlebar-h,0px)+12px)] z-40 rounded-full border border-fg/10 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-md bg-nav/90",
+            "top-[calc(var(--titlebar-h,0px)+env(safe-area-inset-top)+12px)] z-40 rounded-full border border-fg/10 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-md bg-nav/90",
           )
           : "fixed left-[var(--appnav-top-w,0px)] right-[var(--appnav-top-wr,0px)] top-[var(--titlebar-h,0px)] z-40 border-b border-fg/10 backdrop-blur-md bg-nav/80 lg:px-4"
       }
       style={{
-        paddingTop: isDesktop ? "8px" : "calc(env(safe-area-inset-top) + 12px)",
+        paddingTop: isDesktop
+          ? "8px"
+          : floating
+            ? "12px"
+            : "calc(env(safe-area-inset-top) + 12px)",
         paddingBottom: isDesktop ? "8px" : "12px",
       }}
       {...dragRegionAttr}
