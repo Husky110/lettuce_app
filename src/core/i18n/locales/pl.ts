@@ -7010,9 +7010,9 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Dołącz",
-      joinDesc: "Połącz z hostem",
+      joinDesc: "Odbierz dane z hosta",
       host: "Host",
-      hostDesc: "Udostępnij swoje dane",
+      hostDesc: "Wyślij dane z tego urządzenia",
     },
     sections: {
       mode: "Tryb",

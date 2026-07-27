@@ -271,6 +271,23 @@ pub fn local_device_has_onboarded(conn: &DbConnection) -> bool {
     flag("completed") || flag("skipped")
 }
 
+fn has_incompatible_sync_state(conn: &rusqlite::Connection) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT
+           EXISTS(
+             SELECT 1 FROM sync_changes
+             WHERE op != 'delete' AND payload_schema != ?1
+           )
+           OR EXISTS(
+             SELECT 1 FROM sync_entity_heads
+             WHERE deleted = 0 AND payload_schema != ?1
+           )",
+        params![CHANGE_SCHEMA_VERSION],
+        |row| row.get::<_, bool>(0),
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 pub fn rebuild_change_log(app: &tauri::AppHandle, conn: &mut DbConnection) -> Result<(), String> {
     let local_device_id = get_or_create_local_device_id(conn)?;
     let current_records = collect_current_entity_records(app, conn)?;
@@ -279,14 +296,62 @@ pub fn rebuild_change_log(app: &tauri::AppHandle, conn: &mut DbConnection) -> Re
         .map(|record| record.key.clone())
         .collect::<HashSet<_>>();
     let heads = load_entity_heads(conn)?;
+    let replace_stale_state = has_incompatible_sync_state(conn)?;
     let tx = conn
         .transaction()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
+    if replace_stale_state {
+        log_info_global(
+            "sync",
+            format!(
+                "Rebuilding stale sync metadata with payload schema {}",
+                CHANGE_SCHEMA_VERSION
+            ),
+        );
+        tx.execute("DELETE FROM sync_changes", [])
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        tx.execute("DELETE FROM sync_entity_heads", [])
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        tx.execute("DELETE FROM sync_peer_cursors", [])
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+
     for record in current_records {
         let head = heads.get(&record.key);
-        if head.is_some_and(|head| !head.deleted && head.payload_hash == record.payload_hash) {
+        if !replace_stale_state
+            && head.is_some_and(|head| {
+                !head.deleted
+                    && head.payload_schema == record.payload_schema
+                    && head.payload_hash == record.payload_hash
+            })
+        {
             continue;
+        }
+
+        if replace_stale_state {
+            if let Some(head) = head.filter(|head| {
+                !head.deleted
+                    && !head.source_device_id.is_empty()
+                    && head.source_change_id > 0
+            }) {
+                let origin = ChangeOrigin {
+                    source_device_id: &head.source_device_id,
+                    source_created_at: head.source_created_at,
+                    source_change_id: head.source_change_id,
+                };
+                insert_change(
+                    &tx,
+                    &record.key,
+                    ChangeOp::Upsert,
+                    record.payload_schema,
+                    &record.payload_hash,
+                    &record.payload,
+                    &origin,
+                    false,
+                )?;
+                continue;
+            }
         }
 
         append_local_change(
@@ -301,7 +366,31 @@ pub fn rebuild_change_log(app: &tauri::AppHandle, conn: &mut DbConnection) -> Re
     }
 
     for (key, head) in heads {
-        if !head.deleted && !current_keys.contains(&key) {
+        if current_keys.contains(&key) {
+            continue;
+        }
+
+        if replace_stale_state
+            && head.deleted
+            && !head.source_device_id.is_empty()
+            && head.source_change_id > 0
+        {
+            let origin = ChangeOrigin {
+                source_device_id: &head.source_device_id,
+                source_created_at: head.source_created_at,
+                source_change_id: head.source_change_id,
+            };
+            insert_change(
+                &tx,
+                &key,
+                ChangeOp::Delete,
+                CHANGE_SCHEMA_VERSION,
+                "",
+                &[],
+                &origin,
+                false,
+            )?;
+        } else if !head.deleted {
             append_local_change(
                 &tx,
                 &key,
@@ -4666,6 +4755,59 @@ pub fn scan_for_missing_files(conn: &DbConnection, app_handle: &tauri::AppHandle
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sync_state_test_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE sync_changes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              op TEXT NOT NULL,
+              payload_schema INTEGER NOT NULL
+            );
+            CREATE TABLE sync_entity_heads (
+              entity_id TEXT PRIMARY KEY,
+              payload_schema INTEGER NOT NULL,
+              deleted INTEGER NOT NULL DEFAULT 0
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn incompatible_upsert_change_requests_sync_state_rebuild() {
+        let conn = sync_state_test_conn();
+        conn.execute(
+            "INSERT INTO sync_changes (op, payload_schema) VALUES ('upsert', ?1)",
+            params![CHANGE_SCHEMA_VERSION - 1],
+        )
+        .unwrap();
+        assert!(has_incompatible_sync_state(&conn).unwrap());
+    }
+
+    #[test]
+    fn legacy_delete_does_not_request_sync_state_rebuild() {
+        let conn = sync_state_test_conn();
+        conn.execute(
+            "INSERT INTO sync_changes (op, payload_schema) VALUES ('delete', ?1)",
+            params![CHANGE_SCHEMA_VERSION - 1],
+        )
+        .unwrap();
+        assert!(!has_incompatible_sync_state(&conn).unwrap());
+    }
+
+    #[test]
+    fn incompatible_live_head_requests_sync_state_rebuild() {
+        let conn = sync_state_test_conn();
+        conn.execute(
+            "INSERT INTO sync_entity_heads (entity_id, payload_schema, deleted) VALUES ('1', ?1, 0)",
+            params![CHANGE_SCHEMA_VERSION - 1],
+        )
+        .unwrap();
+        assert!(has_incompatible_sync_state(&conn).unwrap());
+    }
 
     fn sample_record() -> SyncedMemoryEmbedding {
         SyncedMemoryEmbedding {

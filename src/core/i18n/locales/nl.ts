@@ -7669,9 +7669,9 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Deelnemen",
-      joinDesc: "Verbind met host",
+      joinDesc: "Gegevens van host ontvangen",
       host: "Hosten",
-      hostDesc: "Deel je gegevens",
+      hostDesc: "Gegevens van dit apparaat verzenden",
     },
     sections: {
       mode: "Modus",

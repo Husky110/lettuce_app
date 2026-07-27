@@ -53,10 +53,9 @@ pub struct ChangeRecord {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum P2PMessage {
     Handshake {
-        #[serde(default = "default_protocol_version")]
         protocol_version: u32,
+        app_version: String,
         device_name: String,
-        #[serde(default)]
         device_id: String,
         salt: [u8; 16],
         challenge: [u8; 16],
@@ -113,8 +112,4 @@ pub enum P2PMessage {
     AssetContentComplete {
         entity_id: String,
     },
-}
-
-fn default_protocol_version() -> u32 {
-    1
 }

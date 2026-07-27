@@ -7668,9 +7668,9 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "加入",
-      joinDesc: "連接到主機",
+      joinDesc: "從主機接收資料",
       host: "主機",
-      hostDesc: "分享您的資料",
+      hostDesc: "傳送此裝置的資料",
     },
     sections: {
       mode: "模式",

@@ -17,7 +17,7 @@ use crate::sync::db as sync_db;
 use crate::sync::protocol::{ChangeOp, DomainPlan, P2PMessage, SyncDomain};
 use crate::utils::{log_error, log_info, log_warn};
 
-const PROTOCOL_VERSION: u32 = 11;
+const PROTOCOL_VERSION: u32 = 12;
 const MANIFEST_MIN_PROTOCOL: u32 = 10;
 const READY_MIN_PROTOCOL: u32 = 11;
 const MAX_PUSH_BATCH_BYTES: u64 = 4 * 1024 * 1024;
@@ -56,6 +56,26 @@ fn derive_key(pin: &str, salt: &[u8]) -> [u8; 32] {
     let mut output = [0u8; 32];
     hasher.finalize_xof().fill(&mut output);
     output
+}
+
+fn version_mismatch_error(
+    local_app_version: &str,
+    peer_name: &str,
+    peer_app_version: &str,
+    peer_protocol_version: u32,
+) -> Option<String> {
+    if peer_app_version == local_app_version && peer_protocol_version == PROTOCOL_VERSION {
+        return None;
+    }
+
+    let peer_label = if peer_name.is_empty() {
+        "The other device"
+    } else {
+        peer_name
+    };
+    Some(format!(
+        "Sync requires both devices to run exactly the same Lettuce AI version. {peer_label} uses app {peer_app_version} with protocol {peer_protocol_version}; this device uses app {local_app_version} with protocol {PROTOCOL_VERSION}. Update the mismatched device, fully restart both apps, and try again."
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -402,6 +422,7 @@ async fn handle_driver_connection(
     framed
         .send(P2PMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
+            app_version: app.package_info().version.to_string(),
             device_name: whoami::devicename(),
             device_id,
             salt,
@@ -525,29 +546,41 @@ async fn handle_driver_connection(
     // Driver expects `Handshake`.
 
     // So after `set_key`, Driver should wait for `Handshake`.
-    let (device_name, peer_device_id, peer_protocol_version) = match framed.next().await {
-        Some(Ok(P2PMessage::Handshake {
-            device_name,
-            device_id,
-            protocol_version,
-            ..
-        })) => (device_name, device_id, protocol_version),
-        Some(Ok(msg)) => {
-            return Err(crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Expected Encrypted Handshake, got {:?}", msg),
-            ))
-        }
-        Some(Err(e)) => return Err(e.to_string()),
-        None => {
-            return Err(crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                "Connection closed after auth",
-            ))
-        }
-    };
+    let (device_name, peer_device_id, peer_app_version, peer_protocol_version) =
+        match framed.next().await {
+            Some(Ok(P2PMessage::Handshake {
+                device_name,
+                device_id,
+                app_version,
+                protocol_version,
+                ..
+            })) => (device_name, device_id, app_version, protocol_version),
+            Some(Ok(msg)) => {
+                return Err(crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Expected Encrypted Handshake, got {:?}", msg),
+                ))
+            }
+            Some(Err(e)) => return Err(e.to_string()),
+            None => {
+                return Err(crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    "Connection closed after auth",
+                ))
+            }
+        };
+
+    if let Some(message) = version_mismatch_error(
+        &app.package_info().version.to_string(),
+        &device_name,
+        &peer_app_version,
+        peer_protocol_version,
+    ) {
+        framed.send(P2PMessage::Error(message.clone())).await.ok();
+        return Err(crate::utils::err_msg(module_path!(), line!(), message));
+    }
 
     // Approval Check
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -668,20 +701,6 @@ async fn handle_advertise_cursors(
 ) -> Result<(), String> {
     let mut conn = crate::storage_manager::db::open_db(app)?;
     sync_db::rebuild_change_log(app, &mut conn)?;
-
-    if peer_protocol_version < PROTOCOL_VERSION {
-        let warning = format!(
-            "Warning: peer is outdated (v{}). Please update ASAP.",
-            peer_protocol_version
-        );
-        log_warn(app, "sync_driver", warning.clone());
-        let state = app.state::<SyncManagerState>();
-        state.set_status(app, syncing(warning.clone())).await;
-        framed
-            .send(P2PMessage::StatusUpdate(warning))
-            .await
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    }
 
     log_info(app, "sync_driver", "Preparing sync manifest");
 
@@ -956,14 +975,30 @@ async fn run_passenger_session(
     let state = app.state::<SyncManagerState>();
 
     // 1. Wait for Handshake from Driver (contains Salt + Challenge)
-    let (salt, challenge, driver_device_id, driver_protocol_version) = match framed.next().await {
+    let (
+        salt,
+        challenge,
+        driver_device_id,
+        driver_device_name,
+        driver_app_version,
+        driver_protocol_version,
+    ) = match framed.next().await {
         Some(Ok(P2PMessage::Handshake {
             salt,
             challenge,
             device_id,
+            device_name,
+            app_version,
             protocol_version,
             ..
-        })) => (salt, challenge, device_id, protocol_version),
+        })) => (
+            salt,
+            challenge,
+            device_id,
+            device_name,
+            app_version,
+            protocol_version,
+        ),
         Some(Ok(msg)) => {
             return Err(crate::utils::err_msg(
                 module_path!(),
@@ -980,6 +1015,15 @@ async fn run_passenger_session(
             ))
         }
     };
+
+    if let Some(message) = version_mismatch_error(
+        &app.package_info().version.to_string(),
+        &driver_device_name,
+        &driver_app_version,
+        driver_protocol_version,
+    ) {
+        return Err(crate::utils::err_msg(module_path!(), line!(), message));
+    }
 
     // 2. Derive Key & Encrypt Challenge & Send AuthRequest
     let key = derive_key(&pin, &salt);
@@ -1065,6 +1109,7 @@ async fn run_passenger_session(
     framed
         .send(P2PMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
+            app_version: app.package_info().version.to_string(),
             device_name: whoami::devicename(),
             device_id: local_device_id,
             salt: [0u8; 16],      // Not used post-auth
@@ -1091,18 +1136,12 @@ async fn run_passenger_session(
             "Fresh install detected; skipping local change log seeding so synced data wins conflicts",
         );
     }
-    if driver_protocol_version < PROTOCOL_VERSION {
-        let warning = format!(
-            "Warning: driver is outdated (v{}). Please update ASAP.",
-            driver_protocol_version
-        );
-        log_warn(&app, "sync_passenger", warning.clone());
-        state.set_status(&app, syncing(warning)).await;
-    }
-
     if driver_protocol_version >= READY_MIN_PROTOCOL {
         match framed.next().await {
             Some(Ok(P2PMessage::Ready)) => {}
+            Some(Ok(P2PMessage::Error(message))) => {
+                return Err(crate::utils::err_msg(module_path!(), line!(), message))
+            }
             Some(Ok(P2PMessage::Disconnect)) => {
                 return Err(crate::utils::err_msg(
                     module_path!(),
@@ -1819,4 +1858,36 @@ fn prepare_asset_changes_for_transfer(
     }
 
     Ok(prepared)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matching_versions_are_accepted() {
+        assert!(version_mismatch_error(
+            "1.2.0",
+            "Laptop",
+            "1.2.0",
+            PROTOCOL_VERSION,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn mismatched_peer_is_rejected_with_actionable_device_name() {
+        let error = version_mismatch_error("1.2.0", "Laptop", "1.1.0", 11).unwrap();
+        assert!(error.contains("Laptop uses app 1.1.0"));
+        assert!(error.contains("exactly the same"));
+        assert!(error.contains("fully restart both"));
+    }
+
+    #[test]
+    fn newer_peer_is_rejected_as_a_version_mismatch() {
+        let error =
+            version_mismatch_error("1.2.0", "Desktop", "1.3.0", PROTOCOL_VERSION + 1).unwrap();
+        assert!(error.contains("Desktop uses app 1.3.0"));
+        assert!(error.contains("Update the mismatched device"));
+    }
 }

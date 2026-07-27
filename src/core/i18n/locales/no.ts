@@ -7669,9 +7669,9 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Bli med",
-      joinDesc: "Koble til vert",
+      joinDesc: "Motta data fra verten",
       host: "Vert",
-      hostDesc: "Del dataene dine",
+      hostDesc: "Send data fra denne enheten",
     },
     sections: {
       mode: "Modus",

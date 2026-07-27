@@ -6921,9 +6921,9 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "参加",
-      joinDesc: "ホストに接続",
+      joinDesc: "ホストからデータを受信",
       host: "ホスト",
-      hostDesc: "データを共有",
+      hostDesc: "このデバイスのデータを送信",
     },
     sections: {
       mode: "モード",

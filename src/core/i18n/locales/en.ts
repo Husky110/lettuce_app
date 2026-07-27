@@ -8636,9 +8636,9 @@ export const enMessages = {
   sync: {
     modes: {
       join: "Join",
-      joinDesc: "Connect to host",
+      joinDesc: "Receive data from host",
       host: "Host",
-      hostDesc: "Share your data",
+      hostDesc: "Send this device's data",
     },
     sections: {
       mode: "Mode",

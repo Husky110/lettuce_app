@@ -6921,9 +6921,9 @@ export const ptMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Entrar",
-      joinDesc: "Conectar ao host",
+      joinDesc: "Receber dados do host",
       host: "Hospedar",
-      hostDesc: "Compartilhar seus dados",
+      hostDesc: "Enviar os dados deste dispositivo",
     },
     sections: {
       mode: "Modo",

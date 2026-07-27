@@ -7669,9 +7669,9 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Sumali",
-      joinDesc: "Kumonekta sa host",
+      joinDesc: "Tumanggap ng data mula sa host",
       host: "Host",
-      hostDesc: "Ibahagi ang iyong data",
+      hostDesc: "Ipadala ang data ng device na ito",
     },
     sections: {
       mode: "Mode",

@@ -7668,9 +7668,9 @@ export const zhHansMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "加入",
-      joinDesc: "连接到主机",
+      joinDesc: "从主机接收数据",
       host: "主机",
-      hostDesc: "分享您的数据",
+      hostDesc: "发送此设备的数据",
     },
     sections: {
       mode: "模式",

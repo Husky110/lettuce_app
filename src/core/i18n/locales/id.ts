@@ -6921,9 +6921,9 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Gabung",
-      joinDesc: "Hubungkan ke host",
+      joinDesc: "Terima data dari host",
       host: "Host",
-      hostDesc: "Bagikan data Anda",
+      hostDesc: "Kirim data perangkat ini",
     },
     sections: {
       mode: "Mode",

@@ -7669,9 +7669,9 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Подключиться",
-      joinDesc: "Подключиться к хосту",
+      joinDesc: "Получить данные с хоста",
       host: "Хост",
-      hostDesc: "Поделиться данными",
+      hostDesc: "Отправить данные этого устройства",
     },
     sections: {
       mode: "Режим",

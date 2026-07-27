@@ -6921,9 +6921,9 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "शामिल हों",
-      joinDesc: "होस्ट से कनेक्ट करें",
+      joinDesc: "होस्ट से डेटा प्राप्त करें",
       host: "होस्ट",
-      hostDesc: "अपना डेटा साझा करें",
+      hostDesc: "इस डिवाइस का डेटा भेजें",
     },
     sections: {
       mode: "मोड",

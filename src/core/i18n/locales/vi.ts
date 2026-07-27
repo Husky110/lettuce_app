@@ -6921,9 +6921,9 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Tham gia",
-      joinDesc: "Kết nối đến máy chủ",
+      joinDesc: "Nhận dữ liệu từ máy chủ",
       host: "Lưu trữ",
-      hostDesc: "Chia sẻ dữ liệu",
+      hostDesc: "Gửi dữ liệu của thiết bị này",
     },
     sections: {
       mode: "Chế độ",

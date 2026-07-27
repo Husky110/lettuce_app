@@ -7669,9 +7669,9 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Σύνδεση",
-      joinDesc: "Σύνδεση σε κεντρικό υπολογιστή",
+      joinDesc: "Λήψη δεδομένων από τον κεντρικό υπολογιστή",
       host: "Φιλοξενία",
-      hostDesc: "Μοιραστείτε τα δεδομένα σας",
+      hostDesc: "Αποστολή δεδομένων αυτής της συσκευής",
     },
     sections: {
       mode: "Λειτουργία",

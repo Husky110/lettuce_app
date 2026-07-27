@@ -7670,9 +7670,9 @@ export const trMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "Katıl",
-      joinDesc: "Ana bilgisayara bağlan",
+      joinDesc: "Ana bilgisayardan veri al",
       host: "Ana bilgisayar",
-      hostDesc: "Verilerini paylaş",
+      hostDesc: "Bu cihazın verilerini gönder",
     },
     sections: {
       mode: "Mod",

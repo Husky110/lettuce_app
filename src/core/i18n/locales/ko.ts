@@ -7669,9 +7669,9 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
   sync: {
     modes: {
       join: "참여",
-      joinDesc: "호스트에 연결",
+      joinDesc: "호스트에서 데이터 받기",
       host: "호스트",
-      hostDesc: "데이터 공유",
+      hostDesc: "이 기기의 데이터 보내기",
     },
     sections: {
       mode: "모드",
