@@ -952,10 +952,9 @@ function AppContent() {
     !isCreateRoute &&
     !isSearchRoute &&
     !isLorebookEditorRoute &&
+    !isPlaygroundRoute &&
     !usesInlineHeader &&
     !usesDiscoveryPageHeader;
-    !isPlaygroundRoute &&
-    !isLorebookEditorRoute;
   const showBottomNav =
     !isSettingRoute &&
     !isOnboardingRoute &&
