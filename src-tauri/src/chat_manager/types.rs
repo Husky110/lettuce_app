@@ -440,6 +440,18 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub accessibility: Option<AccessibilitySettings>,
     #[serde(default)]
+    pub navigation_style: Option<String>,
+    #[serde(default)]
+    pub navigation_side: Option<String>,
+    #[serde(default)]
+    pub header_style: Option<String>,
+    #[serde(default)]
+    pub nav_items: Option<Vec<String>>,
+    #[serde(default)]
+    pub nav_align: Option<String>,
+    #[serde(default)]
+    pub nav_edge: Option<String>,
+    #[serde(default)]
     pub chat_appearance: Option<Value>,
 }
 
