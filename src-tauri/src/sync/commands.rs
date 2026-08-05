@@ -1,19 +1,20 @@
 use crate::sync::manager::{self, SyncStatus};
-use tauri::{AppHandle, Manager};
+use crate::sync::v2::conflicts::{ConflictChoice, SyncConflict};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
-pub async fn start_driver(app: AppHandle, port: u16) -> Result<String, String> {
-    manager::start_driver(app, port).await
+pub async fn share_sync_device(app: AppHandle, port: u16) -> Result<String, String> {
+    manager::share_device(app, port).await
 }
 
 #[tauri::command]
-pub async fn connect_as_passenger(
+pub async fn connect_sync_device(
     app: AppHandle,
     ip: String,
     port: u16,
     pin: String,
 ) -> Result<(), String> {
-    manager::connect_as_passenger(app, ip, port, pin).await
+    manager::connect_device(app, ip, port, pin).await
 }
 
 #[tauri::command]
@@ -40,4 +41,29 @@ pub async fn approve_connection(app: AppHandle, ip: String, allow: bool) -> Resu
 #[tauri::command]
 pub async fn start_sync_session(app: tauri::AppHandle, ip: String) -> Result<(), String> {
     crate::sync::manager::start_sync_session(app, ip).await
+}
+
+#[tauri::command]
+pub fn list_sync_conflicts(app: AppHandle) -> Result<Vec<SyncConflict>, String> {
+    let conn = crate::storage_manager::db::open_db(&app)?;
+    crate::sync::v2::conflicts::list_unresolved_conflicts(&conn)
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))
+}
+
+#[tauri::command]
+pub fn resolve_sync_conflict(
+    app: AppHandle,
+    conflict_id: String,
+    choice: ConflictChoice,
+) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(&app)?;
+    crate::sync::v2::conflicts::resolve_conflict(
+        &conn,
+        &conflict_id,
+        choice,
+        crate::storage_manager::db::now_ms() as i64,
+    )
+    .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    app.emit("sync-conflicts-changed", ())
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))
 }

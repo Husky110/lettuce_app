@@ -18,6 +18,10 @@ import {
   Scan,
   Users,
   Radio,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { type as osType } from "@tauri-apps/plugin-os";
 import {
@@ -32,6 +36,8 @@ import { BottomMenu, MenuButton } from "../../components/BottomMenu";
 import { useI18n } from "../../../core/i18n/context";
 import { storageBridge } from "../../../core/storage/files";
 import { MissingModelRequirementsSheet } from "../../components/MissingModelRequirementsSheet";
+import { SyncStageProgress } from "../../components/SyncStageProgress";
+import { SyncConflictInbox } from "../../components/SyncConflictInbox";
 import {
   buildModelRequirementsQueuePath,
   getPostSyncMissingModelRequirementsSettled,
@@ -77,18 +83,26 @@ type SyncingDetails = {
   bytes_done?: number | null;
   bytes_total?: number | null;
   domain_progress?: DomainProgress[];
+  items_sent?: number | null;
+  items_received?: number | null;
+  bytes_sent?: number | null;
+  bytes_received?: number | null;
+  conflicts_detected?: number | null;
+  branches_created?: number | null;
+  database_wait_attempt?: number | null;
+  database_wait_total?: number | null;
+  database_wait_ms?: number | null;
 };
 
 type SyncStatus =
   | { status: "Idle" }
-  | { status: "DriverRunning"; details: { ip: string; port: number; pin: string; clients: number } }
+  | { status: "Sharing"; details: { ip: string; port: number; pin: string; clients: number } }
   | { status: "PendingApproval"; details: { ip: string; device_name: string } }
-  | { status: "PendingSyncStart"; details: { ip: string; device_name: string } }
-  | { status: "PassengerConnecting" }
-  | { status: "PassengerConnected"; details: { driver_ip: string } }
-  | { status: "WaitingConfirmation"; details: { driver_ip: string } }
+  | { status: "PendingStart"; details: { ip: string; device_name: string } }
+  | { status: "Connecting" }
+  | { status: "WaitingForApproval"; details: { peer: string } }
   | { status: "Syncing"; details: SyncingDetails }
-  | { status: "SyncCompleted" }
+  | { status: "Completed" }
   | { status: "Error"; details: { message: string } };
 
 function formatBytes(n: number): string {
@@ -217,12 +231,63 @@ function Card({ children, className }: { children: ReactNode; className?: string
   );
 }
 
+function TransferRail({ reverse = false }: { reverse?: boolean }) {
+  return (
+    <span className="relative h-[3px] min-w-0 flex-1 overflow-hidden rounded-full bg-fg/10">
+      <span
+        className={cn(
+          "absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-info/80 to-transparent",
+          reverse
+            ? "animate-[indeterminate_1.8s_linear_infinite_reverse]"
+            : "animate-[indeterminate_1.8s_linear_infinite]",
+        )}
+      />
+    </span>
+  );
+}
+
+function BidirectionalLink() {
+  const { t } = useI18n();
+
+  return (
+    <div className="flex items-center justify-center gap-4 rounded-xl border border-info/20 bg-info/[0.06] px-4 py-3.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-fg/10 bg-fg/5 text-fg/70">
+        <Monitor className="h-4 w-4" />
+      </div>
+
+      <div className="flex w-full max-w-[200px] flex-col items-center gap-2">
+        <div className="flex w-full items-center gap-1.5">
+          <TransferRail />
+          <ArrowRight className="h-3 w-3 shrink-0 text-info/70" />
+        </div>
+        <p
+          className={cn(
+            typography.overline.size,
+            typography.overline.weight,
+            typography.overline.transform,
+            "text-center leading-tight tracking-[0.14em] text-info/70",
+          )}
+        >
+          {t("sync.status.bidirectional")}
+        </p>
+        <div className="flex w-full items-center gap-1.5">
+          <ArrowLeft className="h-3 w-3 shrink-0 text-info/70" />
+          <TransferRail reverse />
+        </div>
+      </div>
+
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-fg/10 bg-fg/5 text-fg/70">
+        <Smartphone className="h-4 w-4" />
+      </div>
+    </div>
+  );
+}
+
 interface SyncingPanelProps {
   title: string;
   subtitle?: string | null;
   details: SyncingDetails | null;
   showSpinner?: boolean;
-  itemsLabel?: string;
   showProgressBar?: boolean;
   showCounters?: boolean;
   showBreakdown?: boolean;
@@ -233,7 +298,6 @@ function SyncingPanel({
   subtitle,
   details,
   showSpinner = true,
-  itemsLabel,
   showProgressBar = true,
   showCounters = true,
   showBreakdown = true,
@@ -244,11 +308,21 @@ function SyncingPanel({
   const bytesDone = details?.bytes_done ?? null;
   const bytesTotal = details?.bytes_total ?? null;
   const breakdown = details?.domain_progress ?? [];
+  const itemsSent = details?.items_sent ?? null;
+  const itemsReceived = details?.items_received ?? null;
+  const bytesSent = details?.bytes_sent ?? null;
+  const bytesReceived = details?.bytes_received ?? null;
+  const hasDirectionalCounters =
+    typeof itemsSent === "number" ||
+    typeof itemsReceived === "number" ||
+    typeof bytesSent === "number" ||
+    typeof bytesReceived === "number";
   const { ratio, percent: pct } = getSyncProgress(details);
   const pctLabel = formatProgressPercent(ratio);
   const hasProgress = ratio !== null;
   const hasCounters =
     showCounters &&
+    !hasDirectionalCounters &&
     ((typeof itemsTotal === "number" && itemsTotal > 0) ||
       (typeof bytesTotal === "number" && bytesTotal > 0));
 
@@ -294,6 +368,15 @@ function SyncingPanel({
         </div>
       )}
 
+      {details?.phase && (
+        <SyncStageProgress
+          phase={details.phase}
+          databaseWaitAttempt={details.database_wait_attempt}
+          databaseWaitTotal={details.database_wait_total}
+          databaseWaitMs={details.database_wait_ms}
+        />
+      )}
+
       {}
       {hasCounters && (
         <div className="grid grid-cols-2 border-t border-fg/8">
@@ -307,7 +390,7 @@ function SyncingPanel({
                 "text-fg/35",
               )}
             >
-              {itemsLabel ?? t("sync.panel.items")}
+              {t("sync.panel.items")}
             </p>
             <p className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-fg/85">
               {(itemsDone ?? 0).toLocaleString()}
@@ -332,6 +415,39 @@ function SyncingPanel({
               {formatBytes(bytesDone ?? 0)}
               {typeof bytesTotal === "number" && bytesTotal > 0 && (
                 <span className="text-fg/30"> / {formatBytes(bytesTotal)}</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasDirectionalCounters && (
+        <div className="grid grid-cols-2 border-t border-fg/8">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-1.5 text-fg/35">
+              <ArrowUp className="h-3 w-3" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider">
+                {t("sync.panel.sent")}
+              </p>
+            </div>
+            <p className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-fg/85">
+              {(itemsSent ?? 0).toLocaleString()}
+              {typeof bytesSent === "number" && (
+                <span className="ml-1 text-fg/30">· {formatBytes(bytesSent)}</span>
+              )}
+            </p>
+          </div>
+          <div className="border-l border-fg/8 px-4 py-3">
+            <div className="flex items-center gap-1.5 text-fg/35">
+              <ArrowDown className="h-3 w-3" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider">
+                {t("sync.panel.received")}
+              </p>
+            </div>
+            <p className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-fg/85">
+              {(itemsReceived ?? 0).toLocaleString()}
+              {typeof bytesReceived === "number" && (
+                <span className="ml-1 text-fg/30">· {formatBytes(bytesReceived)}</span>
               )}
             </p>
           </div>
@@ -442,20 +558,19 @@ export function SyncPage() {
     });
     return () => {
       if (unlisten) unlisten();
-      invoke("stop_sync").catch(console.error);
     };
   }, []);
 
   useEffect(() => {
-    if (status.status === "DriverRunning") setIsStartingHost(false);
+    if (status.status === "Sharing") setIsStartingHost(false);
     if (status.status !== "Idle" && status.status !== "Error") setIsConnectingToHost(false);
     if (status.status !== "PendingApproval") setIsAccepting(false);
-    if (status.status !== "PendingSyncStart") setIsStartingSyncSession(false);
-    if (status.status !== "SyncCompleted") handledCompletionRef.current = false;
+    if (status.status !== "PendingStart") setIsStartingSyncSession(false);
+    if (status.status !== "Completed") handledCompletionRef.current = false;
   }, [status]);
 
   useEffect(() => {
-    if (status.status !== "SyncCompleted" || role !== "client" || handledCompletionRef.current) {
+    if (status.status !== "Completed" || handledCompletionRef.current) {
       return;
     }
     handledCompletionRef.current = true;
@@ -477,7 +592,7 @@ export function SyncPage() {
     return () => {
       cancelled = true;
     };
-  }, [status.status, role]);
+  }, [status.status]);
 
   useEffect(() => {
     invoke<string>("get_local_ip").then(setLocalIp).catch(console.error);
@@ -487,7 +602,7 @@ export function SyncPage() {
     setIsStartingHost(true);
     setRole("host");
     try {
-      await invoke("start_driver", { port: 0 });
+      await invoke("share_sync_device", { port: 0 });
     } catch (e) {
       console.error("Failed to start driver", e);
       setIsStartingHost(false);
@@ -520,7 +635,7 @@ export function SyncPage() {
         }
       }
 
-      await invoke("connect_as_passenger", { ip: ipToUse, port: portToUse, pin: pinToUse });
+      await invoke("connect_sync_device", { ip: ipToUse, port: portToUse, pin: pinToUse });
     } catch (e) {
       console.error("Failed to connect", e);
       setIsConnectingToHost(false);
@@ -557,15 +672,14 @@ export function SyncPage() {
   };
 
   const isIdle = status.status === "Idle";
-  const isDriver = status.status === "DriverRunning";
-  const isCompleted = status.status === "SyncCompleted";
+  const isDriver = status.status === "Sharing";
+  const isCompleted = status.status === "Completed";
   const isSyncing = status.status === "Syncing";
   const isError = status.status === "Error";
-  const isConnecting = status.status === "PassengerConnecting";
-  const isConnected = status.status === "PassengerConnected";
-  const isWaitingConfirmation = status.status === "WaitingConfirmation";
+  const isConnecting = status.status === "Connecting";
+  const isWaitingForApproval = status.status === "WaitingForApproval";
   const isPendingApproval = status.status === "PendingApproval";
-  const isReadyToStart = status.status === "PendingSyncStart";
+  const isReadyToStart = status.status === "PendingStart";
   const warningMessage =
     status.status === "Syncing" && (status as any).details?.phase?.startsWith("Warning:")
       ? (status as any).details?.phase
@@ -584,7 +698,7 @@ export function SyncPage() {
   };
 
   const handleStartSync = async () => {
-    if (status.status === "PendingSyncStart") {
+    if (status.status === "PendingStart") {
       setIsStartingSyncSession(true);
       try {
         await invoke("start_sync_session", { ip: status.details.ip });
@@ -898,38 +1012,56 @@ export function SyncPage() {
           </div>
         )}
 
+        {isSyncing && (
+          <div>
+            <SectionHeader title={t("sync.sections.status")} icon={<Radio size={12} />} />
+            <div className="space-y-3">
+              <BidirectionalLink />
+              <SyncingPanel
+                title={t("sync.status.syncing")}
+                details={(status as { status: "Syncing"; details: SyncingDetails }).details}
+              />
+              <button
+                onClick={stopSync}
+                className={cn(
+                  "w-full rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 text-sm font-medium text-fg/70",
+                  interactive.transition.default,
+                  interactive.active.scale,
+                  "hover:border-fg/20 hover:bg-fg/8",
+                )}
+              >
+                {t("common.buttons.cancel")}
+              </button>
+            </div>
+          </div>
+        )}
+
         {}
         {role === "client" &&
-          (isConnecting || isSyncing || isConnected || isWaitingConfirmation) && (
+          (isConnecting || isWaitingForApproval) && (
             <div>
               <SectionHeader title={t("sync.sections.status")} icon={<Radio size={12} />} />
               {(() => {
-                const details = (isSyncing ? (status as any).details : null) as SyncingDetails | null;
-
                 const titleText = isConnecting
                   ? t("sync.status.connecting")
-                  : isWaitingConfirmation
+                  : isWaitingForApproval
                     ? t("sync.status.waitingConfirmation")
-                    : isConnected
-                      ? t("sync.status.connected")
-                      : t("sync.status.syncing");
+                    : t("sync.status.waitingConfirmation");
 
                 const subtitle =
-                  isWaitingConfirmation
+                  isWaitingForApproval
                     ? t("sync.status.waitingConfirmationDesc")
-                    : isSyncing
-                      ? details?.phase ?? null
-                      : null;
+                    : null;
 
                 return (
                   <div className="space-y-3">
                     <SyncingPanel
                       title={titleText}
                       subtitle={subtitle}
-                      details={details}
-                      showProgressBar={isSyncing}
-                      showCounters={isSyncing}
-                      showBreakdown={isSyncing}
+                      details={null}
+                      showProgressBar={false}
+                      showCounters={false}
+                      showBreakdown={false}
                     />
 
                     <button
@@ -950,7 +1082,7 @@ export function SyncPage() {
           )}
 
         {}
-        {role === "host" && (isDriver || isPendingApproval || isReadyToStart || isSyncing) && (
+        {role === "host" && (isDriver || isPendingApproval || isReadyToStart) && (
           <div>
             <SectionHeader
               title={t("sync.sections.hosting")}
@@ -977,20 +1109,7 @@ export function SyncPage() {
             />
 
             <div className="space-y-3">
-              {isSyncing ? (
-                (() => {
-                  const details = (status as any).details as SyncingDetails;
-                  return (
-                    <SyncingPanel
-                      title={t("sync.status.syncing")}
-                      subtitle={details?.phase || t("sync.status.transferringData")}
-                      details={details}
-                      itemsLabel={t("sync.panel.itemsSent")}
-                    />
-                  );
-                })()
-              ) : (
-                <Card className="overflow-hidden">
+              <Card className="overflow-hidden">
                   <div className="flex flex-col items-center px-5 pt-6 pb-4">
                     <div className="rounded-2xl bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-fg/10">
                       <QRCodeComponent
@@ -1066,12 +1185,10 @@ export function SyncPage() {
                       </code>
                     </div>
                   </div>
-                </Card>
-              )}
+              </Card>
 
               {}
-              {!isSyncing && (
-                <details className="group rounded-xl border border-fg/10 bg-fg/5">
+              <details className="group rounded-xl border border-fg/10 bg-fg/5">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3">
                     <div className="flex items-center gap-2">
                       <HelpCircle className="h-4 w-4 text-fg/40" />
@@ -1105,8 +1222,7 @@ export function SyncPage() {
                       </li>
                     ))}
                   </ul>
-                </details>
-              )}
+              </details>
 
               <button
                 onClick={stopSync}
@@ -1169,6 +1285,8 @@ export function SyncPage() {
             </Card>
           </div>
         )}
+
+        <SyncConflictInbox refreshKey={status.status} disabled={isSyncing} />
 
         <p className="px-1 pt-2 text-[11px] text-fg/35">{t("sync.disclaimer")}</p>
       </section>

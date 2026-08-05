@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use super::legacy::storage_root;
 use crate::migrations;
-use crate::sync::db::LOCAL_SYNC_STATE_VERSION;
 use crate::utils::{log_info, log_info_global, log_warn, log_warn_global, now_millis};
 
 pub fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -282,7 +281,29 @@ pub fn open_db(app: &tauri::AppHandle) -> Result<DbConnection, String> {
     swappable.get_connection()
 }
 
+pub fn tracked_write<T, F>(conn: &Connection, mutate: F) -> Result<T, String>
+where
+    F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
+{
+    crate::sync::v2::capture_local_transaction(conn, now_ms() as i64, mutate)
+        .map(|captured| captured.value)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn tracked_write_string<T, F>(conn: &Connection, mutate: F) -> Result<T, String>
+where
+    F: FnOnce(&Connection) -> Result<T, String>,
+{
+    crate::sync::v2::capture_local_string_transaction(conn, now_ms() as i64, mutate)
+        .map(|captured| captured.value)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String> {
+    init_db_connection(conn)
+}
+
+fn init_db_connection(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS meta (
@@ -730,6 +751,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           used_lorebook_entries TEXT NOT NULL DEFAULT '[]',
           attachments TEXT NOT NULL DEFAULT '[]',
           reasoning TEXT,
+          parent_message_id TEXT,
           FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
@@ -963,6 +985,9 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           memory_progress_step INTEGER,
           speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
           config_overrides TEXT NOT NULL DEFAULT '{"version":1}',
+          parent_session_id TEXT,
+          branched_from_message_id TEXT,
+          root_session_id TEXT,
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
           FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
         );
@@ -1003,6 +1028,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           model_id TEXT,
           gemini_content TEXT,
           usage_json TEXT,
+          parent_message_id TEXT,
           FOREIGN KEY(session_id) REFERENCES group_sessions(id) ON DELETE CASCADE
         );
 
@@ -1056,54 +1082,13 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         CREATE INDEX IF NOT EXISTS idx_group_messages_speaker ON group_messages(speaker_character_id);
         CREATE INDEX IF NOT EXISTS idx_group_message_variants_message ON group_message_variants(message_id);
 
-        -- Sync state
-        CREATE TABLE IF NOT EXISTS sync_local_state (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sync_changes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          domain TEXT NOT NULL,
-          entity_type TEXT NOT NULL,
-          entity_id TEXT NOT NULL,
-          source_device_id TEXT NOT NULL DEFAULT '',
-          source_created_at INTEGER NOT NULL DEFAULT 0,
-          source_change_id INTEGER NOT NULL DEFAULT 0,
-          op TEXT NOT NULL,
-          payload_schema INTEGER NOT NULL DEFAULT 1,
-          payload_hash TEXT NOT NULL,
-          payload BLOB NOT NULL DEFAULT X'',
-          created_at INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sync_entity_heads (
-          domain TEXT NOT NULL,
-          entity_type TEXT NOT NULL,
-          entity_id TEXT NOT NULL,
-          payload_hash TEXT NOT NULL,
-          payload_schema INTEGER NOT NULL DEFAULT 1,
-          payload BLOB NOT NULL DEFAULT X'',
-          deleted INTEGER NOT NULL DEFAULT 0,
-          last_change_id INTEGER NOT NULL,
-          source_device_id TEXT NOT NULL DEFAULT '',
-          source_created_at INTEGER NOT NULL DEFAULT 0,
-          source_change_id INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (domain, entity_type, entity_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS sync_peer_cursors (
-          peer_device_id TEXT NOT NULL,
-          domain TEXT NOT NULL,
-          last_change_id INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (peer_device_id, domain)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_sync_changes_domain_id ON sync_changes(domain, id);
-        CREATE INDEX IF NOT EXISTS idx_sync_changes_entity ON sync_changes(domain, entity_type, entity_id, id);
       "#,
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    crate::sync::v2::create_schema(conn)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    crate::migrations::run_preflight_migrations(conn)?;
 
     let _ = conn.execute(
         "ALTER TABLE llm_generation_metrics ADD COLUMN message_id TEXT",
@@ -1173,145 +1158,6 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         [],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-
-    let mut stmt_sync_heads = conn
-        .prepare("PRAGMA table_info(sync_entity_heads)")
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let mut sync_head_cols = std::collections::HashSet::new();
-    let mut rows_sync_heads = stmt_sync_heads
-        .query([])
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    while let Some(row) = rows_sync_heads
-        .next()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-    {
-        let col_name: String = row
-            .get(1)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        sync_head_cols.insert(col_name);
-    }
-
-    let mut reset_sync_state = false;
-
-    if !sync_head_cols.contains("payload_schema") {
-        conn.execute(
-            "ALTER TABLE sync_entity_heads ADD COLUMN payload_schema INTEGER NOT NULL DEFAULT 1",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    }
-    if !sync_head_cols.contains("payload") {
-        conn.execute(
-            "ALTER TABLE sync_entity_heads ADD COLUMN payload BLOB NOT NULL DEFAULT X''",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    }
-    if !sync_head_cols.contains("source_device_id") {
-        conn.execute(
-            "ALTER TABLE sync_entity_heads ADD COLUMN source_device_id TEXT NOT NULL DEFAULT ''",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-    if !sync_head_cols.contains("source_created_at") {
-        conn.execute(
-            "ALTER TABLE sync_entity_heads ADD COLUMN source_created_at INTEGER NOT NULL DEFAULT 0",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-    if !sync_head_cols.contains("source_change_id") {
-        conn.execute(
-            "ALTER TABLE sync_entity_heads ADD COLUMN source_change_id INTEGER NOT NULL DEFAULT 0",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-
-    let mut stmt_sync_changes = conn
-        .prepare("PRAGMA table_info(sync_changes)")
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let mut sync_change_cols = std::collections::HashSet::new();
-    let mut rows_sync_changes = stmt_sync_changes
-        .query([])
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    while let Some(row) = rows_sync_changes
-        .next()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
-    {
-        let col_name: String = row
-            .get(1)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        sync_change_cols.insert(col_name);
-    }
-
-    if !sync_change_cols.contains("source_device_id") {
-        conn.execute(
-            "ALTER TABLE sync_changes ADD COLUMN source_device_id TEXT NOT NULL DEFAULT ''",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-    if !sync_change_cols.contains("source_created_at") {
-        conn.execute(
-            "ALTER TABLE sync_changes ADD COLUMN source_created_at INTEGER NOT NULL DEFAULT 0",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-    if !sync_change_cols.contains("source_change_id") {
-        conn.execute(
-            "ALTER TABLE sync_changes ADD COLUMN source_change_id INTEGER NOT NULL DEFAULT 0",
-            [],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        reset_sync_state = true;
-    }
-
-    let sync_state_schema_version = conn
-        .query_row(
-            "SELECT value FROM sync_local_state WHERE key = 'sync_state_schema_version'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok());
-    if sync_state_schema_version != Some(LOCAL_SYNC_STATE_VERSION) {
-        log_warn(
-            _app,
-            "db",
-            format!(
-                "Resetting sync state because local sync_state_schema_version is {:?} instead of {}",
-                sync_state_schema_version, LOCAL_SYNC_STATE_VERSION
-            ),
-        );
-        reset_sync_state = true;
-    }
-
-    if reset_sync_state {
-        conn.execute_batch(&format!(
-            "BEGIN IMMEDIATE;
-             DELETE FROM sync_changes;
-             DELETE FROM sync_entity_heads;
-             DELETE FROM sync_peer_cursors;
-             INSERT OR REPLACE INTO sync_local_state (key, value) VALUES ('sync_state_schema_version', '{}');
-             COMMIT;",
-            LOCAL_SYNC_STATE_VERSION
-        ))
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    } else {
-        conn.execute(
-            "INSERT OR REPLACE INTO sync_local_state (key, value) VALUES ('sync_state_schema_version', ?1)",
-            params![LOCAL_SYNC_STATE_VERSION.to_string()],
-        )
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    }
 
     // Migrations: add reasoning_tokens and image_tokens to usage_records if missing
     let mut stmt = conn
@@ -2330,4 +2176,60 @@ pub fn db_checkpoint(app: tauri::AppHandle) -> Result<(), String> {
             )
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::init_db_connection;
+
+    #[test]
+    fn startup_migrates_a_v85_database_before_building_causal_indexes() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_db_connection(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO settings (
+               id, app_state, migration_version, created_at, updated_at
+             ) VALUES (1, '{}', 85, 1, 1)
+             ON CONFLICT(id) DO UPDATE SET migration_version = 85",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "DROP TRIGGER IF EXISTS messages_assign_parent_after_insert;
+             DROP INDEX IF EXISTS idx_messages_session_parent;
+             ALTER TABLE messages DROP COLUMN parent_message_id;
+             DROP TRIGGER IF EXISTS group_messages_assign_parent_after_insert;
+             DROP INDEX IF EXISTS idx_group_messages_session_parent;
+             ALTER TABLE group_messages DROP COLUMN parent_message_id;
+             DROP INDEX IF EXISTS idx_group_sessions_root_session;
+             ALTER TABLE group_sessions DROP COLUMN parent_session_id;
+             ALTER TABLE group_sessions DROP COLUMN branched_from_message_id;
+             ALTER TABLE group_sessions DROP COLUMN root_session_id;",
+        )
+        .unwrap();
+
+        init_db_connection(&conn).unwrap();
+
+        for (table, column) in [
+            ("messages", "parent_message_id"),
+            ("group_messages", "parent_message_id"),
+            ("group_sessions", "parent_session_id"),
+            ("group_sessions", "branched_from_message_id"),
+            ("group_sessions", "root_session_id"),
+        ] {
+            let exists = conn
+                .query_row(
+                    &format!(
+                        "SELECT EXISTS(
+                           SELECT 1 FROM pragma_table_info('{table}')
+                           WHERE name = ?1
+                         )"
+                    ),
+                    [column],
+                    |row| row.get::<_, bool>(0),
+                )
+                .unwrap();
+            assert!(exists, "{table}.{column} should exist after startup");
+        }
+    }
 }
