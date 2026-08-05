@@ -149,7 +149,7 @@ pub fn push_user_or_assistant_message_with_context(
         .replace("{{persona}}", persona_name)
         .replace("{{user}}", persona_name);
 
-    if time_stamp_enabled {
+    if time_stamp_enabled && message.role == "user" {
         let prefix = message_timestamp_prefix(message.created_at, time_frame_delta);
         text = if text.is_empty() {
             prefix
