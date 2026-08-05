@@ -3553,7 +3553,7 @@ export const CompanionMemoryConfigSchema = z.object({
   prioritizeRelationship: z.boolean().default(true),
   prioritizeEpisodic: z.boolean().default(true),
   useEmotionalSnapshots: z.boolean().default(true),
-  sharedAcrossSessions: z.boolean().default(false),
+  sharedAcrossSessions: z.boolean().default(true),
 });
 export type CompanionMemoryConfig = z.infer<typeof CompanionMemoryConfigSchema>;
 
@@ -3638,7 +3638,7 @@ export const CompanionConfigSchema = z.object({
     prioritizeRelationship: true,
     prioritizeEpisodic: true,
     useEmotionalSnapshots: true,
-    sharedAcrossSessions: false,
+    sharedAcrossSessions: true,
   }),
   prompting: CompanionPromptingConfigSchema.default({
     promptTemplateId: null,

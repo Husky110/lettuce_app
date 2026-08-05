@@ -3373,7 +3373,7 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Standaard voor nieuwe chats met deze companion. Stuurt de lokale systeemtijd met elk bericht mee en markeert companion-herinneringen met wanneer ze plaatsvonden. Individuele chats kunnen dit overschrijven in hun instellingen.",
       timeAwarenessAria: "Standaard tijdsbesef",
       sharedMemoryTitle: "Gedeeld geheugen over sessies heen",
-      sharedMemoryDesc: "Nieuwe en bestaande chats met deze companion delen één geheugenpool. Bewerkingen in de ene chat beïnvloeden de andere. Emotionele staat en relatiestaat blijven per chat.",
+      sharedMemoryDesc: "Nieuwe en bestaande chats met deze companion delen één geheugen. Groei van de Soul en de relatie met elke persona lopen door tussen chats; de directe emotie blijft bij de huidige chat.",
       sharedMemoryAria: "Gedeeld geheugen over sessies heen",
     },
     soulPresets: {

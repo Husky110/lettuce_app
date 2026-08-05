@@ -3373,7 +3373,7 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Default untuk obrolan baru dengan companion ini. Mengirim waktu sistem lokal dengan setiap pesan dan menandai memori companion dengan kapan terjadinya. Setiap obrolan dapat menggantinya di pengaturannya.",
       timeAwarenessAria: "Default kesadaran waktu",
       sharedMemoryTitle: "Memori Bersama Antar Sesi",
-      sharedMemoryDesc: "Obrolan baru dan yang sudah ada dengan companion ini berbagi satu kumpulan memori. Pengeditan di satu obrolan memengaruhi yang lain. Status emosi dan status hubungan tetap per obrolan.",
+      sharedMemoryDesc: "Obrolan baru dan lama dengan companion ini berbagi satu kumpulan memori. Perkembangan Soul dan hubungan dengan setiap persona berlanjut antarobrolan; emosi sesaat tetap berada di obrolan saat ini.",
       sharedMemoryAria: "Memori bersama antar sesi",
     },
     soulPresets: {

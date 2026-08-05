@@ -3373,7 +3373,7 @@ export const ptMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Padrão para novas conversas com este companion. Envia a hora local do sistema com cada mensagem e marca as memórias do companion com o momento em que aconteceram. Conversas individuais podem substituir isso em suas configurações.",
       timeAwarenessAria: "Padrão de percepção de tempo",
       sharedMemoryTitle: "Memória Compartilhada Entre Sessões",
-      sharedMemoryDesc: "Conversas novas e existentes com este companion compartilham um único repositório de memória. Edições em uma conversa afetam as outras. O estado emocional e o estado de relacionamento permanecem por conversa.",
+      sharedMemoryDesc: "Conversas novas e existentes com este companion compartilham uma única memória. O crescimento da Alma e a relação com cada persona continuam entre conversas; a emoção imediata fica na conversa atual.",
       sharedMemoryAria: "Memória compartilhada entre sessões",
     },
     soulPresets: {

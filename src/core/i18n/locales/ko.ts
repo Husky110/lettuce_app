@@ -3373,7 +3373,7 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "이 컴패니언과의 새 채팅 기본값입니다. 각 메시지에 로컬 시스템 시간을 전송하고 컴패니언 기억에 발생 시점을 기록합니다. 개별 채팅은 설정에서 이를 재정의할 수 있습니다.",
       timeAwarenessAria: "시간 인식 기본값",
       sharedMemoryTitle: "세션 간 공유 기억",
-      sharedMemoryDesc: "이 컴패니언과의 새 채팅과 기존 채팅이 하나의 기억 풀을 공유합니다. 한 채팅의 편집이 다른 채팅에 영향을 줍니다. 감정 상태와 관계 상태는 채팅별로 유지됩니다.",
+      sharedMemoryDesc: "이 컴패니언과의 새 채팅과 기존 채팅이 하나의 기억 풀을 공유합니다. Soul의 성장과 각 페르소나와의 관계는 채팅 간에 이어지며, 즉각적인 감정은 현재 채팅에 남습니다.",
       sharedMemoryAria: "세션 간 공유 기억",
     },
     soulPresets: {

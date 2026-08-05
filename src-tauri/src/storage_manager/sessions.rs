@@ -39,13 +39,18 @@ fn resolve_companion_state_json(
     conn: &rusqlite::Connection,
     character_id: &str,
     mode: &str,
+    persona_id: Option<&str>,
     session_value: &JsonValue,
 ) -> Result<Option<String>, String> {
-    match session_value.get("companionState") {
-        Some(v) if !v.is_null() => Ok(Some(
-            serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()),
-        )),
-        _ if !mode.eq_ignore_ascii_case("companion") => Ok(None),
+    let is_companion =
+        crate::storage_manager::companion_shared_memory::character_uses_companion_mode(
+            conn,
+            character_id,
+            mode,
+        )?;
+    let state = match session_value.get("companionState") {
+        Some(v) if !v.is_null() => Some(v.clone()),
+        _ if !is_companion => None,
         _ => {
             let companion_json = conn
                 .query_row(
@@ -56,12 +61,42 @@ fn resolve_companion_state_json(
                 .optional()
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
                 .flatten();
-            Ok(companion_json.and_then(|raw| {
+            companion_json.and_then(|raw| {
                 crate::chat_manager::companion::initial_session_state_from_companion_json(&raw)
-                    .and_then(|value| serde_json::to_string(&value).ok())
-            }))
+            })
         }
+    };
+    crate::storage_manager::companion_shared_memory::merge_continuity_into_state(
+        conn,
+        character_id,
+        persona_id,
+        state,
+    )
+    .map(|state| state.and_then(|value| serde_json::to_string(&value).ok()))
+}
+
+fn hydrate_stored_companion_state(
+    conn: &rusqlite::Connection,
+    character_id: &str,
+    mode: &str,
+    persona_id: Option<&str>,
+    persona_disabled: bool,
+    raw_state: Option<&str>,
+) -> Result<Option<JsonValue>, String> {
+    let state = raw_state.and_then(|value| serde_json::from_str::<JsonValue>(value).ok());
+    if !crate::storage_manager::companion_shared_memory::character_uses_companion_mode(
+        conn,
+        character_id,
+        mode,
+    )? {
+        return Ok(state);
     }
+    crate::storage_manager::companion_shared_memory::merge_continuity_into_state(
+        conn,
+        character_id,
+        if persona_disabled { None } else { persona_id },
+        state,
+    )
 }
 
 fn local_session_embeddings_from_legacy(
@@ -307,15 +342,15 @@ fn persist_shared_memory_from_session_json(
         return Ok(false);
     }
 
-    let shared_state = crate::storage_manager::companion_shared_memory::SharedMemoryState {
-        memories_json: memories_json.to_string(),
-        memory_summary,
-        memory_summary_token_count: memory_summary_token_count.max(0),
-        memory_tool_events_json: memory_tool_events_json.to_string(),
-        memory_status,
-        memory_error,
-        memory_progress_step,
-    };
+    let mut shared_state =
+        crate::storage_manager::companion_shared_memory::load_state(conn, character_id)?;
+    shared_state.memories_json = memories_json.to_string();
+    shared_state.memory_summary = memory_summary;
+    shared_state.memory_summary_token_count = memory_summary_token_count.max(0);
+    shared_state.memory_tool_events_json = memory_tool_events_json.to_string();
+    shared_state.memory_status = memory_status;
+    shared_state.memory_error = memory_error;
+    shared_state.memory_progress_step = memory_progress_step;
     crate::storage_manager::companion_shared_memory::upsert_state(
         conn,
         character_id,
@@ -678,6 +713,14 @@ fn read_session_meta_typed_internal(
         memory_error.clone(),
         memory_progress_step,
     )?;
+    let companion_state = hydrate_stored_companion_state(
+        conn,
+        &character_id,
+        &mode,
+        persona_id.as_deref(),
+        persona_disabled.unwrap_or(0) != 0,
+        companion_state_json.as_deref(),
+    )?;
 
     Ok(Some(Session {
         id: id.to_string(),
@@ -707,9 +750,7 @@ fn read_session_meta_typed_internal(
             presence_penalty,
             top_k,
         ),
-        companion_state: companion_state_json
-            .as_deref()
-            .and_then(|value| serde_json::from_str(value).ok()),
+        companion_state,
         memories: parse_json_or_default(&loaded_memory.memories_json),
         memory_embeddings: loaded_memory.memory_embeddings,
         memory_summary: loaded_memory.memory_summary,
@@ -1181,7 +1222,18 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, s)?;
+    let continuity_persona_id = if persona_disabled == 0 {
+        persona_id.as_deref()
+    } else {
+        None
+    };
+    let companion_state_json = resolve_companion_state_json(
+        &conn,
+        &character_id,
+        &mode,
+        continuity_persona_id,
+        s,
+    )?;
     let memory_status = s
         .get("memoryStatus")
         .and_then(|v| v.as_str())
@@ -1263,7 +1315,20 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
         .and_then(|v| v.as_f64());
     let top_k = adv.and_then(|v| v.get("topK")).and_then(|v| v.as_i64());
 
-    conn.execute(
+    tracked_write_string(&conn, |tx| {
+        if let Some(companion_state) = companion_state_json
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<JsonValue>(value).ok())
+        {
+            crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
+                tx,
+                &character_id,
+                continuity_persona_id,
+                &companion_state,
+            )?;
+        }
+
+        tx.execute(
         r#"INSERT INTO sessions (id, character_id, title, parent_session_id, branched_from_message_id, root_session_id, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
@@ -1337,8 +1402,10 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
             created_at,
             updated_at
         ],
-    )
-    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -1640,6 +1707,14 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
     let memory_tool_events: JsonValue =
         serde_json::from_str(&loaded_memory.memory_tool_events_json)
             .unwrap_or_else(|_| JsonValue::Array(vec![]));
+    let companion_state = hydrate_stored_companion_state(
+        conn,
+        &character_id,
+        &mode,
+        persona_id.as_deref(),
+        persona_disabled.unwrap_or(0) != 0,
+        companion_state_json.as_deref(),
+    )?;
 
     let session = serde_json::json!({
         "id": id,
@@ -1659,7 +1734,7 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
         "personaDisabled": persona_disabled.unwrap_or(0) != 0,
         "voiceAutoplay": voice_autoplay.map(|value| value != 0),
         "advancedModelSettings": advanced,
-        "companionState": companion_state_json.as_deref().and_then(|value| serde_json::from_str::<JsonValue>(value).ok()),
+        "companionState": companion_state,
         "memories": memories,
         "memoryEmbeddings": memory_embeddings,
         "memorySummary": loaded_memory.memory_summary.unwrap_or_default(),
@@ -1897,6 +1972,14 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
     let memory_tool_events: JsonValue =
         serde_json::from_str(&loaded_memory.memory_tool_events_json)
             .unwrap_or_else(|_| JsonValue::Array(vec![]));
+    let companion_state = hydrate_stored_companion_state(
+        conn,
+        &character_id,
+        &mode,
+        persona_id.as_deref(),
+        persona_disabled.unwrap_or(0) != 0,
+        companion_state_json.as_deref(),
+    )?;
 
     let session = serde_json::json!({
         "id": id,
@@ -1916,7 +1999,7 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
         "personaDisabled": persona_disabled.unwrap_or(0) != 0,
         "voiceAutoplay": voice_autoplay.map(|value| value != 0),
         "advancedModelSettings": advanced,
-        "companionState": companion_state_json.as_deref().and_then(|value| serde_json::from_str::<JsonValue>(value).ok()),
+        "companionState": companion_state,
         "memories": memories,
         "memoryEmbeddings": memory_embeddings,
         "memorySummary": loaded_memory.memory_summary.unwrap_or_default(),
@@ -2805,7 +2888,18 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, &s)?;
+    let continuity_persona_id = if persona_disabled == 0 {
+        persona_id.as_deref()
+    } else {
+        None
+    };
+    let companion_state_json = resolve_companion_state_json(
+        &conn,
+        &character_id,
+        &mode,
+        continuity_persona_id,
+        &s,
+    )?;
     let memory_status = s
         .get("memoryStatus")
         .and_then(|v| v.as_str())
@@ -2886,6 +2980,18 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
         .and_then(|v| v.get("presencePenalty"))
         .and_then(|v| v.as_f64());
     let top_k = adv.and_then(|v| v.get("topK")).and_then(|v| v.as_i64());
+
+    if let Some(companion_state) = companion_state_json
+        .as_deref()
+        .and_then(|value| serde_json::from_str::<JsonValue>(value).ok())
+    {
+        crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
+            &conn,
+            &character_id,
+            continuity_persona_id,
+            &companion_state,
+        )?;
+    }
 
     conn.execute(
         r#"INSERT INTO sessions (id, character_id, title, parent_session_id, branched_from_message_id, root_session_id, background_image_path, system_prompt, mode, selected_scene_id, prompt_template_id, lorebook_ids_override, author_note, persona_id, persona_disabled, voice_autoplay, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k, advanced_model_settings, companion_state, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, archived, created_at, updated_at)
@@ -3358,7 +3464,18 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, &s)?;
+    let continuity_persona_id = if persona_disabled == 0 {
+        persona_id.as_deref()
+    } else {
+        None
+    };
+    let companion_state_json = resolve_companion_state_json(
+        &conn,
+        &character_id,
+        &mode,
+        continuity_persona_id,
+        &s,
+    )?;
 
     let adv = s.get("advancedModelSettings");
     let advanced_model_settings_json = serialize_session_advanced_model_settings(adv);
@@ -3378,6 +3495,17 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
     let top_k = adv.and_then(|v| v.get("topK")).and_then(|v| v.as_i64());
 
     tracked_write_string(&conn, |tx| {
+        if let Some(companion_state) = companion_state_json
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<JsonValue>(value).ok())
+        {
+            crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
+                tx,
+                &character_id,
+                continuity_persona_id,
+                &companion_state,
+            )?;
+        }
         let shared_memory_enabled = persist_shared_memory_from_session_json(
             tx,
             &id,

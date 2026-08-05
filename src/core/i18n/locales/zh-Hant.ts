@@ -3372,7 +3372,7 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "與此同伴開啟新聊天的預設設定。每次發送訊息時都會附帶本地系統時間，並在同伴記憶中標記發生時間。個別聊天室可以在其設定中覆蓋此項。",
       timeAwarenessAria: "時間意識預設值",
       sharedMemoryTitle: "跨會話共享記憶",
-      sharedMemoryDesc: "與此同伴的新舊聊天室共享同一個記憶池。在一個聊天室中的編輯會影響其他聊天室。情緒狀態和關係狀態則維持在各個聊天室中。",
+      sharedMemoryDesc: "與此同伴的新舊聊天室共享同一個記憶池。Soul 的成長以及與每個角色身分的關係會跨聊天室延續；即時情緒只保留在目前聊天室中。",
       sharedMemoryAria: "跨會話共享記憶",
     },
     soulPresets: {

@@ -3545,7 +3545,7 @@ export const enMessages = {
       timeAwarenessAria: "Time awareness default",
       sharedMemoryTitle: "Shared Memory Across Sessions",
       sharedMemoryDesc:
-        "New and existing chats with this companion share one memory pool. Edits in one chat affect the others. Emotional state and relationship state stay per chat.",
+        "New and existing chats with this companion share one memory pool. Soul growth and the relationship with each persona carry across chats; immediate emotion stays with the current chat.",
       sharedMemoryAria: "Shared memory across sessions",
     },
     soulPresets: {

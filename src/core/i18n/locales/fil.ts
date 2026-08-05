@@ -3373,7 +3373,7 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Default para sa mga bagong chat sa companion na ito. Ipinapadala ang lokal na oras ng system sa bawat mensahe at nilalagyan ng marka ang mga companion memory kung kailan nangyari. Maaaring i-override ito ng mga indibidwal na chat sa kanilang settings.",
       timeAwarenessAria: "Default ng time awareness",
       sharedMemoryTitle: "Ibinahaging Memory sa mga Session",
-      sharedMemoryDesc: "Naghahati ang mga bago at umiiral na chat sa companion na ito ng isang memory pool. Apektado ng mga pag-edit sa isang chat ang iba. Nananatiling per chat ang emotional state at relationship state.",
+      sharedMemoryDesc: "Iisa ang memory pool ng mga bago at kasalukuyang chat sa companion na ito. Nagpapatuloy sa iba’t ibang chat ang paglago ng Soul at relasyon sa bawat persona; nananatili sa kasalukuyang chat ang agarang emosyon.",
       sharedMemoryAria: "Ibinahaging memory sa mga session",
     },
     soulPresets: {

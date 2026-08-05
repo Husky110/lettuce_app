@@ -2671,9 +2671,9 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
             INSERT INTO companion_shared_memory_state (
                 character_id, memories, memory_summary, memory_summary_token_count,
                 memory_tool_events, memory_status, memory_error, memory_progress_step,
-                created_at, updated_at
+                soul_growth, relationship_states, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
             params![
                 item.get("character_id").and_then(|v| v.as_str()),
@@ -2690,6 +2690,12 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
                 item.get("memory_status").and_then(|v| v.as_str()),
                 item.get("memory_error").and_then(|v| v.as_str()),
                 item.get("memory_progress_step").and_then(|v| v.as_i64()),
+                item.get("soul_growth")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("[]"),
+                item.get("relationship_states")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}"),
                 item.get("created_at").and_then(|v| v.as_i64()),
                 item.get("updated_at").and_then(|v| v.as_i64()),
             ],

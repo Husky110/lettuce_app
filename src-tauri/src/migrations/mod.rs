@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 88;
+pub const CURRENT_MIGRATION_VERSION: u32 = 89;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -907,6 +907,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v87_to_v88(app)?;
         version = 88;
+    }
+
+    if version < 89 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v88 -> v89: Preserve companion continuity across chats",
+        );
+        migrate_v88_to_v89(app)?;
+        version = 89;
     }
 
     // Update the stored version
@@ -4024,6 +4034,8 @@ fn migrate_v65_to_v66(app: &AppHandle) -> Result<(), String> {
           memory_status TEXT,
           memory_error TEXT,
           memory_progress_step INTEGER,
+          soul_growth TEXT NOT NULL DEFAULT '[]',
+          relationship_states TEXT NOT NULL DEFAULT '{}',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
@@ -4290,6 +4302,9 @@ pub(crate) fn run_preflight_migrations(
     if version >= 87 && version < 88 {
         migrate_v87_to_v88_conn(conn)?;
     }
+    if version >= 88 && version < 89 {
+        migrate_v88_to_v89_conn(conn)?;
+    }
     Ok(())
 }
 
@@ -4301,6 +4316,150 @@ fn migrate_v86_to_v87(app: &AppHandle) -> Result<(), String> {
 fn migrate_v87_to_v88(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     migrate_v87_to_v88_conn(&conn)
+}
+
+fn migrate_v88_to_v89(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    migrate_v88_to_v89_conn(&conn)
+}
+
+fn migrate_v88_to_v89_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+    for (column, declaration) in [
+        ("soul_growth", "TEXT NOT NULL DEFAULT '[]'"),
+        ("relationship_states", "TEXT NOT NULL DEFAULT '{}'"),
+    ] {
+        let exists = conn
+            .query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM pragma_table_info('companion_shared_memory_state')
+                   WHERE name = ?1
+                 )",
+                [column],
+                |row| row.get::<_, bool>(0),
+            )
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        if !exists {
+            conn.execute(
+                &format!(
+                    "ALTER TABLE companion_shared_memory_state ADD COLUMN {column} {declaration}"
+                ),
+                [],
+            )
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        }
+    }
+
+    let migration_recorded = conn
+        .query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM sync_v2_local_state
+               WHERE key = 'companion_continuity_migration' AND value = '89'
+             )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if migration_recorded {
+        return Ok(());
+    }
+
+    let rows = {
+        let mut statement = conn
+            .prepare(
+                "SELECT sessions.character_id, sessions.persona_id,
+                        sessions.persona_disabled, sessions.companion_state,
+                        sessions.updated_at
+                 FROM sessions
+                 JOIN characters ON characters.id = sessions.character_id
+                 WHERE sessions.companion_state IS NOT NULL
+                   AND (LOWER(sessions.mode) = 'companion'
+                        OR LOWER(COALESCE(characters.mode, '')) = 'companion')
+                 ORDER BY sessions.updated_at ASC, sessions.id ASC",
+            )
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        let collected = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        collected
+    };
+
+    let mut continuity = std::collections::HashMap::<
+        String,
+        (serde_json::Value, serde_json::Map<String, serde_json::Value>, i64),
+    >::new();
+    for (character_id, persona_id, persona_disabled, raw_state, updated_at) in rows {
+        let Ok(state) = serde_json::from_str::<serde_json::Value>(&raw_state) else {
+            continue;
+        };
+        let entry = continuity.entry(character_id).or_insert_with(|| {
+            (
+                serde_json::Value::Array(Vec::new()),
+                serde_json::Map::new(),
+                updated_at,
+            )
+        });
+        if let Some(growth) = state
+            .get("soulGrowth")
+            .filter(|value| value.as_array().is_some_and(|items| !items.is_empty()))
+        {
+            entry.0 = growth.clone();
+        }
+        if let Some(relationship) = state
+            .get("relationshipState")
+            .filter(|value| value.is_object())
+        {
+            let key = if persona_disabled == 0 {
+                persona_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("__default__")
+            } else {
+                "__default__"
+            };
+            entry.1.insert(key.to_string(), relationship.clone());
+        }
+        entry.2 = entry.2.max(updated_at);
+    }
+
+    for (character_id, (soul_growth, relationship_states, updated_at)) in continuity {
+        conn.execute(
+            "INSERT INTO companion_shared_memory_state (
+               character_id, soul_growth, relationship_states, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(character_id) DO UPDATE SET
+               soul_growth = excluded.soul_growth,
+               relationship_states = excluded.relationship_states,
+               updated_at = MAX(companion_shared_memory_state.updated_at, excluded.updated_at)",
+            rusqlite::params![
+                character_id,
+                soul_growth.to_string(),
+                serde_json::Value::Object(relationship_states).to_string(),
+                updated_at,
+            ],
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    }
+
+    migrate_sync_v2_schema(conn)?;
+    conn.execute(
+        "INSERT INTO sync_v2_local_state (key, value)
+         VALUES ('companion_continuity_migration', '89')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [],
+    )
+    .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    Ok(())
 }
 
 pub(crate) fn migrate_v85_to_v86_conn(
@@ -5012,10 +5171,83 @@ fn migrate_v71_to_v72(app: &AppHandle) -> Result<(), String> {
 mod tests {
     use super::{
         migrate_image_lora_metadata_columns, migrate_sync_v2_schema,
-        migrate_v87_to_v88_conn, run_preflight_migrations, table_column_names,
+        migrate_v87_to_v88_conn, migrate_v88_to_v89_conn, run_preflight_migrations,
+        table_column_names,
         GROUP_SESSIONS_V88_COLUMNS, IMAGE_LORAS_V88_COLUMNS,
         LOREBOOK_ENTRIES_V88_COLUMNS,
     };
+
+    #[test]
+    fn v89_backfills_latest_soul_growth_and_persona_relationships() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE characters (
+              id TEXT PRIMARY KEY,
+              mode TEXT,
+              companion TEXT
+            );
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              character_id TEXT NOT NULL,
+              persona_id TEXT,
+              persona_disabled INTEGER NOT NULL DEFAULT 0,
+              mode TEXT NOT NULL,
+              companion_state TEXT,
+              updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE companion_shared_memory_state (
+              character_id TEXT PRIMARY KEY,
+              memories TEXT NOT NULL DEFAULT '[]',
+              memory_summary TEXT,
+              memory_summary_token_count INTEGER NOT NULL DEFAULT 0,
+              memory_tool_events TEXT NOT NULL DEFAULT '[]',
+              memory_status TEXT,
+              memory_error TEXT,
+              memory_progress_step INTEGER,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            INSERT INTO characters VALUES ('companion', 'companion', '{}');
+            INSERT INTO sessions VALUES (
+              'older', 'companion', 'persona-a', 0, 'companion',
+              '{"soulGrowth":[{"id":"old"}],"relationshipState":{"trust":0.4},"emotionalState":{"felt":{"calm":0.1}}}',
+              10
+            );
+            INSERT INTO sessions VALUES (
+              'newer', 'companion', 'persona-a', 0, 'companion',
+              '{"soulGrowth":[{"id":"new"}],"relationshipState":{"trust":0.8},"emotionalState":{"felt":{"calm":0.9}}}',
+              20
+            );
+            INSERT INTO sessions VALUES (
+              'other-persona', 'companion', 'persona-b', 0, 'companion',
+              '{"soulGrowth":[],"relationshipState":{"trust":-0.3}}',
+              30
+            );
+            "#,
+        )
+        .unwrap();
+        crate::sync::v2::create_schema(&conn).unwrap();
+
+        migrate_v88_to_v89_conn(&conn).unwrap();
+        migrate_v88_to_v89_conn(&conn).unwrap();
+
+        let (soul_growth, relationships): (String, String) = conn
+            .query_row(
+                "SELECT soul_growth, relationship_states
+                 FROM companion_shared_memory_state WHERE character_id = 'companion'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let soul_growth: serde_json::Value = serde_json::from_str(&soul_growth).unwrap();
+        let relationships: serde_json::Value = serde_json::from_str(&relationships).unwrap();
+
+        assert_eq!(soul_growth[0]["id"], "new");
+        assert_eq!(relationships["persona-a"]["trust"], 0.8);
+        assert_eq!(relationships["persona-b"]["trust"], -0.3);
+        assert!(relationships.get("emotionalState").is_none());
+    }
 
     #[test]
     fn repairs_the_partial_image_lora_schema() {

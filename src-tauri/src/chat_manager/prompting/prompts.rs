@@ -1405,6 +1405,16 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
                 .cloned()
                 .expect("memory_companion_time_awareness exists"),
         );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_TEMPLATE_ID,
+            "memory_companion_continuity_policy",
+            memory_entries
+                .iter()
+                .find(|entry| entry.id == "memory_companion_continuity_policy")
+                .cloned()
+                .expect("memory_companion_continuity_policy exists"),
+        );
         let _ =
             backfill_missing_entry_conditions(app, APP_DYNAMIC_MEMORY_TEMPLATE_ID, &memory_entries);
         let _ = maybe_backfill_template_name(
@@ -1464,6 +1474,16 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
                 .find(|entry| entry.id == "memory_local_companion_time_awareness")
                 .cloned()
                 .expect("memory_local_companion_time_awareness exists"),
+        );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
+            "memory_local_companion_continuity_policy",
+            memory_local_entries
+                .iter()
+                .find(|entry| entry.id == "memory_local_companion_continuity_policy")
+                .cloned()
+                .expect("memory_local_companion_continuity_policy exists"),
         );
         let _ = backfill_missing_entry_conditions(
             app,

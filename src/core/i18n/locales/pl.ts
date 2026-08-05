@@ -3373,7 +3373,7 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Domyślne dla nowych czatów z tym towarzyszem. Wysyła lokalny czas systemowy z każdą wiadomością i oznacza wspomnienia towarzysza datą ich wystąpienia. Poszczególne czaty mogą to nadpisać w swoich ustawieniach.",
       timeAwarenessAria: "Domyślna świadomość czasu",
       sharedMemoryTitle: "Pamięć współdzielona między sesjami",
-      sharedMemoryDesc: "Nowe i istniejące czaty z tym towarzyszem dzielą jedną pulę pamięci. Edycje w jednym czacie wpływają na inne. Stan emocjonalny i stan relacji pozostają osobne dla każdego czatu.",
+      sharedMemoryDesc: "Nowe i istniejące czaty z tym towarzyszem dzielą jedną pamięć. Rozwój Duszy i relacja z każdą personą trwają między czatami; bieżące emocje pozostają w aktualnym czacie.",
       sharedMemoryAria: "Pamięć współdzielona między sesjami",
     },
     soulPresets: {

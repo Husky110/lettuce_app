@@ -148,6 +148,10 @@ pub struct CompanionSharedMemoryExport {
     #[serde(default)]
     pub memory_progress_step: Option<i64>,
     #[serde(default)]
+    pub soul_growth: JsonValue,
+    #[serde(default)]
+    pub relationship_states: JsonValue,
+    #[serde(default)]
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: i64,
@@ -1219,13 +1223,16 @@ fn export_companion_shared_memory(
         Option<String>,
         Option<String>,
         Option<i64>,
+        String,
+        String,
         i64,
         i64,
     )> = conn
         .query_row(
             r#"
             SELECT memories, memory_summary, memory_summary_token_count, memory_tool_events,
-                   memory_status, memory_error, memory_progress_step, created_at, updated_at
+                   memory_status, memory_error, memory_progress_step, soul_growth,
+                   relationship_states, created_at, updated_at
             FROM companion_shared_memory_state
             WHERE character_id = ?1
             "#,
@@ -1241,6 +1248,8 @@ fn export_companion_shared_memory(
                     row.get(6)?,
                     row.get(7)?,
                     row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
                 ))
             },
         )
@@ -1256,6 +1265,8 @@ fn export_companion_shared_memory(
             memory_status,
             memory_error,
             memory_progress_step,
+            soul_growth,
+            relationship_states,
             created_at,
             updated_at,
         )| CompanionSharedMemoryExport {
@@ -1269,6 +1280,11 @@ fn export_companion_shared_memory(
             memory_status,
             memory_error,
             memory_progress_step,
+            soul_growth: json_string_to_value(&soul_growth, JsonValue::Array(Vec::new())),
+            relationship_states: json_string_to_value(
+                &relationship_states,
+                JsonValue::Object(Default::default()),
+            ),
             created_at,
             updated_at,
         },
@@ -2212,9 +2228,9 @@ fn import_companion_app_specific_for_character(
             INSERT OR REPLACE INTO companion_shared_memory_state (
                 character_id, memories, memory_summary, memory_summary_token_count,
                 memory_tool_events, memory_status, memory_error, memory_progress_step,
-                created_at, updated_at
+                soul_growth, relationship_states, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
             params![
                 new_character_id,
@@ -2225,6 +2241,8 @@ fn import_companion_app_specific_for_character(
                 shared_memory.memory_status.as_deref(),
                 shared_memory.memory_error.as_deref(),
                 shared_memory.memory_progress_step,
+                json_value_to_storage_string(&shared_memory.soul_growth, "[]"),
+                json_value_to_storage_string(&shared_memory.relationship_states, "{}"),
                 created_at,
                 updated_at,
             ],

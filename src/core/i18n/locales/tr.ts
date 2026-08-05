@@ -3373,7 +3373,7 @@ export const trMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Bu yoldaşla yapılan yeni sohbetler için varsayılan. Her mesajla birlikte yerel sistem saatini gönderir ve yoldaş anılarını ne zaman gerçekleştiğiyle damgalar. Bireysel sohbetler bunu ayarlarından geçersiz kılabilir.",
       timeAwarenessAria: "Zaman farkındalığı varsayılanı",
       sharedMemoryTitle: "Oturumlar Arası Paylaşılan Bellek",
-      sharedMemoryDesc: "Bu yoldaşla yapılan yeni ve mevcut sohbetler tek bir bellek havuzunu paylaşır. Bir sohbetle yapılan düzenlemeler diğerlerini etkiler. Duygusal durum ve ilişki durumu her sohbet için ayrı kalır.",
+      sharedMemoryDesc: "Bu yoldaşla yapılan yeni ve mevcut sohbetler tek bir belleği paylaşır. Soul gelişimi ve her persona ile ilişki sohbetler arasında devam eder; anlık duygu mevcut sohbette kalır.",
       sharedMemoryAria: "Oturumlar arası paylaşılan bellek",
     },
     soulPresets: {

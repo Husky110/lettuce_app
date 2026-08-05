@@ -3375,7 +3375,7 @@ export const esMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Predeterminado para los nuevos chats con este compañero. Envía la hora local del sistema con cada mensaje y marca los recuerdos del compañero con el momento en que ocurrieron. Los chats individuales pueden anular esto en sus ajustes.",
       timeAwarenessAria: "Predeterminado de conciencia del tiempo",
       sharedMemoryTitle: "Memoria compartida entre sesiones",
-      sharedMemoryDesc: "Los chats nuevos y existentes con este compañero comparten un único conjunto de memoria. Las ediciones en un chat afectan a los demás. El estado emocional y el estado de la relación se mantienen por chat.",
+      sharedMemoryDesc: "Los chats nuevos y existentes con este compañero comparten una única memoria. El crecimiento del alma y la relación con cada persona continúan entre chats; la emoción inmediata permanece en el chat actual.",
       sharedMemoryAria: "Memoria compartida entre sesiones",
     },
     soulPresets: {

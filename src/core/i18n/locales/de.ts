@@ -3380,7 +3380,7 @@ export const deMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Standard für neue Chats mit diesem Companion. Sendet mit jeder Nachricht die lokale Systemzeit und markiert Companion-Erinnerungen mit ihrem Zeitpunkt. Einzelne Chats können dies in ihren Einstellungen überschreiben.",
       timeAwarenessAria: "Standard für Zeitbewusstsein",
       sharedMemoryTitle: "Geteilte Erinnerung über Sitzungen hinweg",
-      sharedMemoryDesc: "Neue und bestehende Chats mit diesem Companion teilen einen Erinnerungspool. Änderungen in einem Chat wirken sich auf die anderen aus. Emotionaler Zustand und Beziehungszustand bleiben pro Chat.",
+      sharedMemoryDesc: "Neue und bestehende Chats mit diesem Companion teilen einen Erinnerungspool. Die Entwicklung der Seele und die Beziehung zu jeder Persona werden chatübergreifend fortgeführt; unmittelbare Emotionen bleiben im aktuellen Chat.",
       sharedMemoryAria: "Geteilte Erinnerung über Sitzungen hinweg",
     },
     soulPresets: {

@@ -359,11 +359,23 @@ struct CompanionPromptingConfig {
     style_notes: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompanionMemoryConfig {
-    #[serde(default)]
+    #[serde(default = "default_shared_companion_memory")]
     shared_across_sessions: bool,
+}
+
+impl Default for CompanionMemoryConfig {
+    fn default() -> Self {
+        Self {
+            shared_across_sessions: true,
+        }
+    }
+}
+
+fn default_shared_companion_memory() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

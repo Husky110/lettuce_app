@@ -808,6 +808,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           memory_status TEXT,
           memory_error TEXT,
           memory_progress_step INTEGER,
+          soul_growth TEXT NOT NULL DEFAULT '[]',
+          relationship_states TEXT NOT NULL DEFAULT '{}',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE

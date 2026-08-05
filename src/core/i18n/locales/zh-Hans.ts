@@ -3372,7 +3372,7 @@ export const zhHansMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "与该同伴开启新聊天的默认设置。每条消息都会发送本地系统时间，并为同伴记忆标注发生时间。单个聊天可以在其设置中覆盖此项。",
       timeAwarenessAria: "时间感知默认值",
       sharedMemoryTitle: "跨会话共享记忆",
-      sharedMemoryDesc: "与该同伴的新旧聊天共享一个记忆池。在一个聊天中的编辑会影响其他聊天。情感状态和关系状态仍按聊天独立。",
+      sharedMemoryDesc: "与该同伴的新旧聊天共享同一个记忆池。Soul 的成长以及与每个角色身份的关系会跨聊天延续；即时情绪只保留在当前聊天中。",
       sharedMemoryAria: "跨会话共享记忆",
     },
     soulPresets: {

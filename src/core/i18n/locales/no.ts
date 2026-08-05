@@ -3373,7 +3373,7 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Standard for nye chatter med denne følgesvennen. Sender den lokale systemtiden med hver melding og stempler følgesvennminner med når de skjedde. Individuelle chatter kan overstyre dette i sine innstillinger.",
       timeAwarenessAria: "Standard for tidsbevissthet",
       sharedMemoryTitle: "Delt minne på tvers av økter",
-      sharedMemoryDesc: "Nye og eksisterende chatter med denne følgesvennen deler ett minnelager. Endringer i én chat påvirker de andre. Emosjonell tilstand og relasjonstilstand forblir per chat.",
+      sharedMemoryDesc: "Nye og eksisterende chatter med denne følgesvennen deler ett minnelager. Soul-utvikling og forholdet til hver persona fortsetter på tvers av chatter; umiddelbare følelser blir i den nåværende chatten.",
       sharedMemoryAria: "Delt minne på tvers av økter",
     },
     soulPresets: {

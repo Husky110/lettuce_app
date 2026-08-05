@@ -3373,7 +3373,7 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Mặc định cho các cuộc trò chuyện mới với bạn đồng hành này. Gửi thời gian hệ thống cục bộ với mỗi tin nhắn và đánh dấu ký ức bạn đồng hành với thời điểm chúng xảy ra. Từng cuộc trò chuyện có thể ghi đè điều này trong cài đặt riêng.",
       timeAwarenessAria: "Mặc định nhận thức thời gian",
       sharedMemoryTitle: "Ký ức chung giữa các phiên",
-      sharedMemoryDesc: "Các cuộc trò chuyện mới và hiện có với bạn đồng hành này dùng chung một kho ký ức. Chỉnh sửa trong một cuộc trò chuyện ảnh hưởng đến các cuộc khác. Trạng thái cảm xúc và mối quan hệ vẫn riêng cho mỗi cuộc trò chuyện.",
+      sharedMemoryDesc: "Các cuộc trò chuyện mới và hiện có với bạn đồng hành này dùng chung một kho ký ức. Sự phát triển của Soul và mối quan hệ với từng persona tiếp tục giữa các cuộc trò chuyện; cảm xúc tức thời ở lại cuộc trò chuyện hiện tại.",
       sharedMemoryAria: "Ký ức chung giữa các phiên",
     },
     soulPresets: {

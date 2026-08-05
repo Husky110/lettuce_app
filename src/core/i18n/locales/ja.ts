@@ -3373,7 +3373,7 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "このコンパニオンとの新しいチャットの既定値です。各メッセージにローカルシステム時刻を送信し、コンパニオンメモリにそれが起きた時刻を記録します。個々のチャットは設定で上書きできます。",
       timeAwarenessAria: "時間認識の既定値",
       sharedMemoryTitle: "セッション間でメモリを共有",
-      sharedMemoryDesc: "このコンパニオンとの新規および既存のチャットは1つのメモリプールを共有します。1つのチャットでの編集は他にも影響します。感情の状態と関係の状態はチャットごとに保たれます。",
+      sharedMemoryDesc: "このコンパニオンとの新規および既存のチャットは1つのメモリプールを共有します。Soulの成長と各ペルソナとの関係はチャットをまたいで継続し、その場の感情は現在のチャットに残ります。",
       sharedMemoryAria: "セッション間でのメモリ共有",
     },
     soulPresets: {

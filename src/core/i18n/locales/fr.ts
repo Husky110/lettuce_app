@@ -3375,7 +3375,7 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       timeAwarenessDesc: "Valeur par défaut pour les nouveaux chats avec ce compagnon. Envoie l'heure locale du système avec chaque message et horodate les souvenirs du compagnon avec le moment où ils se sont produits. Les chats individuels peuvent remplacer ceci dans leurs paramètres.",
       timeAwarenessAria: "Conscience du temps par défaut",
       sharedMemoryTitle: "Mémoire partagée entre les sessions",
-      sharedMemoryDesc: "Les chats nouveaux et existants avec ce compagnon partagent une seule banque de mémoire. Les modifications dans un chat affectent les autres. L'état émotionnel et l'état relationnel restent propres à chaque chat.",
+      sharedMemoryDesc: "Les chats nouveaux et existants avec ce compagnon partagent une seule mémoire. L’évolution de l’âme et la relation avec chaque persona se poursuivent entre les chats ; l’émotion immédiate reste dans le chat actuel.",
       sharedMemoryAria: "Mémoire partagée entre les sessions",
     },
     soulPresets: {

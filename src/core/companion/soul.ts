@@ -149,7 +149,7 @@ function createDefaultCompanionConfig(): CompanionConfig {
       prioritizeRelationship: true,
       prioritizeEpisodic: true,
       useEmotionalSnapshots: true,
-      sharedAcrossSessions: false,
+      sharedAcrossSessions: true,
     },
     prompting: {
       promptTemplateId: null,
