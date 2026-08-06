@@ -55,6 +55,7 @@ use crate::chat_manager::storage::save_session;
 use crate::chat_manager::temporal::{
     companion_effective_now, companion_time_awareness_enabled, detect_temporal_query_range,
     memory_matches_temporal_range,
+    timestamped_message_text,
 };
 use crate::chat_manager::thinking::normalize_thinking_content;
 use crate::chat_manager::tooling::{
@@ -162,19 +163,40 @@ fn response_preview(provider_id: &str, value: &Value) -> String {
     }
 }
 
-fn latest_observed_memory_context(
+fn observed_memory_context(
     session: &Session,
+    messages: &[StoredMessage],
+    requested_message_id: Option<&str>,
 ) -> (Option<u64>, Option<String>, Option<String>) {
-    let source = session.messages.iter().rev().find(|message| {
-        let role = message.role.trim().to_ascii_lowercase();
-        role == "user" || role == "assistant"
-    });
+    let source = requested_message_id
+        .and_then(|message_id| messages.iter().find(|message| message.id == message_id))
+        .or_else(|| messages.iter().rev().find(|message| {
+            let role = message.role.trim().to_ascii_lowercase();
+            role == "user" || role == "assistant"
+        }));
 
     (
-        source.map(|_| companion_effective_now(session)),
+        source.map(|message| {
+            message
+                .effective_at
+                .unwrap_or_else(|| companion_effective_now(session))
+        }),
         source.map(|message| message.role.clone()),
         source.map(|message| message.id.clone()),
     )
+}
+
+fn temporal_transcript_line(session: &Session, message: &StoredMessage) -> String {
+    if companion_time_awareness_enabled(session) {
+        format!(
+            "[message:{}] {}: {}",
+            message.id,
+            message.role,
+            timestamped_message_text(message)
+        )
+    } else {
+        format!("{}: {}", message.role, message.content)
+    }
 }
 
 fn log_text_parse_failure(app: &AppHandle, phase: &str, text: &str, err: &str) {
@@ -1191,7 +1213,7 @@ fn fetch_conversation_messages_range(
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, role, content, created_at, is_pinned
+            "SELECT id, role, content, created_at, is_pinned, effective_at
              FROM messages
              WHERE session_id = ?1 AND (role = 'user' OR role = 'assistant')
              ORDER BY created_at ASC, id ASC
@@ -1208,6 +1230,9 @@ fn fetch_conversation_messages_range(
                 role: r.get(1)?,
                 content: r.get(2)?,
                 created_at: created_at.max(0) as u64,
+                effective_at: r
+                    .get::<_, Option<i64>>(5)?
+                    .map(|value| value.max(0) as u64),
                 visible_in_chat: false,
                 scene_edited: false,
                 usage: None,
@@ -3492,7 +3517,7 @@ async fn run_memory_tool_update(
 
     let recent_text = convo_window
         .iter()
-        .map(|m| format!("{}: {}", m.role, m.content))
+        .map(|message| temporal_transcript_line(session, message))
         .collect::<Vec<_>>()
         .join("\n");
     let condition_context = dynamic_memory_prompt_condition_context(
@@ -3554,7 +3579,7 @@ async fn run_memory_tool_update(
         format!(
             "Conversation transcript summary:\n{}\n\nRecent transcript lines:\n{}\n\nCurrent memories (with IDs):\n{}",
             summary,
-            convo_window.iter().map(|m| format!("{}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n"),
+            convo_window.iter().map(|message| temporal_transcript_line(session, message)).collect::<Vec<_>>().join("\n"),
             if memory_lines.is_empty() { "none".to_string() } else { memory_lines.join("\n") }
         ),
         0,
@@ -3805,9 +3830,17 @@ async fn run_memory_tool_update(
                                 continue;
                             }
                         };
+                        let requested_source_message_id = call
+                            .arguments
+                            .get("source_message_id")
+                            .and_then(Value::as_str);
                         let (observed_at, source_role, source_message_id) =
                             if companion_time_awareness_enabled(session) {
-                                latest_observed_memory_context(session)
+                                observed_memory_context(
+                                    session,
+                                    convo_window,
+                                    requested_source_message_id,
+                                )
                             } else {
                                 (None, None, None)
                             };
@@ -4321,7 +4354,7 @@ async fn run_memory_tool_update(
                         crate::embedding::tokenizer::count_tokens(app, &text).unwrap_or(0);
                     let (observed_at, source_role, source_message_id) =
                         if companion_time_awareness_enabled(session) {
-                            latest_observed_memory_context(session)
+                            observed_memory_context(session, convo_window, None)
                         } else {
                             (None, None, None)
                         };
@@ -4696,6 +4729,10 @@ fn build_memory_tool_config(is_companion: bool) -> ToolConfig {
                 "type": "string",
                 "enum": ["character_trait", "relationship", "plot_event", "world_detail", "preference", "other"],
                 "description": "Category of this memory for organization"
+            },
+            "source_message_id": {
+                "type": "string",
+                "description": "ID from the [message:ID] transcript line where this fact or event occurred. Use this for relationship events, milestones, plans, promises, and third-party relationship facts so their observation time is anchored to the correct turn."
             }
         },
         "required": ["text", "category"]
@@ -4825,7 +4862,7 @@ async fn summarize_messages(
             .flatten();
     let recent_text = convo_window
         .iter()
-        .map(|m| format!("{}: {}", m.role, m.content))
+        .map(|message| temporal_transcript_line(session, message))
         .collect::<Vec<_>>()
         .join("\n");
     let condition_context = dynamic_memory_prompt_condition_context(
@@ -4885,7 +4922,11 @@ async fn summarize_messages(
     for msg in convo_window {
         conversation_messages.push(json!({
             "role": msg.role,
-            "content": msg.content
+            "content": if companion_time_awareness_enabled(session) {
+                timestamped_message_text(msg)
+            } else {
+                msg.content.clone()
+            }
         }));
     }
 

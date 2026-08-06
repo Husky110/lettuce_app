@@ -218,17 +218,6 @@ fn build_debug_completion_messages(
 
     let time_stamp_enabled =
         crate::chat_manager::temporal::companion_time_awareness_enabled(session);
-    let time_frame_delta = if time_stamp_enabled {
-        let latest_created = pinned_msgs
-            .iter()
-            .chain(recent_msgs.iter())
-            .map(|msg| msg.created_at)
-            .max()
-            .unwrap_or(0);
-        crate::chat_manager::temporal::temporal_frame_delta(session, latest_created)
-    } else {
-        0
-    };
 
     let mut chat_messages = Vec::new();
     for msg in &pinned_msgs {
@@ -241,7 +230,6 @@ fn build_debug_completion_messages(
             persona_name,
             allow_image_input,
             allow_audio_input,
-            time_frame_delta,
             time_stamp_enabled,
         );
     }
@@ -256,7 +244,6 @@ fn build_debug_completion_messages(
             persona_name,
             allow_image_input,
             allow_audio_input,
-            time_frame_delta,
             time_stamp_enabled,
         );
     }
@@ -302,16 +289,6 @@ fn build_debug_regenerate_messages(
 
     let time_stamp_enabled =
         crate::chat_manager::temporal::companion_time_awareness_enabled(session);
-    let time_frame_delta = if time_stamp_enabled {
-        let latest_created = messages_before_target
-            .iter()
-            .map(|msg| msg.created_at)
-            .max()
-            .unwrap_or(0);
-        crate::chat_manager::temporal::temporal_frame_delta(session, latest_created)
-    } else {
-        0
-    };
 
     let mut chat_messages = Vec::new();
     if dynamic_memory_enabled {
@@ -329,7 +306,6 @@ fn build_debug_regenerate_messages(
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -343,7 +319,6 @@ fn build_debug_regenerate_messages(
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -365,7 +340,6 @@ fn build_debug_regenerate_messages(
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }

@@ -3,7 +3,9 @@
 use chrono::{Local, TimeZone};
 use lettuceai_lib::chat_manager::temporal::{
     detect_temporal_query_range, format_message_timestamp, strip_echoed_time_stamps,
+    timestamped_message_text,
 };
+use lettuceai_lib::chat_manager::types::StoredMessage;
 
 fn local_ms(year: i32, month: u32, day: u32, hour: u32) -> u64 {
     Local
@@ -56,8 +58,36 @@ fn parses_word_number_weekday_ago() {
 #[test]
 fn stamp_is_wrapped_in_a_time_tag() {
     let stamp = format_message_timestamp(local_ms(2026, 3, 12, 18));
-    assert!(stamp.starts_with("<time>"));
-    assert!(stamp.ends_with("</time>"));
+    assert_eq!(stamp, "<time>2026-03-12 18:00</time>");
+}
+
+#[test]
+fn stored_effective_time_wins_over_real_creation_time_for_either_role() {
+    for role in ["user", "assistant"] {
+        let message = StoredMessage {
+            id: format!("{role}-message"),
+            role: role.to_string(),
+            content: "Hello".to_string(),
+            created_at: local_ms(2026, 8, 7, 9),
+            effective_at: Some(local_ms(2034, 1, 2, 21)),
+            visible_in_chat: false,
+            scene_edited: false,
+            usage: None,
+            variants: Vec::new(),
+            selected_variant_id: None,
+            memory_refs: Vec::new(),
+            used_lorebook_entries: Vec::new(),
+            is_pinned: false,
+            attachments: Vec::new(),
+            reasoning: None,
+            model_id: None,
+            gemini_content: None,
+        };
+        assert_eq!(
+            timestamped_message_text(&message),
+            "<time>2034-01-02 21:00</time> Hello"
+        );
+    }
 }
 
 #[test]

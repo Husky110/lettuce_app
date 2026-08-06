@@ -1061,6 +1061,11 @@ pub struct StoredMessage {
     pub role: String,
     pub content: String,
     pub created_at: u64,
+    /// Immutable timestamp in the companion's effective timeline. This is
+    /// captured when the message is created so later clock changes cannot
+    /// rewrite conversation history.
+    #[serde(default)]
+    pub effective_at: Option<u64>,
     #[serde(default)]
     pub visible_in_chat: bool,
     #[serde(default)]

@@ -28,7 +28,6 @@ use crate::chat_manager::service::{
 use crate::chat_manager::storage::recent_messages;
 use crate::chat_manager::temporal::{
     companion_effective_now, companion_time_awareness_enabled, format_memory_for_prompt,
-    temporal_frame_delta,
 };
 use crate::chat_manager::turn_builder::{
     append_image_directive_instructions, assemble_prompt_messages, build_enriched_query,
@@ -150,6 +149,13 @@ impl CompletionFlow {
             role: "user".into(),
             content: user_message.clone(),
             created_at: now,
+            effective_at: if companion::is_companion_mode(&session, &character)
+                && companion_time_awareness_enabled(&session)
+            {
+                Some(companion_effective_now(&session))
+            } else {
+                Some(now)
+            },
             visible_in_chat: false,
             scene_edited: false,
             usage: None,
@@ -369,18 +375,6 @@ impl CompletionFlow {
 
         let time_stamp_enabled =
             companion_mode_enabled && companion_time_awareness_enabled(&session);
-        let time_frame_delta = if time_stamp_enabled {
-            let latest_created = pinned_msgs
-                .iter()
-                .chain(recent_msgs.iter())
-                .map(|msg| msg.created_at)
-                .max()
-                .unwrap_or(0);
-            temporal_frame_delta(&session, latest_created)
-        } else {
-            0
-        };
-
         let mut chat_messages = Vec::new();
         for msg in &pinned_msgs {
             let msg_with_data = load_attachment_data(&app, msg);
@@ -392,7 +386,6 @@ impl CompletionFlow {
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -407,7 +400,6 @@ impl CompletionFlow {
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -827,6 +819,11 @@ impl CompletionFlow {
             role: "assistant".into(),
             content: text.clone(),
             created_at: assistant_created_at,
+            effective_at: if time_stamp_enabled {
+                Some(companion_effective_now(&session))
+            } else {
+                Some(assistant_created_at)
+            },
             visible_in_chat: false,
             scene_edited: false,
             usage: usage.clone(),

@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 90;
+pub const CURRENT_MIGRATION_VERSION: u32 = 91;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -927,6 +927,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v89_to_v90(app)?;
         version = 90;
+    }
+
+    if version < 91 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v90 -> v91: Freeze companion message timeline timestamps",
+        );
+        migrate_v90_to_v91(app)?;
+        version = 91;
     }
 
     // Update the stored version
@@ -4318,6 +4328,9 @@ pub(crate) fn run_preflight_migrations(
     if version >= 89 && version < 90 {
         migrate_v89_to_v90_conn(conn)?;
     }
+    if version >= 90 && version < 91 {
+        migrate_v90_to_v91_conn(conn)?;
+    }
     Ok(())
 }
 
@@ -4339,6 +4352,39 @@ fn migrate_v88_to_v89(app: &AppHandle) -> Result<(), String> {
 fn migrate_v89_to_v90(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     migrate_v89_to_v90_conn(&conn)
+}
+
+fn migrate_v90_to_v91(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    migrate_v90_to_v91_conn(&conn)
+}
+
+fn migrate_v90_to_v91_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+    let has_effective_at = conn
+        .prepare("PRAGMA table_info(messages)")
+        .and_then(|mut statement| {
+            let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+            rows.collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?
+        .iter()
+        .any(|column| column == "effective_at");
+
+    if !has_effective_at {
+        conn.execute("ALTER TABLE messages ADD COLUMN effective_at INTEGER", [])
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    }
+    conn.execute(
+        "UPDATE messages
+         SET effective_at = created_at
+         WHERE effective_at IS NULL AND role IN ('user', 'assistant')",
+        [],
+    )
+    .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    if !has_effective_at {
+        migrate_sync_v2_schema(conn)?;
+    }
+    Ok(())
 }
 
 fn migrate_v89_to_v90_conn(conn: &rusqlite::Connection) -> Result<(), String> {
@@ -5342,6 +5388,7 @@ mod tests {
     use super::{
         migrate_image_lora_metadata_columns, migrate_sync_v2_schema,
         migrate_v87_to_v88_conn, migrate_v88_to_v89_conn, migrate_v89_to_v90_conn,
+        migrate_v90_to_v91_conn,
         run_preflight_migrations,
         table_column_names,
         GROUP_SESSIONS_V88_COLUMNS, IMAGE_LORAS_V88_COLUMNS,
@@ -5884,6 +5931,48 @@ mod tests {
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| row.get::<_, i64>(0)).unwrap(),
             0
+        );
+    }
+
+    #[test]
+    fn v91_backfills_immutable_message_time_and_keeps_canonical_column_order() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+               id TEXT PRIMARY KEY,
+               session_id TEXT NOT NULL,
+               role TEXT NOT NULL,
+               content TEXT NOT NULL,
+               created_at INTEGER NOT NULL,
+               parent_message_id TEXT
+             );
+             INSERT INTO messages VALUES ('user', 'chat', 'user', 'hello', 1234, NULL);
+             INSERT INTO messages VALUES ('scene', 'chat', 'scene', 'setting', 1200, NULL);",
+        )
+        .unwrap();
+
+        migrate_v90_to_v91_conn(&conn).unwrap();
+        migrate_v90_to_v91_conn(&conn).unwrap();
+
+        let columns = table_column_names(&conn, "messages").unwrap();
+        assert_eq!(columns.last().map(String::as_str), Some("effective_at"));
+        assert_eq!(
+            conn.query_row(
+                "SELECT effective_at FROM messages WHERE id = 'user'",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .unwrap(),
+            Some(1234)
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT effective_at FROM messages WHERE id = 'scene'",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .unwrap(),
+            None
         );
     }
 }

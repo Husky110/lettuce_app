@@ -238,7 +238,7 @@ pub fn jsonl_export_single_chat(
 
     let first_created_at = messages
         .first()
-        .and_then(|v| v.get("createdAt"))
+        .and_then(|v| v.get("effectiveAt").or_else(|| v.get("createdAt")))
         .and_then(|v| v.as_i64())
         .unwrap_or_else(|| now_ms() as i64);
 
@@ -257,7 +257,8 @@ pub fn jsonl_export_single_chat(
             .and_then(|v| v.as_str())
             .unwrap_or("assistant");
         let created_at = message
-            .get("createdAt")
+            .get("effectiveAt")
+            .or_else(|| message.get("createdAt"))
             .and_then(|v| v.as_i64())
             .unwrap_or_else(|| now_ms() as i64);
         let content = pick_message_content(&message);
@@ -738,6 +739,9 @@ fn import_single(
             "createdAt": created_at,
             "attachments": [],
         });
+        if matches!(role, "user" | "assistant") {
+            message["effectiveAt"] = json!(created_at);
+        }
         if !variants.is_empty() {
             message["variants"] = json!(variants);
             message["selectedVariantId"] = json!(selected_variant_id);

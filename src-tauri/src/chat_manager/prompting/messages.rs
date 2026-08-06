@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-use crate::chat_manager::temporal::message_timestamp_prefix;
+use crate::chat_manager::temporal::timestamped_message_content;
 use crate::chat_manager::types::{
     ImageAttachment, PromptEntryRole, StoredMessage, SystemPromptEntry,
 };
@@ -132,7 +132,6 @@ pub fn push_user_or_assistant_message_with_context(
     persona_name: &str,
     allow_image_input: bool,
     allow_audio_input: bool,
-    time_frame_delta: i64,
     time_stamp_enabled: bool,
 ) {
     if message.role == "scene" {
@@ -149,13 +148,8 @@ pub fn push_user_or_assistant_message_with_context(
         .replace("{{persona}}", persona_name)
         .replace("{{user}}", persona_name);
 
-    if time_stamp_enabled && message.role == "user" {
-        let prefix = message_timestamp_prefix(message.created_at, time_frame_delta);
-        text = if text.is_empty() {
-            prefix
-        } else {
-            format!("{} {}", prefix, text)
-        };
+    if time_stamp_enabled && (message.role == "user" || message.role == "assistant") {
+        text = timestamped_message_content(message, &text);
     }
 
     if (allow_image_input || allow_audio_input)

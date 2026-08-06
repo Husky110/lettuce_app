@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { abortMessage } from "../../../../core/chat/manager";
 import { getSessionMeta, listMessages } from "../../../../core/storage/repo";
 import type { Session, StoredMessage } from "../../../../core/storage/schemas";
+import { effectiveOverrideMs } from "../utils/companionTimeOverride";
 import { applyLiveChatAction, getLiveChatState } from "./chatLiveState";
 import type { ChatControllerModuleContext } from "./chatControllerShared";
 import type { ChatState } from "./chatReducer";
@@ -104,6 +105,7 @@ function getPartialAssistantForAbort(
 function mergePartialAssistantMessage(
   storedMessages: StoredMessage[],
   partialAssistant: { mode: "append" | "replace"; message: StoredMessage },
+  effectiveAt: number,
 ): StoredMessage[] {
   const messagesBeforePartial = storedMessages.filter(
     (message) => message.id !== partialAssistant.message.id,
@@ -115,6 +117,10 @@ function mergePartialAssistantMessage(
   const message = {
     ...partialAssistant.message,
     createdAt: Math.max(partialAssistant.message.createdAt, latestCreatedAt + 1),
+    effectiveAt:
+      partialAssistant.mode === "replace"
+        ? (partialAssistant.message.effectiveAt ?? effectiveAt)
+        : effectiveAt,
   };
 
   if (partialAssistant.mode === "replace") {
@@ -196,7 +202,14 @@ export function useChatAbortController({
       let nextSession = storedSession ? { ...storedSession, messages: nextMessages } : null;
 
       if (storedSession && partialAssistant) {
-        const mergedMessages = mergePartialAssistantMessage(nextMessages, partialAssistant);
+        const mergedMessages = mergePartialAssistantMessage(
+          nextMessages,
+          partialAssistant,
+          effectiveOverrideMs(
+            storedSession.companionState?.preferences?.timeOverride,
+            Date.now(),
+          ),
+        );
         const persistedSession = {
           ...storedSession,
           messages: mergedMessages,

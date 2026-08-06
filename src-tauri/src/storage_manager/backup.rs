@@ -795,7 +795,7 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     for (session_id, mut session_json) in sessions {
         let mut messages_stmt = conn
             .prepare("SELECT id, role, content, created_at, visible_in_chat, scene_edited, prompt_tokens, completion_tokens, total_tokens,
-                             first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning FROM messages
+                             first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, effective_at FROM messages
                       WHERE session_id = ? ORDER BY created_at ASC")
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
@@ -822,6 +822,7 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                     "used_lorebook_entries": r.get::<_, String>(16)?,
                     "attachments": r.get::<_, String>(17)?,
                     "reasoning": r.get::<_, Option<String>>(18)?,
+                    "effective_at": r.get::<_, Option<i64>>(19)?,
                 });
                 Ok((msg_id, json))
             })
@@ -2571,17 +2572,33 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
             if let Some(messages) = item.get("messages").and_then(|v| v.as_array()) {
                 for msg in messages {
                     let msg_id = msg.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let role = msg
+                        .get("role")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("assistant");
+                    let created_at = msg.get("created_at").and_then(|v| v.as_i64());
+                    let effective_at = msg
+                        .get("effective_at")
+                        .and_then(|v| v.as_i64())
+                        .or_else(|| {
+                            if matches!(role, "user" | "assistant") {
+                                created_at
+                            } else {
+                                None
+                            }
+                        });
 
                     conn.execute(
-                        "INSERT INTO messages (id, session_id, role, content, created_at, visible_in_chat, scene_edited, prompt_tokens,
+                        "INSERT INTO messages (id, session_id, role, content, created_at, effective_at, visible_in_chat, scene_edited, prompt_tokens,
                          completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                         params![
                             msg_id,
                             session_id,
-                            msg.get("role").and_then(|v| v.as_str()),
+                            role,
                             msg.get("content").and_then(|v| v.as_str()),
-                            msg.get("created_at").and_then(|v| v.as_i64()),
+                            created_at,
+                            effective_at,
                             msg.get("visible_in_chat").and_then(|v| v.as_bool()).unwrap_or(false) as i64,
                             msg.get("scene_edited").and_then(|v| v.as_bool()).unwrap_or(false) as i64,
                             msg.get("prompt_tokens").and_then(|v| v.as_i64()),

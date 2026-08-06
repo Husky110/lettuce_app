@@ -178,6 +178,7 @@ fn renders_simple_placeholders() {
         role: "scene".into(),
         content: "Edited scene with {{char}} and {{persona}}".into(),
         created_at: 1,
+        effective_at: None,
         visible_in_chat: false,
         scene_edited: true,
         usage: None,

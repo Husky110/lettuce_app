@@ -752,6 +752,7 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           attachments TEXT NOT NULL DEFAULT '[]',
           reasoning TEXT,
           parent_message_id TEXT,
+          effective_at INTEGER,
           FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 

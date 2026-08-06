@@ -334,17 +334,6 @@ impl RegenerateFlow {
 
             let time_stamp_enabled = companion_mode_enabled
                 && crate::chat_manager::temporal::companion_time_awareness_enabled(&session);
-            let time_frame_delta = if time_stamp_enabled {
-                let latest_created = messages_before_target
-                    .iter()
-                    .map(|msg| msg.created_at)
-                    .max()
-                    .unwrap_or(0);
-                crate::chat_manager::temporal::temporal_frame_delta(&session, latest_created)
-            } else {
-                0
-            };
-
             let mut chat_messages = Vec::new();
             if dynamic_memory_enabled {
                 let (pinned_msgs, recent_msgs) =
@@ -360,7 +349,6 @@ impl RegenerateFlow {
                         persona_name,
                         allow_image_input,
                         allow_audio_input,
-                        time_frame_delta,
                         time_stamp_enabled,
                     );
                 }
@@ -375,7 +363,6 @@ impl RegenerateFlow {
                         persona_name,
                         allow_image_input,
                         allow_audio_input,
-                        time_frame_delta,
                         time_stamp_enabled,
                     );
                 }
@@ -400,7 +387,6 @@ impl RegenerateFlow {
                         persona_name,
                         allow_image_input,
                         allow_audio_input,
-                        time_frame_delta,
                         time_stamp_enabled,
                     );
                 }

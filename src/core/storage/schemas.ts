@@ -2577,6 +2577,8 @@ export const MessageSchema = z.object({
   role: z.enum(["system", "user", "assistant", "scene"]),
   content: z.string(),
   createdAt: z.number().int(),
+  /** Immutable time in the companion clock frame when this message occurred. */
+  effectiveAt: z.number().int().nullish(),
   /** Opt-in visibility for system messages that should render in chat UI. */
   visibleInChat: z.boolean().optional(),
   /** Session-only override for scene messages so reloads do not snap back to the character scene. */

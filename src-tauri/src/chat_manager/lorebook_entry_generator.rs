@@ -645,6 +645,8 @@ fn format_selected_memories(
     memory_ids: &[String],
     embeddings: &[crate::chat_manager::types::MemoryEmbedding],
     legacy: &[String],
+    effective_now: u64,
+    time_awareness_enabled: bool,
 ) -> String {
     if memory_ids.is_empty() {
         return "(none)".to_string();
@@ -656,7 +658,15 @@ fn format_selected_memories(
         if id_set.contains(embedding.id.as_str()) {
             let trimmed = embedding.text.trim();
             if !trimmed.is_empty() {
-                lines.push(format!("{}. {}", index, trimmed));
+                let rendered = if time_awareness_enabled {
+                    crate::chat_manager::temporal::format_memory_for_prompt(
+                        embedding,
+                        effective_now,
+                    )
+                } else {
+                    format!("- {}", trimmed)
+                };
+                lines.push(format!("{}. {}", index, rendered.trim_start_matches("- ")));
                 index += 1;
             }
         }
@@ -678,7 +688,7 @@ fn format_selected_memories(
     }
 }
 
-fn format_selected_messages(messages: &[StoredMessage]) -> String {
+fn format_selected_messages(messages: &[StoredMessage], time_awareness_enabled: bool) -> String {
     messages
         .iter()
         .enumerate()
@@ -687,6 +697,11 @@ fn format_selected_messages(messages: &[StoredMessage]) -> String {
                 "[empty message]".to_string()
             } else {
                 message.content.trim().to_string()
+            };
+            let content = if time_awareness_enabled {
+                crate::chat_manager::temporal::timestamped_message_content(message, &content)
+            } else {
+                content
             };
             format!("{}. {}: {}", index + 1, message.role, content)
         })
@@ -1497,7 +1512,7 @@ fn load_selected_messages(
         .collect::<Vec<_>>()
         .join(",");
     let sql = format!(
-        "SELECT id, role, content, created_at, scene_edited, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning FROM messages WHERE session_id = ?1 AND id IN ({}) ORDER BY created_at ASC, id ASC",
+        "SELECT id, role, content, created_at, scene_edited, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, effective_at FROM messages WHERE session_id = ?1 AND id IN ({}) ORDER BY created_at ASC, id ASC",
         placeholders
     );
 
@@ -1518,6 +1533,9 @@ fn load_selected_messages(
                 role: row.get::<_, String>(1)?,
                 content: row.get::<_, String>(2)?,
                 created_at: row.get::<_, i64>(3)? as u64,
+                effective_at: row
+                    .get::<_, Option<i64>>(14)?
+                    .map(|value| value.max(0) as u64),
                 visible_in_chat: false,
                 scene_edited: row.get::<_, i64>(4)? != 0,
                 usage: None,
@@ -1623,6 +1641,8 @@ pub async fn chat_generate_lorebook_entry_draft(
     let settings = &context.settings;
     let mut session = session_get_meta_internal(&app, &session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
+    let time_awareness_enabled =
+        crate::chat_manager::temporal::companion_time_awareness_enabled(&session);
     let selected_messages = if messages_enabled && !message_ids.is_empty() {
         let loaded = load_selected_messages(&app, &session_id, &message_ids)?;
         if loaded.is_empty() && source_mode == LorebookEntrySource::Messages {
@@ -1647,7 +1667,13 @@ pub async fn chat_generate_lorebook_entry_draft(
         "(none)".to_string()
     };
     let selected_memories_text = if memory_enabled {
-        format_selected_memories(&memory_ids, &session.memory_embeddings, &session.memories)
+        format_selected_memories(
+            &memory_ids,
+            &session.memory_embeddings,
+            &session.memories,
+            crate::chat_manager::temporal::companion_effective_now(&session),
+            time_awareness_enabled,
+        )
     } else {
         "(none)".to_string()
     };
@@ -1689,7 +1715,7 @@ pub async fn chat_generate_lorebook_entry_draft(
         .filter(|value| !value.is_empty())
         .unwrap_or("(none)");
     let selected_messages_text = if !selected_messages.is_empty() {
-        format_selected_messages(&selected_messages)
+        format_selected_messages(&selected_messages, time_awareness_enabled)
     } else {
         "(none)".to_string()
     };

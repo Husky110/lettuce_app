@@ -1920,6 +1920,7 @@ export async function createBranchedSessionFromGroupMessage(
       role: message.role,
       content: resolveContent(message.content),
       createdAt: message.createdAt,
+      effectiveAt: message.createdAt,
       isPinned: message.isPinned ?? false,
       memoryRefs: [],
       usage: message.usage ?? undefined,

@@ -491,6 +491,10 @@ fn import_sessions(app: &tauri::AppHandle, conn: &mut rusqlite::Connection) -> R
                         .get("createdAt")
                         .and_then(|v| v.as_i64())
                         .unwrap_or(created_at);
+                    let effective_at = m
+                        .get("effectiveAt")
+                        .and_then(|v| v.as_i64())
+                        .or_else(|| matches!(role, "user" | "assistant").then_some(mcreated));
                     let is_pinned =
                         m.get("isPinned").and_then(|v| v.as_bool()).unwrap_or(false) as i64;
                     let usage = m.get("usage");
@@ -508,8 +512,8 @@ fn import_sessions(app: &tauri::AppHandle, conn: &mut rusqlite::Connection) -> R
                         .and_then(|v| v.as_str())
                         .map(|x| x.to_string());
                     tx.execute(
-                        "INSERT INTO messages (id, session_id, role, content, created_at, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        params![&mid, &id, role, content, mcreated, pt, ct, tt, selected_variant_id, is_pinned],
+                        "INSERT INTO messages (id, session_id, role, content, created_at, effective_at, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        params![&mid, &id, role, content, mcreated, effective_at, pt, ct, tt, selected_variant_id, is_pinned],
                     ).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
                     if let Some(vars) = m.get("variants").and_then(|v| v.as_array()) {

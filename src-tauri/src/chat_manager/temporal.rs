@@ -212,35 +212,29 @@ pub fn companion_effective_now(session: &Session) -> u64 {
     }
 }
 
-/// Offset `delta` such that a message's effective-frame timestamp is
-/// `created_at + delta`, keeping the transcript consistent with
-/// `companion_effective_now`. `latest_window_created_ms` is the newest message
-/// timestamp in the batch being sent (used to anchor the frozen frame).
-pub fn temporal_frame_delta(session: &Session, latest_window_created_ms: u64) -> i64 {
-    let Some(override_value) = read_time_override(session) else {
-        return 0;
-    };
-    match override_value.mode.as_str() {
-        "frozen" => match override_value.anchor_ms {
-            Some(anchor) => anchor as i64 - latest_window_created_ms as i64,
-            None => 0,
-        },
-        "ticking" => match (override_value.anchor_ms, override_value.set_at_ms) {
-            (Some(anchor), Some(set_at)) => anchor as i64 - set_at as i64,
-            _ => 0,
-        },
-        _ => 0,
+pub fn format_message_timestamp(effective_ms: u64) -> String {
+    let dt = local_datetime_from_ms(effective_ms);
+    format!("<time>{}</time>", dt.format("%Y-%m-%d %H:%M"))
+}
+
+pub fn stored_message_timestamp(message: &crate::chat_manager::types::StoredMessage) -> String {
+    format_message_timestamp(message.effective_at.unwrap_or(message.created_at))
+}
+
+pub fn timestamped_message_content(
+    message: &crate::chat_manager::types::StoredMessage,
+    content: &str,
+) -> String {
+    let prefix = stored_message_timestamp(message);
+    if content.is_empty() {
+        prefix
+    } else {
+        format!("{} {}", prefix, content)
     }
 }
 
-pub fn format_message_timestamp(effective_ms: u64) -> String {
-    let dt = local_datetime_from_ms(effective_ms);
-    format!("<time>{}</time>", dt.format("%a %-I:%M %p, %Y-%m-%d"))
-}
-
-pub fn message_timestamp_prefix(created_at: u64, frame_delta: i64) -> String {
-    let effective = (created_at as i64 + frame_delta).max(0) as u64;
-    format_message_timestamp(effective)
+pub fn timestamped_message_text(message: &crate::chat_manager::types::StoredMessage) -> String {
+    timestamped_message_content(message, &message.content)
 }
 
 fn tagged_timestamp_regex() -> &'static Regex {

@@ -287,18 +287,6 @@ impl ContinueFlow {
 
         let time_stamp_enabled = companion_mode_enabled
             && crate::chat_manager::temporal::companion_time_awareness_enabled(&session);
-        let time_frame_delta = if time_stamp_enabled {
-            let latest_created = pinned_msgs
-                .iter()
-                .chain(recent_msgs.iter())
-                .map(|msg| msg.created_at)
-                .max()
-                .unwrap_or(0);
-            crate::chat_manager::temporal::temporal_frame_delta(&session, latest_created)
-        } else {
-            0
-        };
-
         let mut chat_messages = Vec::new();
         for msg in &pinned_msgs {
             let msg_with_data = load_attachment_data(&app, msg);
@@ -310,7 +298,6 @@ impl ContinueFlow {
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -325,7 +312,6 @@ impl ContinueFlow {
                 persona_name,
                 allow_image_input,
                 allow_audio_input,
-                time_frame_delta,
                 time_stamp_enabled,
             );
         }
@@ -705,6 +691,13 @@ impl ContinueFlow {
             role: "assistant".into(),
             content: text.clone(),
             created_at: assistant_created_at,
+            effective_at: if companion_mode_enabled
+                && crate::chat_manager::temporal::companion_time_awareness_enabled(&session)
+            {
+                Some(crate::chat_manager::temporal::companion_effective_now(&session))
+            } else {
+                Some(assistant_created_at)
+            },
             visible_in_chat: false,
             scene_edited: false,
             usage: usage.clone(),
