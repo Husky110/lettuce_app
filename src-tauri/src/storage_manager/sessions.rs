@@ -352,6 +352,19 @@ fn persist_shared_memory_from_session_json(
         return Ok(false);
     }
 
+    let session_exists = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+            params![session_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    if !session_exists {
+        // New sessions attach to character-owned memory. Their empty defaults
+        // must never be interpreted as a request to clear the shared store.
+        return Ok(true);
+    }
+
     let mut shared_state =
         crate::storage_manager::companion_shared_memory::load_state(conn, character_id)?;
     shared_state.memories_json = memories_json.to_string();
@@ -4625,5 +4638,114 @@ mod effective_message_time_tests {
             )
             .unwrap();
         assert_eq!(effective_at, 100);
+    }
+}
+
+#[cfg(test)]
+mod shared_memory_session_creation_tests {
+    use super::persist_shared_memory_from_session_json;
+    use rusqlite::{params, Connection};
+
+    fn connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE characters (
+               id TEXT PRIMARY KEY,
+               mode TEXT,
+               companion TEXT
+             );
+             CREATE TABLE sessions (
+               id TEXT PRIMARY KEY,
+               character_id TEXT NOT NULL,
+               mode TEXT NOT NULL
+             );
+             CREATE TABLE companion_shared_memory_state (
+               character_id TEXT PRIMARY KEY,
+               memories TEXT NOT NULL DEFAULT '[]',
+               memory_summary TEXT,
+               memory_summary_token_count INTEGER NOT NULL DEFAULT 0,
+               memory_tool_events TEXT NOT NULL DEFAULT '[]',
+               memory_status TEXT,
+               memory_error TEXT,
+               memory_progress_step INTEGER,
+               soul_growth TEXT NOT NULL DEFAULT '[]',
+               relationship_states TEXT NOT NULL DEFAULT '{}',
+               created_at INTEGER NOT NULL,
+               updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE memory_embeddings (
+               session_id TEXT NOT NULL,
+               session_kind TEXT NOT NULL,
+               memory_id TEXT NOT NULL
+             );
+             INSERT INTO characters (id, mode, companion) VALUES (
+               'character',
+               'companion',
+               '{\"memory\":{\"sharedAcrossSessions\":true}}'
+             );
+             INSERT INTO companion_shared_memory_state (
+               character_id, memories, memory_summary, memory_summary_token_count,
+               memory_tool_events, memory_status, soul_growth, relationship_states,
+               created_at, updated_at
+             ) VALUES (
+               'character', '[\"Remember this\"]', 'Existing summary', 2,
+               '[{\"name\":\"add_memory\"}]', 'idle', '[]', '{}', 1, 1
+             );
+             INSERT INTO memory_embeddings VALUES (
+               'character', 'companion_shared', 'memory-1'
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn creating_another_session_does_not_clear_character_memory() {
+        let conn = connection();
+
+        let shared = persist_shared_memory_from_session_json(
+            &conn,
+            "new-session",
+            "character",
+            "companion",
+            "[]",
+            "[]",
+            None,
+            0,
+            "[]",
+            Some("idle".to_string()),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(shared);
+        let state = conn
+            .query_row(
+                "SELECT memories, memory_summary, memory_tool_events
+                 FROM companion_shared_memory_state WHERE character_id = 'character'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(state.0, "[\"Remember this\"]");
+        assert_eq!(state.1.as_deref(), Some("Existing summary"));
+        assert_eq!(state.2, "[{\"name\":\"add_memory\"}]");
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM memory_embeddings
+                 WHERE session_id = ?1 AND session_kind = 'companion_shared'",
+                params!["character"],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            1
+        );
     }
 }
