@@ -2223,6 +2223,7 @@ fn import_companion_app_specific_for_character(
         } else {
             now
         };
+        let soul_growth = json_value_to_storage_string(&shared_memory.soul_growth, "[]");
         tx.execute(
             r#"
             INSERT OR REPLACE INTO companion_shared_memory_state (
@@ -2241,7 +2242,7 @@ fn import_companion_app_specific_for_character(
                 shared_memory.memory_status.as_deref(),
                 shared_memory.memory_error.as_deref(),
                 shared_memory.memory_progress_step,
-                json_value_to_storage_string(&shared_memory.soul_growth, "[]"),
+                &soul_growth,
                 json_value_to_storage_string(&shared_memory.relationship_states, "{}"),
                 created_at,
                 updated_at,
@@ -2254,6 +2255,11 @@ fn import_companion_app_specific_for_character(
                 format!("Failed to import companion shared memory: {}", e),
             )
         })?;
+        crate::storage_manager::companion_shared_memory::sync_normalized_soul_facts(
+            &tx,
+            &new_character_id,
+            &soul_growth,
+        )?;
     }
 
     Ok(())

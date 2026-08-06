@@ -1237,6 +1237,24 @@ pub fn companion_clear_soul_growth(app: AppHandle, session_id: String) -> Result
 }
 
 #[tauri::command]
+pub fn companion_set_soul_growth_lock(
+    app: AppHandle,
+    session_id: String,
+    entry_id: String,
+    locked: bool,
+) -> Result<bool, String> {
+    let mut session = super::storage::load_session(&app, &session_id)?
+        .ok_or_else(|| "Session not found".to_string())?;
+    let now = crate::utils::now_millis()?;
+    let updated =
+        super::companion::set_soul_growth_lock(&mut session, &entry_id, locked, now);
+    if updated {
+        super::storage::save_session(&app, &session)?;
+    }
+    Ok(updated)
+}
+
+#[tauri::command]
 pub async fn chat_generate_lorebook_entry_draft(
     app: AppHandle,
     args: ChatGenerateLorebookEntryDraftArgs,

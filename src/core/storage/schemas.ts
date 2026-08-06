@@ -3625,6 +3625,29 @@ export const CompanionConfigSchema = z.object({
       pride: 0.3,
     },
   }),
+  authoredFacts: z
+    .array(
+      z.object({
+        id: z.string(),
+        category: z.string(),
+        value: z.string(),
+        kind: z.string().default("authored"),
+        policy: z.enum(["current", "adaptive", "historical"]),
+        slot: z.string(),
+        confidence: z.number().min(0).max(1).default(1),
+        evidenceCount: z.number().int().nonnegative().default(1),
+        weight: z.number().min(0).max(1).default(1),
+        validFrom: z.number().int().nonnegative().default(0),
+        validUntil: z.number().int().nonnegative().nullish(),
+        locked: z.boolean().default(false),
+        sourceMemoryIds: z.array(z.string()).default([]),
+        createdAt: z.number().int().nonnegative().default(0),
+        supersedes: z.array(z.string()).optional(),
+        supersededBy: z.string().nullish(),
+        supersededAt: z.number().int().nullish(),
+      }),
+    )
+    .default([]),
   relationshipDefaults: CompanionRelationshipDefaultsSchema.default({
     closeness: 0.2,
     trust: 0.3,
@@ -3736,6 +3759,14 @@ export const CompanionSoulGrowthEntrySchema = z.object({
   category: z.string().default(""),
   value: z.string().default(""),
   kind: z.string().default("add"),
+  policy: z.enum(["current", "adaptive", "historical"]).default("adaptive"),
+  slot: z.string().default(""),
+  confidence: z.number().min(0).max(1).default(1),
+  evidenceCount: z.number().int().nonnegative().default(0),
+  weight: z.number().min(0).max(1).default(1),
+  validFrom: z.number().int().nonnegative().default(0),
+  validUntil: z.number().int().nonnegative().nullish(),
+  locked: z.boolean().default(false),
   sourceMemoryIds: z.array(z.string()).default([]),
   createdAt: z.number().int().default(0),
   supersedes: z.array(z.string()).optional(),
@@ -3749,6 +3780,14 @@ export const CompanionSessionStateSchema = z.object({
   relationshipState: CompanionRelationshipStateSchema.default(DEFAULT_COMPANION_RELATIONSHIP_STATE),
   activeSignals: z.array(z.string()).default([]),
   soulGrowth: z.array(CompanionSoulGrowthEntrySchema).optional(),
+  continuity: z
+    .object({
+      episodeId: z.string().default(""),
+      episodeIndex: z.number().int().nonnegative().default(0),
+      previousEpisodeId: z.string().nullish(),
+      startedAt: z.number().int().nonnegative().default(0),
+    })
+    .optional(),
   preferences: z
     .object({
       timeAwarenessEnabled: z.boolean().default(false),

@@ -9,6 +9,7 @@ use crate::api::{api_request, ApiRequest, ApiResponse};
 use crate::chat_manager::execution::{
     find_model_with_credential, prepare_feature_request,
 };
+use crate::chat_manager::companion::SoulGrowthEntry;
 use crate::chat_manager::feature_generation::{
     feature_model_overrides, synthetic_feature_session, LlmFeature, COMPANION_SOUL_WRITER_DEFAULTS,
 };
@@ -100,6 +101,7 @@ const RELATIONSHIP_DEFAULTS_FIELDS: &[&str] = &["closeness", "trust", "affection
 const SOUL_OP_ROOT_TAGS: &[&str] = &["soul_ops", "operations"];
 const SOUL_OP_TAGS: &[&str] = &[
     "set_identity",
+    "set_authored_facts",
     "set_baseline_affect",
     "set_regulation_style",
     "set_relationship_defaults",
@@ -197,6 +199,13 @@ fn fallback_prompt(format: DynamicMemoryStructuredFallbackFormat) -> &'static st
     match format {
         DynamicMemoryStructuredFallbackFormat::Json => COMPANION_SOUL_JSON_FALLBACK_PROMPT,
         DynamicMemoryStructuredFallbackFormat::Xml => COMPANION_SOUL_XML_FALLBACK_PROMPT,
+    }
+}
+
+fn fallback_fact_prompt(format: DynamicMemoryStructuredFallbackFormat) -> &'static str {
+    match format {
+        DynamicMemoryStructuredFallbackFormat::Json => r#"Also include a set_authored_facts operation. Its arguments must be {"facts":[{"category":"backstory","value":"one atomic fact","policy":"historical","slot":"stable-semantic-slot","confidence":1.0,"weight":1.0,"locked":true}]}. Extract historical, current, and adaptive facts conservatively."#,
+        DynamicMemoryStructuredFallbackFormat::Xml => r#"Also include <set_authored_facts><facts>[{"category":"backstory","value":"one atomic fact","policy":"historical","slot":"stable-semantic-slot","confidence":1.0,"weight":1.0,"locked":true}]</facts></set_authored_facts>. The facts element contains a JSON array escaped as normal XML text. Extract facts conservatively."#,
     }
 }
 
@@ -313,7 +322,7 @@ fn render_messages(
 
     messages.push(json!({
         "role": "user",
-        "content": "Author the Companion Soul now. Issue tool calls (set_identity, set_baseline_affect, set_regulation_style, set_relationship_defaults) across one or more turns, then call done to finish. Populate every identity text field you can ground from the inputs: essence, traits, backstory, appearance, goals, likes, voice, relationalStyle, vulnerabilities, fears, habits, and boundaries.",
+        "content": "Author the Companion Soul now. Issue tool calls (set_identity, set_authored_facts, set_baseline_affect, set_regulation_style, set_relationship_defaults) across one or more turns, then call done to finish. Populate every identity text field you can ground from the inputs: essence, traits, backstory, appearance, goals, likes, voice, relationalStyle, vulnerabilities, fears, habits, and boundaries. Also extract atomic facts from the backstory and definition: historical events use policy=historical and locked=true; present-state details use policy=current; inferred traits, fears, goals, habits, and vulnerabilities use policy=adaptive and locked=false. Do not turn uncertain implications into facts.",
     }));
 
     messages
@@ -347,6 +356,34 @@ fn build_tool_config() -> ToolConfig {
             parameters: json!({
                 "type": "object",
                 "properties": identity_props,
+            }),
+        },
+        ToolDefinition {
+            name: "set_authored_facts".to_string(),
+            description: Some(
+                "Replace the atomic facts extracted from the authored definition and backstory. Historical events are immutable and locked. Current facts can be superseded by a newer value in the same slot. Adaptive facts are evidence about traits, fears, goals, habits, or vulnerabilities and remain unlocked.".to_string(),
+            ),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "facts": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "category": { "type": "string", "enum": TEXT_FIELDS },
+                                "value": { "type": "string" },
+                                "policy": { "type": "string", "enum": ["historical", "current", "adaptive"] },
+                                "slot": { "type": "string" },
+                                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                                "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+                                "locked": { "type": "boolean" }
+                            },
+                            "required": ["category", "value", "policy", "slot", "confidence", "weight", "locked"]
+                        }
+                    }
+                },
+                "required": ["facts"]
             }),
         },
         ToolDefinition {
@@ -437,6 +474,7 @@ fn default_soul_value() -> Value {
 
     let mut root = Map::new();
     root.insert("soul".to_string(), Value::Object(soul));
+    root.insert("authoredFacts".to_string(), Value::Array(Vec::new()));
     root.insert(
         "relationshipDefaults".to_string(),
         Value::Object(relationship),
@@ -508,6 +546,12 @@ fn normalize_working_soul(current: Option<&Value>) -> Value {
         }
     }
 
+    if let Some(facts) = current_obj.get("authoredFacts").and_then(Value::as_array) {
+        if let Some(root) = working.as_object_mut() {
+            root.insert("authoredFacts".to_string(), Value::Array(facts.clone()));
+        }
+    }
+
     working
 }
 
@@ -547,6 +591,88 @@ fn apply_set_identity(working: &mut Value, args: &Value) -> Vec<String> {
         }
     }
     applied
+}
+
+fn apply_set_authored_facts(working: &mut Value, args: &Value) -> usize {
+    let Some(raw_facts) = args.get("facts") else {
+        return 0;
+    };
+    let parsed_string;
+    let facts = match raw_facts {
+        Value::Array(items) => items,
+        Value::String(raw) => {
+            parsed_string = serde_json::from_str::<Vec<Value>>(raw).unwrap_or_default();
+            &parsed_string
+        }
+        _ => return 0,
+    };
+    let now = now_millis().unwrap_or(0);
+    let mut extracted = Vec::new();
+    for fact in facts {
+        let category = fact
+            .get("category")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        if !TEXT_FIELDS.contains(&category) {
+            continue;
+        }
+        let value = fact
+            .get("value")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        let policy = fact
+            .get("policy")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        let slot = fact
+            .get("slot")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        if value.is_empty()
+            || slot.is_empty()
+            || !matches!(policy, "historical" | "current" | "adaptive")
+        {
+            continue;
+        }
+        let confidence = fact
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        if confidence < 0.7 {
+            continue;
+        }
+        let mut entry = SoulGrowthEntry {
+            category: category.to_string(),
+            value: value.to_string(),
+            kind: "authored".to_string(),
+            policy: policy.to_string(),
+            slot: slot.to_string(),
+            confidence,
+            evidence_count: 1,
+            weight: fact
+                .get("weight")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0)
+                .clamp(0.0, 1.0),
+            locked: policy == "historical"
+                || fact.get("locked").and_then(Value::as_bool).unwrap_or(false),
+            created_at: now,
+            valid_from: now,
+            ..SoulGrowthEntry::default()
+        };
+        entry.normalize_for_storage(now);
+        extracted.push(entry);
+    }
+    let count = extracted.len();
+    if let (Some(root), Ok(value)) = (working.as_object_mut(), serde_json::to_value(extracted)) {
+        root.insert("authoredFacts".to_string(), value);
+    }
+    count
 }
 
 fn apply_set_numeric_section(
@@ -790,6 +916,10 @@ fn apply_call(working_soul: &mut Value, call: &ToolCall) -> (bool, Value) {
     match call.name.as_str() {
         "set_identity" => {
             let applied = apply_set_identity(working_soul, &call.arguments);
+            (false, json!({ "ok": true, "applied": applied }))
+        }
+        "set_authored_facts" => {
+            let applied = apply_set_authored_facts(working_soul, &call.arguments);
             (false, json!({ "ok": true, "applied": applied }))
         }
         "set_baseline_affect" => {
@@ -1059,7 +1189,7 @@ async fn run_with_target(
     let mut fallback_messages = render_messages(app, settings, credential, args);
     fallback_messages.push(json!({
         "role": "user",
-        "content": fallback_prompt(format),
+        "content": format!("{}\n\n{}", fallback_prompt(format), fallback_fact_prompt(format)),
     }));
 
     if let Some(g) = guard {
@@ -1614,4 +1744,57 @@ fn coerce_numeric_strings(args: &mut Map<String, Value>) {
         Value::String(text) => !text.is_empty(),
         _ => true,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_set_authored_facts, default_soul_value, parse_fallback_xml};
+    use serde_json::json;
+
+    #[test]
+    fn authored_historical_facts_are_locked_and_low_confidence_claims_are_dropped() {
+        let mut working = default_soul_value();
+        let applied = apply_set_authored_facts(
+            &mut working,
+            &json!({
+                "facts": [
+                    {
+                        "category": "backstory",
+                        "value": "Survived the winter evacuation",
+                        "policy": "historical",
+                        "slot": "winter-evacuation",
+                        "confidence": 0.98,
+                        "weight": 1.0,
+                        "locked": false
+                    },
+                    {
+                        "category": "fears",
+                        "value": "Probably fears snow",
+                        "policy": "adaptive",
+                        "slot": "snow",
+                        "confidence": 0.4,
+                        "weight": 0.5,
+                        "locked": false
+                    }
+                ]
+            }),
+        );
+
+        assert_eq!(applied, 1);
+        assert_eq!(working["authoredFacts"][0]["policy"], "historical");
+        assert_eq!(working["authoredFacts"][0]["locked"], true);
+    }
+
+    #[test]
+    fn xml_fallback_accepts_json_encoded_authored_facts() {
+        let calls = parse_fallback_xml(
+            r#"<soul_ops><set_authored_facts><facts>[{"category":"backstory","value":"Moved to the coast","policy":"historical","slot":"coast-move","confidence":1,"weight":1,"locked":true}]</facts></set_authored_facts><done /></soul_ops>"#,
+        )
+        .unwrap();
+
+        assert_eq!(calls[0].name, "set_authored_facts");
+        assert!(calls[0].arguments["facts"]
+            .as_str()
+            .is_some_and(|facts| facts.contains("coast-move")));
+    }
 }

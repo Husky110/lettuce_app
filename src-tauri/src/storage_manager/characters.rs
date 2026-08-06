@@ -1402,6 +1402,23 @@ pub fn character_clone_deep(app: tauri::AppHandle, id: String) -> Result<String,
         &[],
     )?;
 
+    for fact_id in clone_collect_ids(
+        &tx,
+        "SELECT fact_id FROM companion_soul_facts WHERE character_id = ?",
+        &id,
+    )? {
+        clone_copy_rows(
+            &tx,
+            "companion_soul_facts",
+            &[("character_id", Value::Text(new_char_id.clone()))],
+            &[
+                ("character_id", Value::Text(id.clone())),
+                ("fact_id", Value::Text(fact_id)),
+            ],
+            &[],
+        )?;
+    }
+
     // 12. shared-memory embeddings (session_id == character_id)
     clone_copy_rows(
         &tx,
@@ -1440,6 +1457,49 @@ pub fn character_clone_deep(app: tauri::AppHandle, id: String) -> Result<String,
             &[],
         )?;
         session_map.insert(old, new);
+    }
+
+    for (old_session_id, new_session_id) in &session_map {
+        let episode = tx
+            .query_row(
+                "SELECT persona_key, episode_index, previous_session_id,
+                        started_at, ended_at, updated_at
+                 FROM companion_episodes WHERE session_id = ?1",
+                params![old_session_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                        row.get::<_, i64>(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        if let Some((persona_key, episode_index, previous, started_at, ended_at, updated_at)) =
+            episode
+        {
+            tx.execute(
+                "INSERT INTO companion_episodes (
+                   session_id, character_id, persona_key, episode_index,
+                   previous_session_id, started_at, ended_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    new_session_id,
+                    &new_char_id,
+                    persona_key,
+                    episode_index,
+                    previous.as_ref().and_then(|id| session_map.get(id)),
+                    started_at,
+                    ended_at,
+                    updated_at,
+                ],
+            )
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        }
     }
 
     // 14. per-session: messages, variants, turn effects, embeddings

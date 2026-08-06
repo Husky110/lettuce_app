@@ -214,9 +214,14 @@ fn format_current_growth(entries: &[SoulGrowthEntry]) -> String {
             continue;
         }
         out.push_str(&format!(
-            "- id={} [{}]: {}\n",
+            "- id={} [{} policy={} slot={} confidence={:.2} weight={:.2}{}]: {}\n",
             entry.id,
             entry.category,
+            if entry.policy.is_empty() { "adaptive" } else { &entry.policy },
+            if entry.slot.is_empty() { &entry.category } else { &entry.slot },
+            entry.confidence,
+            entry.weight,
+            if entry.locked { " locked" } else { "" },
             entry.value.trim()
         ));
     }
@@ -261,7 +266,7 @@ fn build_tool_config() -> ToolConfig {
     let tools = vec![ToolDefinition {
         name: "record_growth".to_string(),
         description: Some(
-            "Record how the new memories change the companion's changeable personality categories. To revise or replace an existing growth entry, set kind to adjust and list its id in supersedes. Pass an empty adjustments array when nothing changed.".to_string(),
+            "Record only well-supported changes to the companion's changeable Soul facts. Use current for replaceable present-state facts and adaptive for patterns that can accumulate. Give each fact a stable semantic slot, confidence, and weight. To revise an existing adaptive fact, set kind to adjust and list its id in supersedes. Never replace a locked fact. Pass an empty adjustments array when evidence is weak or nothing changed.".to_string(),
         ),
         parameters: json!({
             "type": "object",
@@ -273,7 +278,12 @@ fn build_tool_config() -> ToolConfig {
                         "properties": {
                             "category": { "type": "string", "enum": categories },
                             "kind": { "type": "string", "enum": ["add", "adjust"] },
+                            "policy": { "type": "string", "enum": ["current", "adaptive"] },
+                            "slot": { "type": "string" },
                             "value": { "type": "string" },
+                            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "validUntil": { "type": ["integer", "null"] },
                             "sourceIndices": {
                                 "type": "array",
                                 "items": { "type": "integer" }
@@ -283,7 +293,7 @@ fn build_tool_config() -> ToolConfig {
                                 "items": { "type": "string" }
                             }
                         },
-                        "required": ["category", "value"]
+                        "required": ["category", "policy", "slot", "value", "confidence", "weight"]
                     }
                 }
             },
@@ -347,6 +357,26 @@ fn parse_growth_entries(
         }
         .to_string();
         let source_memory_ids = resolve_sources(item.get("sourceIndices"), memory_ids);
+        let confidence = item
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let weight = item
+            .get("weight")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let policy = item
+            .get("policy")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let slot = item
+            .get("slot")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let valid_until = item.get("validUntil").and_then(Value::as_u64);
         let supersedes = item
             .get("supersedes")
             .and_then(Value::as_array)
@@ -362,6 +392,12 @@ fn parse_growth_entries(
             category,
             value,
             kind,
+            policy,
+            slot,
+            confidence,
+            evidence_count: source_memory_ids.len() as u32,
+            weight,
+            valid_until,
             source_memory_ids,
             supersedes,
             ..Default::default()

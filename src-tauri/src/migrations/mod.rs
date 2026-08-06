@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 89;
+pub const CURRENT_MIGRATION_VERSION: u32 = 90;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -917,6 +917,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v88_to_v89(app)?;
         version = 89;
+    }
+
+    if version < 90 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v89 -> v90: Normalize companion Soul facts",
+        );
+        migrate_v89_to_v90(app)?;
+        version = 90;
     }
 
     // Update the stored version
@@ -4305,6 +4315,9 @@ pub(crate) fn run_preflight_migrations(
     if version >= 88 && version < 89 {
         migrate_v88_to_v89_conn(conn)?;
     }
+    if version >= 89 && version < 90 {
+        migrate_v89_to_v90_conn(conn)?;
+    }
     Ok(())
 }
 
@@ -4321,6 +4334,163 @@ fn migrate_v87_to_v88(app: &AppHandle) -> Result<(), String> {
 fn migrate_v88_to_v89(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     migrate_v88_to_v89_conn(&conn)
+}
+
+fn migrate_v89_to_v90(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    migrate_v89_to_v90_conn(&conn)
+}
+
+fn migrate_v89_to_v90_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS companion_soul_facts (
+          fact_id TEXT NOT NULL,
+          character_id TEXT NOT NULL,
+          category TEXT NOT NULL,
+          value TEXT NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'add',
+          policy TEXT NOT NULL DEFAULT 'adaptive',
+          slot TEXT NOT NULL DEFAULT '',
+          confidence REAL NOT NULL DEFAULT 1.0,
+          evidence_count INTEGER NOT NULL DEFAULT 0,
+          weight REAL NOT NULL DEFAULT 1.0,
+          valid_from INTEGER NOT NULL DEFAULT 0,
+          valid_until INTEGER,
+          locked INTEGER NOT NULL DEFAULT 0,
+          source_memory_ids TEXT NOT NULL DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          supersedes TEXT NOT NULL DEFAULT '[]',
+          superseded_by TEXT,
+          superseded_at INTEGER,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY(character_id, fact_id),
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_companion_soul_facts_character
+          ON companion_soul_facts(character_id, created_at, fact_id);
+
+        CREATE TABLE IF NOT EXISTS companion_episodes (
+          session_id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          persona_key TEXT NOT NULL DEFAULT '__default__',
+          episode_index INTEGER NOT NULL,
+          previous_session_id TEXT,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_episodes_sequence
+          ON companion_episodes(character_id, persona_key, episode_index);
+        "#,
+    )
+    .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+
+    let rows = {
+        let mut statement = conn
+            .prepare(
+                "SELECT character_id, soul_growth
+                 FROM companion_shared_memory_state
+                 ORDER BY character_id ASC",
+            )
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        let collected = statement
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+        collected
+    };
+
+    for (character_id, soul_growth) in rows {
+        let normalized = crate::storage_manager::companion_shared_memory::sync_normalized_soul_facts(
+            conn,
+            &character_id,
+            &soul_growth,
+        )?;
+        conn.execute(
+            "UPDATE companion_shared_memory_state
+             SET soul_growth = ?1
+             WHERE character_id = ?2",
+            rusqlite::params![normalized, character_id],
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    }
+
+    let sessions_exist = conn
+        .query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'
+             )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if sessions_exist {
+        conn.execute_batch(
+            r#"
+            WITH companion_sessions AS (
+              SELECT
+                sessions.id AS session_id,
+                sessions.character_id AS character_id,
+                CASE
+                  WHEN COALESCE(sessions.persona_disabled, 0) = 0
+                    AND TRIM(COALESCE(sessions.persona_id, '')) <> ''
+                  THEN TRIM(sessions.persona_id)
+                  ELSE '__default__'
+                END AS persona_key,
+                sessions.created_at AS started_at,
+                sessions.updated_at AS updated_at
+              FROM sessions
+              JOIN characters ON characters.id = sessions.character_id
+              WHERE LOWER(COALESCE(sessions.mode, '')) = 'companion'
+                 OR LOWER(COALESCE(characters.mode, '')) = 'companion'
+            ), sequenced AS (
+              SELECT
+                session_id,
+                character_id,
+                persona_key,
+                ROW_NUMBER() OVER (
+                  PARTITION BY character_id, persona_key
+                  ORDER BY started_at ASC, session_id ASC
+                ) AS episode_index,
+                LAG(session_id) OVER (
+                  PARTITION BY character_id, persona_key
+                  ORDER BY started_at ASC, session_id ASC
+                ) AS previous_session_id,
+                started_at,
+                LEAD(started_at) OVER (
+                  PARTITION BY character_id, persona_key
+                  ORDER BY started_at ASC, session_id ASC
+                ) AS ended_at,
+                updated_at
+              FROM companion_sessions
+            )
+            INSERT OR IGNORE INTO companion_episodes (
+              session_id, character_id, persona_key, episode_index,
+              previous_session_id, started_at, ended_at, updated_at
+            )
+            SELECT
+              session_id, character_id, persona_key, episode_index,
+              previous_session_id, started_at, ended_at, updated_at
+            FROM sequenced;
+            "#,
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    }
+
+    migrate_sync_v2_schema(conn)?;
+    conn.execute(
+        "INSERT INTO sync_v2_local_state (key, value)
+         VALUES ('companion_soul_fact_migration', '90')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [],
+    )
+    .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    Ok(())
 }
 
 fn migrate_v88_to_v89_conn(conn: &rusqlite::Connection) -> Result<(), String> {
@@ -5171,7 +5341,8 @@ fn migrate_v71_to_v72(app: &AppHandle) -> Result<(), String> {
 mod tests {
     use super::{
         migrate_image_lora_metadata_columns, migrate_sync_v2_schema,
-        migrate_v87_to_v88_conn, migrate_v88_to_v89_conn, run_preflight_migrations,
+        migrate_v87_to_v88_conn, migrate_v88_to_v89_conn, migrate_v89_to_v90_conn,
+        run_preflight_migrations,
         table_column_names,
         GROUP_SESSIONS_V88_COLUMNS, IMAGE_LORAS_V88_COLUMNS,
         LOREBOOK_ENTRIES_V88_COLUMNS,
@@ -5247,6 +5418,115 @@ mod tests {
         assert_eq!(relationships["persona-a"]["trust"], 0.8);
         assert_eq!(relationships["persona-b"]["trust"], -0.3);
         assert!(relationships.get("emotionalState").is_none());
+    }
+
+    #[test]
+    fn v90_normalizes_legacy_soul_growth_into_individual_facts() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE characters (id TEXT PRIMARY KEY);
+            CREATE TABLE companion_shared_memory_state (
+              character_id TEXT PRIMARY KEY,
+              soul_growth TEXT NOT NULL DEFAULT '[]'
+            );
+            INSERT INTO characters VALUES ('companion');
+            INSERT INTO companion_shared_memory_state VALUES (
+              'companion',
+              '[{"category":"likes","value":"Cardamom buns","sourceMemoryIds":["memory-1"]}]'
+            );
+            "#,
+        )
+        .unwrap();
+
+        migrate_v89_to_v90_conn(&conn).unwrap();
+
+        let fact: (String, String, String, f64, i64) = conn
+            .query_row(
+                "SELECT fact_id, policy, slot, confidence, evidence_count
+                 FROM companion_soul_facts
+                 WHERE character_id = 'companion'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        assert!(!fact.0.is_empty());
+        assert_eq!(fact.1, "current");
+        assert_eq!(fact.2, "likes");
+        assert_eq!(fact.3, 1.0);
+        assert_eq!(fact.4, 1);
+
+        let mirror: String = conn
+            .query_row(
+                "SELECT soul_growth FROM companion_shared_memory_state WHERE character_id = 'companion'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let mirror: serde_json::Value = serde_json::from_str(&mirror).unwrap();
+        assert_eq!(mirror[0]["id"], fact.0);
+        assert_eq!(mirror[0]["policy"], "current");
+    }
+
+    #[test]
+    fn v90_backfills_companion_sessions_as_ordered_episodes() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE characters (id TEXT PRIMARY KEY, mode TEXT);
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              character_id TEXT NOT NULL,
+              persona_id TEXT,
+              persona_disabled INTEGER NOT NULL DEFAULT 0,
+              mode TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE companion_shared_memory_state (
+              character_id TEXT PRIMARY KEY,
+              soul_growth TEXT NOT NULL DEFAULT '[]'
+            );
+            INSERT INTO characters VALUES ('companion', 'companion');
+            INSERT INTO companion_shared_memory_state VALUES ('companion', '[]');
+            INSERT INTO sessions VALUES ('later', 'companion', 'persona-a', 0, 'companion', 20, 25);
+            INSERT INTO sessions VALUES ('earlier', 'companion', 'persona-a', 0, 'companion', 10, 15);
+            INSERT INTO sessions VALUES ('other', 'companion', 'persona-b', 0, 'companion', 12, 18);
+            "#,
+        )
+        .unwrap();
+
+        migrate_v89_to_v90_conn(&conn).unwrap();
+
+        let later: (i64, Option<String>, Option<i64>) = conn
+            .query_row(
+                "SELECT episode_index, previous_session_id, ended_at
+                 FROM companion_episodes WHERE session_id = 'later'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(later.0, 2);
+        assert_eq!(later.1.as_deref(), Some("earlier"));
+        assert_eq!(later.2, None);
+
+        let earlier_ended: Option<i64> = conn
+            .query_row(
+                "SELECT ended_at FROM companion_episodes WHERE session_id = 'earlier'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(earlier_ended, Some(20));
+
+        let other_index: i64 = conn
+            .query_row(
+                "SELECT episode_index FROM companion_episodes WHERE session_id = 'other'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(other_index, 1);
     }
 
     #[test]

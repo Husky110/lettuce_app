@@ -212,9 +212,12 @@ fn format_entries(entries: &[SoulGrowthEntry]) -> String {
     let mut out = String::new();
     for entry in entries {
         out.push_str(&format!(
-            "- id={} [{}]: {}\n",
+            "- id={} [{} confidence={:.2} weight={:.2}{}]: {}\n",
             entry.id,
             entry.category,
+            entry.confidence,
+            entry.weight,
+            if entry.locked { " locked" } else { "" },
             entry.value.trim()
         ));
     }
@@ -233,7 +236,7 @@ fn build_tool_config() -> ToolConfig {
     let tools = vec![ToolDefinition {
         name: "consolidate_soul".to_string(),
         description: Some(
-            "Fold accumulated companion growth: optionally evolve the core (essence/traits) when a sustained pattern warrants it, and retire growth entries whose meaning is now absorbed. Both arrays may be empty.".to_string(),
+            "Fold accumulated companion growth only when sustained, high-confidence evidence warrants a very slow core change. Locked facts may inform the result but must never be retired or superseded. Both arrays may be empty.".to_string(),
         ),
         parameters: json!({
             "type": "object",
@@ -245,12 +248,14 @@ fn build_tool_config() -> ToolConfig {
                         "properties": {
                             "category": { "type": "string", "enum": core },
                             "value": { "type": "string" },
+                            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "weight": { "type": "number", "minimum": 0, "maximum": 1 },
                             "supersedes": {
                                 "type": "array",
                                 "items": { "type": "string" }
                             }
                         },
-                        "required": ["category", "value"]
+                        "required": ["category", "value", "confidence", "weight"]
                     }
                 },
                 "retire": {
@@ -317,6 +322,16 @@ fn parse_consolidation(
                 category,
                 value,
                 kind: "consolidated".to_string(),
+                policy: "adaptive".to_string(),
+                slot: "core".to_string(),
+                confidence: item
+                    .get("confidence")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+                weight: item
+                    .get("weight")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
                 supersedes,
                 ..Default::default()
             });

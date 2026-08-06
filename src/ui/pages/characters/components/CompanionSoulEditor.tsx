@@ -57,6 +57,7 @@ interface CompanionSoulEditorProps {
 function soulStepLabelKey(tool?: string | null): TranslationKey {
   switch (tool) {
     case "set_identity":
+    case "set_authored_facts":
       return "characters.soulEditor.steps.identity";
     case "set_baseline_affect":
       return "characters.soulEditor.steps.baselineAffect";

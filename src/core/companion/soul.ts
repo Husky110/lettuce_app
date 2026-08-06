@@ -70,6 +70,18 @@ export async function removeCompanionSoulGrowth(
   return await invoke<boolean>("companion_remove_soul_growth", { sessionId, index });
 }
 
+export async function setCompanionSoulGrowthLock(
+  sessionId: string,
+  entryId: string,
+  locked: boolean,
+): Promise<boolean> {
+  return await invoke<boolean>("companion_set_soul_growth_lock", {
+    sessionId,
+    entryId,
+    locked,
+  });
+}
+
 export function mergeCompanionSoulDraft(
   current: CompanionConfig | null | undefined,
   draft: Partial<CompanionConfig>,
@@ -90,6 +102,7 @@ export function mergeCompanionSoulDraft(
         ...draft.soul?.regulationStyle,
       },
     },
+    authoredFacts: draft.authoredFacts ?? base.authoredFacts,
     relationshipDefaults: {
       ...base.relationshipDefaults,
       ...draft.relationshipDefaults,
@@ -136,6 +149,7 @@ function createDefaultCompanionConfig(): CompanionConfig {
         pride: 0.3,
       },
     },
+    authoredFacts: [],
     relationshipDefaults: {
       closeness: 0.2,
       trust: 0.3,

@@ -2653,6 +2653,10 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
 
 fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
     let mut conn = open_db(app)?;
+    conn.execute("DELETE FROM companion_episodes", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    conn.execute("DELETE FROM companion_soul_facts", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     conn.execute("DELETE FROM companion_shared_memory_state", [])
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     conn.execute(
@@ -2666,6 +2670,14 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
     };
 
     for item in arr {
+        let character_id = item
+            .get("character_id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let soul_growth = item
+            .get("soul_growth")
+            .and_then(|value| value.as_str())
+            .unwrap_or("[]");
         conn.execute(
             r#"
             INSERT INTO companion_shared_memory_state (
@@ -2676,7 +2688,7 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
             params![
-                item.get("character_id").and_then(|v| v.as_str()),
+                character_id,
                 item.get("memories")
                     .and_then(|v| v.as_str())
                     .unwrap_or("[]"),
@@ -2690,9 +2702,7 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
                 item.get("memory_status").and_then(|v| v.as_str()),
                 item.get("memory_error").and_then(|v| v.as_str()),
                 item.get("memory_progress_step").and_then(|v| v.as_i64()),
-                item.get("soul_growth")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("[]"),
+                soul_growth,
                 item.get("relationship_states")
                     .and_then(|v| v.as_str())
                     .unwrap_or("{}"),
@@ -2708,11 +2718,57 @@ fn import_companion_shared_memory(app: &tauri::AppHandle, data: &JsonValue) -> R
             )
         })?;
 
+        crate::storage_manager::companion_shared_memory::sync_normalized_soul_facts(
+            &conn,
+            character_id,
+            soul_growth,
+        )?;
+
+        if let Some(episodes) = item.get("episodes").and_then(JsonValue::as_array) {
+            for episode in episodes {
+                conn.execute(
+                    "INSERT OR REPLACE INTO companion_episodes (
+                       session_id, character_id, persona_key, episode_index,
+                       previous_session_id, started_at, ended_at, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![
+                        episode.get("session_id").and_then(JsonValue::as_str),
+                        character_id,
+                        episode
+                            .get("persona_key")
+                            .and_then(JsonValue::as_str)
+                            .unwrap_or("__default__"),
+                        episode
+                            .get("episode_index")
+                            .and_then(JsonValue::as_i64)
+                            .unwrap_or(1),
+                        episode
+                            .get("previous_session_id")
+                            .and_then(JsonValue::as_str),
+                        episode
+                            .get("started_at")
+                            .and_then(JsonValue::as_i64)
+                            .unwrap_or(0),
+                        episode.get("ended_at").and_then(JsonValue::as_i64),
+                        episode
+                            .get("updated_at")
+                            .and_then(JsonValue::as_i64)
+                            .unwrap_or(0),
+                    ],
+                )
+                .map_err(|error| {
+                    crate::utils::err_msg(
+                        module_path!(),
+                        line!(),
+                        format!("Failed to insert companion episode: {error}"),
+                    )
+                })?;
+            }
+        }
+
         crate::storage_manager::memory_embeddings::replace_all_from_json(
             &mut conn,
-            item.get("character_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default(),
+            character_id,
             crate::storage_manager::memory_embeddings::SessionKind::CompanionShared,
             item.get("memory_embeddings").and_then(|v| v.as_str()),
         )?;

@@ -815,6 +815,48 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS companion_soul_facts (
+          fact_id TEXT NOT NULL,
+          character_id TEXT NOT NULL,
+          category TEXT NOT NULL,
+          value TEXT NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'add',
+          policy TEXT NOT NULL DEFAULT 'adaptive',
+          slot TEXT NOT NULL DEFAULT '',
+          confidence REAL NOT NULL DEFAULT 1.0,
+          evidence_count INTEGER NOT NULL DEFAULT 0,
+          weight REAL NOT NULL DEFAULT 1.0,
+          valid_from INTEGER NOT NULL DEFAULT 0,
+          valid_until INTEGER,
+          locked INTEGER NOT NULL DEFAULT 0,
+          source_memory_ids TEXT NOT NULL DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          supersedes TEXT NOT NULL DEFAULT '[]',
+          superseded_by TEXT,
+          superseded_at INTEGER,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY(character_id, fact_id),
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_companion_soul_facts_character
+          ON companion_soul_facts(character_id, created_at, fact_id);
+
+        CREATE TABLE IF NOT EXISTS companion_episodes (
+          session_id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          persona_key TEXT NOT NULL DEFAULT '__default__',
+          episode_index INTEGER NOT NULL,
+          previous_session_id TEXT,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_episodes_sequence
+          ON companion_episodes(character_id, persona_key, episode_index);
+
         CREATE TABLE IF NOT EXISTS message_variants (
           id TEXT PRIMARY KEY,
           message_id TEXT NOT NULL,

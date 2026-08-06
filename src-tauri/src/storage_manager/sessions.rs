@@ -68,6 +68,7 @@ fn resolve_companion_state_json(
     };
     crate::storage_manager::companion_shared_memory::merge_continuity_into_state(
         conn,
+        session_value.get("id").and_then(JsonValue::as_str),
         character_id,
         persona_id,
         state,
@@ -77,6 +78,7 @@ fn resolve_companion_state_json(
 
 fn hydrate_stored_companion_state(
     conn: &rusqlite::Connection,
+    session_id: &str,
     character_id: &str,
     mode: &str,
     persona_id: Option<&str>,
@@ -93,6 +95,7 @@ fn hydrate_stored_companion_state(
     }
     crate::storage_manager::companion_shared_memory::merge_continuity_into_state(
         conn,
+        Some(session_id),
         character_id,
         if persona_disabled { None } else { persona_id },
         state,
@@ -715,6 +718,7 @@ fn read_session_meta_typed_internal(
     )?;
     let companion_state = hydrate_stored_companion_state(
         conn,
+        id,
         &character_id,
         &mode,
         persona_id.as_deref(),
@@ -1322,6 +1326,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
         {
             crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
                 tx,
+                Some(&id),
                 &character_id,
                 continuity_persona_id,
                 &companion_state,
@@ -1709,6 +1714,7 @@ fn read_session_meta(conn: &rusqlite::Connection, id: &str) -> Result<Option<Jso
             .unwrap_or_else(|_| JsonValue::Array(vec![]));
     let companion_state = hydrate_stored_companion_state(
         conn,
+        id,
         &character_id,
         &mode,
         persona_id.as_deref(),
@@ -1974,6 +1980,7 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
             .unwrap_or_else(|_| JsonValue::Array(vec![]));
     let companion_state = hydrate_stored_companion_state(
         conn,
+        id,
         &character_id,
         &mode,
         persona_id.as_deref(),
@@ -2987,6 +2994,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
     {
         crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
             &conn,
+            Some(&id),
             &character_id,
             continuity_persona_id,
             &companion_state,
@@ -3501,6 +3509,7 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
         {
             crate::storage_manager::companion_shared_memory::persist_continuity_from_state(
                 tx,
+                Some(&id),
                 &character_id,
                 continuity_persona_id,
                 &companion_state,

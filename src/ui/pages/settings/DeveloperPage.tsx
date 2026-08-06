@@ -989,7 +989,16 @@ export function DeveloperPage() {
         { category: "voice", kind: "adjust", value: "Speaks with a warmer, more teasing cadence as trust between them has deepened.", sourceMemoryIds: memId(8), createdAt: baseTs + 20 * stepMs },
         { category: "boundaries", kind: "add", value: "Has started protecting one quiet evening a week for herself, and says so plainly.", sourceMemoryIds: memId(12), createdAt: baseTs + 26 * stepMs },
         { category: "vulnerabilities", kind: "add", value: "Quietly admits she worries she leans on these chats more than she lets on.", sourceMemoryIds: memId(8), createdAt: baseTs + 12 * stepMs },
-      ];
+      ].map((entry) => ({
+        policy: "adaptive" as const,
+        slot: entry.category,
+        confidence: 0.9,
+        evidenceCount: entry.sourceMemoryIds.length,
+        weight: 0.8,
+        validFrom: entry.createdAt,
+        locked: false,
+        ...entry,
+      }));
 
       const finalSession: Session = {
         ...seededSession,

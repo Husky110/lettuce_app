@@ -41,6 +41,7 @@ export function createDefaultCompanionConfig(
         pride: 0.3,
       },
     },
+    authoredFacts: [],
     relationshipDefaults: {
       closeness: 0.2,
       trust: 0.3,
@@ -54,7 +55,7 @@ export function createDefaultCompanionConfig(
       prioritizeRelationship: true,
       prioritizeEpisodic: true,
       useEmotionalSnapshots: true,
-      sharedAcrossSessions: false,
+      sharedAcrossSessions: true,
     },
     prompting: {
       promptTemplateId,

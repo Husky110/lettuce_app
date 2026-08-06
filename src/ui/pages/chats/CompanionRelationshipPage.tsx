@@ -8,6 +8,8 @@ import {
   Heart,
   HelpCircle,
   Link2,
+  Lock,
+  LockOpen,
   Loader2,
   ScrollText,
   Shield,
@@ -22,7 +24,11 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import { clearCompanionSoulGrowth, removeCompanionSoulGrowth } from "../../../core/companion/soul";
+import {
+  clearCompanionSoulGrowth,
+  removeCompanionSoulGrowth,
+  setCompanionSoulGrowthLock,
+} from "../../../core/companion/soul";
 import { openDocs } from "../../../core/utils/docs";
 import { confirmBottomMenu } from "../../components/ConfirmBottomMenu";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -284,6 +290,17 @@ function growthCategoryLabelKey(category: string) {
   }
 }
 
+function growthPolicyLabelKey(policy: string) {
+  switch (policy) {
+    case "historical":
+      return "chats.companionRelationship.soulGrowthPolicyHistorical" as const;
+    case "current":
+      return "chats.companionRelationship.soulGrowthPolicyCurrent" as const;
+    default:
+      return "chats.companionRelationship.soulGrowthPolicyAdaptive" as const;
+  }
+}
+
 export function CompanionRelationshipPage() {
   const { characterId } = useParams<{ characterId: string }>();
   const [searchParams] = useSearchParams();
@@ -296,6 +313,7 @@ export function CompanionRelationshipPage() {
   );
   const [clearingGrowth, setClearingGrowth] = useState(false);
   const [removingGrowth, setRemovingGrowth] = useState<number | null>(null);
+  const [lockingGrowth, setLockingGrowth] = useState<string | null>(null);
 
   const companion = character?.companion ?? null;
   const relationshipState = session?.companionState?.relationshipState;
@@ -354,6 +372,30 @@ export function CompanionRelationshipPage() {
       );
     } finally {
       setRemovingGrowth(null);
+    }
+  };
+
+  const handleToggleGrowthLock = async (entryId: string, locked: boolean) => {
+    if (!session || lockingGrowth !== null || !entryId) return;
+    setLockingGrowth(entryId);
+    try {
+      const updated = await setCompanionSoulGrowthLock(session.id, entryId, !locked);
+      if (!updated) return;
+      setSession((prev) =>
+        prev?.companionState
+          ? {
+              ...prev,
+              companionState: {
+                ...prev.companionState,
+                soulGrowth: (prev.companionState.soulGrowth ?? []).map((entry) =>
+                  entry.id === entryId ? { ...entry, locked: !locked } : entry,
+                ),
+              },
+            }
+          : prev,
+      );
+    } finally {
+      setLockingGrowth(null);
     }
   };
 
@@ -657,6 +699,9 @@ export function CompanionRelationshipPage() {
                                 ? t("chats.companionRelationship.growthKindAdjust")
                                 : t("chats.companionRelationship.growthKindAdd")}
                             </span>
+                            <span className="rounded-full border border-fg/10 bg-fg/5 px-1.5 py-0.5 text-[9px] font-medium text-fg/55">
+                              {t(growthPolicyLabelKey(entry.policy))}
+                            </span>
                             {entry.createdAt ? (
                               <>
                                 <span className="text-fg/20">·</span>
@@ -673,20 +718,61 @@ export function CompanionRelationshipPage() {
                                 </span>
                               </>
                             ) : null}
+                            <span
+                              title={t("chats.companionRelationship.soulGrowthConfidence")}
+                              className="rounded-full border border-fg/10 bg-fg/5 px-1.5 py-0.5 text-[9px] font-medium text-fg/55"
+                            >
+                              {Math.round((entry.confidence ?? 1) * 100)}%
+                            </span>
+                            {entry.locked ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-accent/25 bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium text-accent">
+                                <Lock size={9} />
+                                {t("chats.companionRelationship.soulGrowthLocked")}
+                              </span>
+                            ) : null}
                           </div>
-                          <button
-                            onClick={() => handleRemoveGrowth(storageIndex)}
-                            disabled={removingGrowth !== null}
-                            title={t("chats.companionRelationship.soulGrowthRemove")}
-                            aria-label={t("chats.companionRelationship.soulGrowthRemove")}
-                            className={cn(
-                              "shrink-0 rounded-md p-1 text-fg/35",
-                              "hover:bg-rose-400/10 hover:text-rose-400 disabled:opacity-40",
-                              interactive.transition.fast,
-                            )}
-                          >
-                            {removing ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              onClick={() => entry.id && handleToggleGrowthLock(entry.id, Boolean(entry.locked))}
+                              disabled={!entry.id || lockingGrowth !== null}
+                              title={t(
+                                entry.locked
+                                  ? "chats.companionRelationship.soulGrowthUnlock"
+                                  : "chats.companionRelationship.soulGrowthLock",
+                              )}
+                              aria-label={t(
+                                entry.locked
+                                  ? "chats.companionRelationship.soulGrowthUnlock"
+                                  : "chats.companionRelationship.soulGrowthLock",
+                              )}
+                              className={cn(
+                                "rounded-md p-1",
+                                entry.locked ? "text-accent" : "text-fg/35 hover:bg-fg/8 hover:text-fg/70",
+                                interactive.transition.fast,
+                              )}
+                            >
+                              {lockingGrowth === entry.id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : entry.locked ? (
+                                <Lock size={12} />
+                              ) : (
+                                <LockOpen size={12} />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveGrowth(storageIndex)}
+                              disabled={removingGrowth !== null}
+                              title={t("chats.companionRelationship.soulGrowthRemove")}
+                              aria-label={t("chats.companionRelationship.soulGrowthRemove")}
+                              className={cn(
+                                "rounded-md p-1 text-fg/35",
+                                "hover:bg-rose-400/10 hover:text-rose-400 disabled:opacity-40",
+                                interactive.transition.fast,
+                              )}
+                            >
+                              {removing ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                            </button>
+                          </div>
                         </div>
                         <p className="mt-1 text-sm leading-relaxed text-fg/85">{entry.value}</p>
                       </div>
