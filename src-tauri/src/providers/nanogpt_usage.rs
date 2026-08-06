@@ -167,12 +167,11 @@ fn crossed_threshold(percent: f64) -> Option<u8> {
 }
 
 fn window_percent(window: &NanoGptQuotaWindow) -> Option<f64> {
-    if let Some(percent) = window.percent_used {
-        return Some(percent.clamp(0.0, 1.0));
-    }
     match (window.used, window.limit) {
         (Some(used), Some(limit)) if limit > 0.0 => Some((used / limit).clamp(0.0, 1.0)),
-        _ => None,
+        _ => window
+            .percent_used
+            .map(|percent| percent.clamp(0.0, 1.0)),
     }
 }
 
@@ -431,13 +430,17 @@ fn parse_window(payload: &Value, aliases: &[&str]) -> Option<NanoGptQuotaWindow>
             window.used = Some((limit - remaining).max(0.0));
         }
     }
-    if let Some(percent) = window.percent_used {
-        window.percent_used = Some(if percent > 1.0 { percent / 100.0 } else { percent });
-    } else if let (Some(used), Some(limit)) = (window.used, window.limit) {
-        if limit > 0.0 {
-            window.percent_used = Some((used / limit).clamp(0.0, 1.0));
-        }
-    }
+    window.percent_used = match (window.used, window.limit) {
+        (Some(used), Some(limit)) if limit > 0.0 => Some((used / limit).clamp(0.0, 1.0)),
+        _ => window.percent_used.map(|percent| {
+            let normalized = if percent > 1.0 {
+                percent / 100.0
+            } else {
+                percent
+            };
+            normalized.clamp(0.0, 1.0)
+        }),
+    };
 
     Some(window)
 }
@@ -527,6 +530,30 @@ mod tests {
     }
 
     #[test]
+    fn derives_full_usage_when_consumed_tokens_exceed_the_limit() {
+        let parsed = parse_subscription_usage(
+            "credential",
+            "NanoGPT",
+            &json!({
+                "usage": {
+                    "weekly": {
+                        "tokens_used": 60_018_252,
+                        "tokens_remaining": 0,
+                        "percent_used": 1.0003042
+                    }
+                },
+                "limits": { "weekly": 60_000_000 }
+            }),
+        );
+        let weekly = parsed.weekly.unwrap();
+        assert_eq!(weekly.used, Some(60_018_252.0));
+        assert_eq!(weekly.remaining, Some(0.0));
+        assert_eq!(weekly.limit, Some(60_000_000.0));
+        assert_eq!(weekly.percent_used, Some(1.0));
+        assert_eq!(window_percent(&weekly), Some(1.0));
+    }
+
+    #[test]
     fn reports_the_highest_crossed_threshold_only() {
         assert_eq!(crossed_threshold(0.0), None);
         assert_eq!(crossed_threshold(0.7499), None);
@@ -545,6 +572,15 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(window_percent(&window), Some(0.75));
+        assert_eq!(
+            window_percent(&NanoGptQuotaWindow {
+                used: Some(60_018_252.0),
+                limit: Some(60_000_000.0),
+                percent_used: Some(0.010003042),
+                ..Default::default()
+            }),
+            Some(1.0)
+        );
         assert_eq!(
             window_percent(&NanoGptQuotaWindow {
                 used: Some(1.0),

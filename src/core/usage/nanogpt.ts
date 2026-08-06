@@ -60,15 +60,15 @@ export function primaryNanoGptQuota(
 }
 
 export function quotaPercent(window: NanoGptQuotaWindow): number | null {
-  if (typeof window.percentUsed === "number" && Number.isFinite(window.percentUsed)) {
-    return Math.min(1, Math.max(0, window.percentUsed));
-  }
   if (
     typeof window.used === "number" &&
     typeof window.limit === "number" &&
     window.limit > 0
   ) {
     return Math.min(1, Math.max(0, window.used / window.limit));
+  }
+  if (typeof window.percentUsed === "number" && Number.isFinite(window.percentUsed)) {
+    return Math.min(1, Math.max(0, window.percentUsed));
   }
   return null;
 }
