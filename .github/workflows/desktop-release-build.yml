@@ -373,6 +373,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
+      CMAKE_CUDA_ARCHITECTURES: "75-virtual;80-virtual;86-real;89-real;90-virtual;120a-real"
 
     steps:
       - name: Checkout
@@ -391,7 +392,7 @@ jobs:
       - name: Install Rust
         uses: ./.github/actions/setup-rust-build
         with:
-          cache-key: linux-cuda
+          cache-key: linux-cuda-sm89-sm120a
           cache-targets: false
 
       - name: Free runner disk space
@@ -468,6 +469,12 @@ jobs:
           fi
           BUILD_ARGS+=(--features llama-gpu-cuda --no-bundle)
           bun run tauri "${BUILD_ARGS[@]}"
+
+      - name: Verify Ada and Blackwell CUDA kernels
+        run: |
+          CUDA_IMAGES="$(cuobjdump --list-elf src-tauri/target-cuda/release/lettuceai)"
+          grep -q 'sm_89' <<<"${CUDA_IMAGES}"
+          grep -q 'sm_120a' <<<"${CUDA_IMAGES}"
 
       - name: Bundle Linux CUDA deb
         timeout-minutes: 20
@@ -862,6 +869,7 @@ jobs:
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CMAKE_CUDA_ARCHITECTURES: "75-virtual;80-virtual;86-real;89-real;90-virtual;120a-real"
 
     steps:
       - name: Checkout
@@ -956,7 +964,7 @@ jobs:
       - name: Install Rust
         uses: ./.github/actions/setup-rust-build
         with:
-          cache-key: windows-cuda
+          cache-key: windows-cuda-sm89-sm120a
           cache-targets: false
 
       - name: Install dependencies
@@ -982,6 +990,17 @@ jobs:
           }
           $tauriArgs += @('--features', 'llama-gpu-cuda')
           & bun $tauriArgs
+
+      - name: Verify Ada and Blackwell CUDA kernels
+        shell: pwsh
+        run: |
+          $cudaImages = cuobjdump --list-elf C:\t\release\lettuceai.exe | Out-String
+          if ($cudaImages -notmatch 'sm_89') {
+            throw 'CUDA artifact is missing Ada sm_89 device code.'
+          }
+          if ($cudaImages -notmatch 'sm_120a') {
+            throw 'CUDA artifact is missing Blackwell sm_120a device code.'
+          }
 
       - name: Package Windows CUDA zip
         shell: pwsh
