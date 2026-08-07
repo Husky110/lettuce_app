@@ -308,6 +308,37 @@ fn normalize_tool_choice_for_llama(
     }
 }
 
+/// Some llama.cpp builds drop the chat template's forced-open `<think>`
+/// generation-prompt prefill, leaving the rendered prompt ending at the bare
+/// assistant header. For thinking-capable templates with reasoning enabled that
+/// removes the model's only nudge into the reasoning channel, so it answers
+/// without ever opening `<think>` (reasoning leaks into content). Re-open the
+/// block ourselves to restore the template's intended behavior — matching how
+/// servers like Ollama drive the same weights. The seeded reasoning parser
+/// (`trailing_open_reasoning_tag`) then captures the emitted reasoning.
+fn apply_forced_thinking_prefill(prompt: &mut String, template_text: &str, enable_thinking: bool) {
+    if !enable_thinking {
+        return;
+    }
+    // Only templates that actually model a `<think>` channel.
+    if !template_text.contains("<think>") {
+        return;
+    }
+    // Skip if a think tag is already present near the tail (prefill preserved,
+    // open or pre-closed) — never double up.
+    let tail_start = prompt
+        .char_indices()
+        .rev()
+        .take(48)
+        .last()
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    if prompt[tail_start..].contains("<think>") {
+        return;
+    }
+    prompt.push_str("<think>\n");
+}
+
 fn build_oaicompat_prompt(
     model: &LlamaModel,
     messages: &[Value],
@@ -399,12 +430,16 @@ fn build_oaicompat_prompt(
         });
     }
 
-    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(
-        &chat_template_result.prompt,
+    let mut prompt = chat_template_result.prompt.clone();
+    apply_forced_thinking_prefill(
+        &mut prompt,
+        &resolved_template.template_text,
+        options.enable_thinking,
     );
+    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(&prompt);
 
     Ok(BuiltPrompt {
-        prompt: chat_template_result.prompt.clone(),
+        prompt,
         attempted_template_source: Some(resolved_template.source_label.clone()),
         attempted_template_text: Some(resolved_template.template_text.clone()),
         applied_template_source: Some(resolved_template.source_label.clone()),
@@ -460,6 +495,12 @@ fn build_plain_templated_prompt(
         Err(oaicompat_err) => {
             match model.apply_chat_template(&resolved_template.template, chat_messages, true) {
                 Ok(prompt) => {
+                    let mut prompt = prompt;
+                    apply_forced_thinking_prefill(
+                        &mut prompt,
+                        &resolved_template.template_text,
+                        options.enable_thinking,
+                    );
                     let thinking_forced_open =
                         crate::chat_manager::thinking::trailing_open_reasoning_tag(&prompt);
                     return Ok(BuiltPrompt {
@@ -493,12 +534,16 @@ fn build_plain_templated_prompt(
         }
     };
 
-    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(
-        &chat_template_result.prompt,
+    let mut prompt = chat_template_result.prompt.clone();
+    apply_forced_thinking_prefill(
+        &mut prompt,
+        &resolved_template.template_text,
+        options.enable_thinking,
     );
+    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(&prompt);
 
     Ok(BuiltPrompt {
-        prompt: chat_template_result.prompt.clone(),
+        prompt,
         attempted_template_source: Some(resolved_template.source_label.clone()),
         attempted_template_text: Some(resolved_template.template_text.clone()),
         applied_template_source: Some(resolved_template.source_label.clone()),
@@ -700,13 +745,51 @@ pub(super) fn build_prompt(
 
 #[cfg(test)]
 mod tests {
-    use super::template_appears_tool_aware;
+    use super::{apply_forced_thinking_prefill, template_appears_tool_aware};
 
     #[test]
     fn detects_gemma_style_tool_markers() {
         assert!(template_appears_tool_aware(
             "{% if tools %}<|tool_call>{{ tools }}<tool_call|>{% endif %}"
         ));
+    }
+
+    const THINK_TEMPLATE: &str = "{% if enable_thinking %}<think>\n{% endif %}";
+
+    #[test]
+    fn reopens_think_when_prefill_was_stripped() {
+        // llama.cpp dropped the prefill: prompt ends at the bare assistant header.
+        let mut prompt = "<|im_start|>assistant\n".to_string();
+        apply_forced_thinking_prefill(&mut prompt, THINK_TEMPLATE, true);
+        assert_eq!(prompt, "<|im_start|>assistant\n<think>\n");
+    }
+
+    #[test]
+    fn skips_when_prefill_already_open() {
+        let mut prompt = "<|im_start|>assistant\n<think>\n".to_string();
+        apply_forced_thinking_prefill(&mut prompt, THINK_TEMPLATE, true);
+        assert_eq!(prompt, "<|im_start|>assistant\n<think>\n");
+    }
+
+    #[test]
+    fn skips_when_prefill_pre_closed() {
+        let mut prompt = "<|im_start|>assistant\n<think>\n\n</think>\n\n".to_string();
+        apply_forced_thinking_prefill(&mut prompt, THINK_TEMPLATE, true);
+        assert_eq!(prompt, "<|im_start|>assistant\n<think>\n\n</think>\n\n");
+    }
+
+    #[test]
+    fn skips_when_thinking_disabled() {
+        let mut prompt = "<|im_start|>assistant\n".to_string();
+        apply_forced_thinking_prefill(&mut prompt, THINK_TEMPLATE, false);
+        assert_eq!(prompt, "<|im_start|>assistant\n");
+    }
+
+    #[test]
+    fn skips_when_template_has_no_think_channel() {
+        let mut prompt = "<|im_start|>assistant\n".to_string();
+        apply_forced_thinking_prefill(&mut prompt, "{{ messages }}", true);
+        assert_eq!(prompt, "<|im_start|>assistant\n");
     }
 }
 
