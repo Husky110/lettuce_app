@@ -15,7 +15,9 @@ use crate::api::{ApiRequest, ApiResponse};
 #[cfg(not(mobile))]
 use crate::chat_manager::provider_adapter::{extract_text_content, parse_data_url};
 #[cfg(not(mobile))]
-use crate::chat_manager::thinking::{normalize_thinking_content, ThinkingTagStreamParser};
+use crate::chat_manager::thinking::{
+    normalize_thinking_content_seeded, ThinkingTagStreamParser,
+};
 #[cfg(not(mobile))]
 use crate::chat_manager::tooling::{
     parse_tool_calls, parse_tool_calls_from_text, strip_tool_call_blocks, ToolCall,
@@ -3769,7 +3771,15 @@ mod desktop {
                 }),
             );
             let mut sampler = built_sampler.sampler;
-            let mut streamed_thinking_parser = ThinkingTagStreamParser::default();
+            // Forced-open thinking templates (Qwen3 "Thinking"/2507+, R1-style)
+            // emit the opening `<think>` into the prompt, so the model output
+            // begins mid-reasoning with no opening tag. Seed the parser as
+            // already in-reasoning so the leading body is captured as reasoning
+            // rather than leaking into content.
+            let mut streamed_thinking_parser = match built_prompt.thinking_forced_open {
+                Some(close_tag) => ThinkingTagStreamParser::started_in_reasoning(close_tag),
+                None => ThinkingTagStreamParser::default(),
+            };
             let mut structured_parser = if stream && built_prompt.native_tool_parse_supported {
                 built_prompt
                     .chat_template_result
@@ -4303,9 +4313,24 @@ mod desktop {
                 .or_else(|| final_message.get("thinking"))
                 .and_then(|value| value.as_str());
             let raw_content = extract_text_content(final_message.get("content"));
-            let normalized = normalize_thinking_content(
+            // Only seed the forced-open parser when the content channel actually
+            // still carries the reasoning body (its close tag is present). If the
+            // oaicompat parser already split reasoning into a separate field, the
+            // content is the answer alone and must not be treated as reasoning.
+            let forced_open = built_prompt.thinking_forced_open.filter(|close_tag| {
+                raw_content
+                    .as_deref()
+                    .map(|content| {
+                        content
+                            .to_ascii_lowercase()
+                            .contains(&close_tag.to_ascii_lowercase())
+                    })
+                    .unwrap_or(false)
+            });
+            let normalized = normalize_thinking_content_seeded(
                 raw_content.as_deref().filter(|value| !value.is_empty()),
                 explicit_reasoning,
+                forced_open,
             );
             if let Some(message) = final_message.as_object_mut() {
                 message.insert("content".to_string(), json!(normalized.content));

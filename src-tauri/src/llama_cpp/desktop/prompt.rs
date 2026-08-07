@@ -27,6 +27,11 @@ pub(super) struct BuiltPrompt {
     pub(super) native_tool_parse_supported: bool,
     pub(super) additional_stop_sequences: Vec<String>,
     pub(super) tool_template_diagnostics: Option<String>,
+    /// When the rendered prompt's generation prefix opens a `<think>` block the
+    /// model never re-opens (forced-open thinking), the close tag the output is
+    /// expected to emit. Seeds the reasoning parser so the leading reasoning
+    /// body is not misclassified as content.
+    pub(super) thinking_forced_open: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -394,6 +399,10 @@ fn build_oaicompat_prompt(
         });
     }
 
+    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(
+        &chat_template_result.prompt,
+    );
+
     Ok(BuiltPrompt {
         prompt: chat_template_result.prompt.clone(),
         attempted_template_source: Some(resolved_template.source_label.clone()),
@@ -408,6 +417,7 @@ fn build_oaicompat_prompt(
         chat_template_result: Some(chat_template_result),
         native_tool_parse_supported,
         tool_template_diagnostics,
+        thinking_forced_open,
     })
 }
 
@@ -450,6 +460,8 @@ fn build_plain_templated_prompt(
         Err(oaicompat_err) => {
             match model.apply_chat_template(&resolved_template.template, chat_messages, true) {
                 Ok(prompt) => {
+                    let thinking_forced_open =
+                        crate::chat_manager::thinking::trailing_open_reasoning_tag(&prompt);
                     return Ok(BuiltPrompt {
                         prompt,
                         attempted_template_source: Some(resolved_template.source_label.clone()),
@@ -464,6 +476,7 @@ fn build_plain_templated_prompt(
                         native_tool_parse_supported: false,
                         additional_stop_sequences: Vec::new(),
                         tool_template_diagnostics: None,
+                        thinking_forced_open,
                     });
                 }
                 Err(legacy_err) => {
@@ -480,6 +493,10 @@ fn build_plain_templated_prompt(
         }
     };
 
+    let thinking_forced_open = crate::chat_manager::thinking::trailing_open_reasoning_tag(
+        &chat_template_result.prompt,
+    );
+
     Ok(BuiltPrompt {
         prompt: chat_template_result.prompt.clone(),
         attempted_template_source: Some(resolved_template.source_label.clone()),
@@ -494,6 +511,7 @@ fn build_plain_templated_prompt(
         native_tool_parse_supported: false,
         additional_stop_sequences: chat_template_result.additional_stops.clone(),
         tool_template_diagnostics: None,
+        thinking_forced_open,
     })
 }
 
@@ -631,6 +649,7 @@ pub(super) fn build_prompt(
                         native_tool_parse_supported: false,
                         additional_stop_sequences: Vec::new(),
                         tool_template_diagnostics: None,
+                        thinking_forced_open: None,
                     });
                 }
                 return Err(err);
@@ -670,6 +689,7 @@ pub(super) fn build_prompt(
                     native_tool_parse_supported: false,
                     additional_stop_sequences: Vec::new(),
                     tool_template_diagnostics: None,
+                    thinking_forced_open: None,
                 })
             } else {
                 Err(err)
