@@ -1,4 +1,5 @@
 use super::engine::shared_backend;
+use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::gguf::GgufContext;
 use llama_cpp_2::model::{params::LlamaModelParams, LlamaModel};
 use llama_cpp_sys_2::llama_flash_attn_type;
@@ -179,6 +180,99 @@ impl KvCacheGeometry {
         }
         lo
     }
+}
+
+fn parse_kv_cache_type(value: &str) -> Option<llama_cpp_2::context::params::KvCacheType> {
+    use llama_cpp_2::context::params::KvCacheType;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "f32" => Some(KvCacheType::F32),
+        "f16" => Some(KvCacheType::F16),
+        "q8_1" => Some(KvCacheType::Q8_1),
+        "q8_0" => Some(KvCacheType::Q8_0),
+        "q6_k" => Some(KvCacheType::Q6_K),
+        "q5_k" => Some(KvCacheType::Q5_K),
+        "q5_1" => Some(KvCacheType::Q5_1),
+        "q5_0" => Some(KvCacheType::Q5_0),
+        "q4_k" => Some(KvCacheType::Q4_K),
+        "q4_1" => Some(KvCacheType::Q4_1),
+        "q4_0" => Some(KvCacheType::Q4_0),
+        "q3_k" => Some(KvCacheType::Q3_K),
+        "q2_k" => Some(KvCacheType::Q2_K),
+        "iq4_nl" => Some(KvCacheType::IQ4_NL),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ComputeProbeKey {
+    model_path_hash: u64,
+    n_gpu_layers: u32,
+    planned_context: u32,
+    n_batch: u32,
+    offload_kqv: Option<bool>,
+    flash_attention_policy: i32,
+    kv_type_hash: u64,
+}
+
+static COMPUTE_PROBE_CACHE: OnceLock<Mutex<HashMap<ComputeProbeKey, Option<u64>>>> =
+    OnceLock::new();
+
+fn compute_probe_cache() -> &'static Mutex<HashMap<ComputeProbeKey, Option<u64>>> {
+    COMPUTE_PROBE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn stable_hash(value: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub(super) fn measure_device_compute_bytes(
+    model_path: &str,
+    n_gpu_layers: u32,
+    planned_context: u32,
+    n_batch: u32,
+    offload_kqv: Option<bool>,
+    llama_kv_type: Option<&str>,
+    flash_attention_policy: llama_flash_attn_type,
+) -> Option<u64> {
+    let key = ComputeProbeKey {
+        model_path_hash: stable_hash(model_path),
+        n_gpu_layers,
+        planned_context,
+        n_batch,
+        offload_kqv,
+        flash_attention_policy,
+        kv_type_hash: stable_hash(llama_kv_type.unwrap_or("")),
+    };
+    if let Some(cached) = compute_probe_cache().lock().ok()?.get(&key).copied() {
+        return cached;
+    }
+
+    let mut model_params = LlamaModelParams::default().with_n_gpu_layers(n_gpu_layers);
+    let mut context_params = LlamaContextParams::default()
+        .with_n_ctx(std::num::NonZeroU32::new(planned_context.max(1)))
+        .with_n_batch(n_batch.max(1))
+        .with_n_ubatch(n_batch.max(1))
+        .with_flash_attention_policy(flash_attention_policy);
+    if let Some(offload) = offload_kqv {
+        context_params = context_params.with_offload_kqv(offload);
+    }
+    if let Some(kv_type) = llama_kv_type.and_then(parse_kv_cache_type) {
+        context_params = context_params.with_type_k(kv_type).with_type_v(kv_type);
+    }
+    model_params = model_params.with_no_alloc(true);
+
+    let measured = model_params
+        .project_memory(Path::new(model_path), &context_params)
+        .map(|projection| projection.device_compute)
+        .filter(|bytes| *bytes > 0);
+
+    if let Ok(mut cache) = compute_probe_cache().lock() {
+        cache.insert(key, measured);
+    }
+    measured
 }
 
 fn load_kv_geometry_from_model(model: &LlamaModel) -> Option<KvCacheGeometry> {
@@ -688,39 +782,42 @@ pub(super) fn plan_smart_gpu_offload(
         (per_block, uniform)
     };
 
-    let layers_for_context = |planned_context: u32, kv_per_block: &[u64]| -> (u32, u64) {
-        let runtime_reserve = estimated_runtime_reserve_bytes(
-            &metadata,
-            available_vram,
-            planned_context,
-            n_batch,
-            flash_attention_policy,
-        );
-        let available_base = effective_vram_budget_bytes
-            .saturating_sub(runtime_reserve)
-            .saturating_sub(sidecar_vram_reserve_bytes);
-        let layers = match costs.as_ref() {
-            Some(costs) => costs
-                .max_units_within(available_base, kv_per_block)
-                .min(total_layers),
-            None => {
-                let average_kv = if kv_per_block.is_empty() {
-                    0
-                } else {
-                    kv_per_block.iter().sum::<u64>() / kv_per_block.len() as u64
-                };
-                let effective = bytes_per_layer.saturating_add(average_kv);
-                if available_base == 0 || effective == 0 {
-                    0
-                } else {
-                    u32::try_from((available_base / effective).min(u64::from(total_layers)))
-                        .unwrap_or(total_layers)
-                        .min(total_layers)
+    let layers_for_context =
+        |planned_context: u32, kv_per_block: &[u64], measured_compute: Option<u64>| -> (u32, u64) {
+            let runtime_reserve = measured_compute.unwrap_or_else(|| {
+                estimated_runtime_reserve_bytes(
+                    &metadata,
+                    available_vram,
+                    planned_context,
+                    n_batch,
+                    flash_attention_policy,
+                )
+            });
+            let available_base = effective_vram_budget_bytes
+                .saturating_sub(runtime_reserve)
+                .saturating_sub(sidecar_vram_reserve_bytes);
+            let layers = match costs.as_ref() {
+                Some(costs) => costs
+                    .max_units_within(available_base, kv_per_block)
+                    .min(total_layers),
+                None => {
+                    let average_kv = if kv_per_block.is_empty() {
+                        0
+                    } else {
+                        kv_per_block.iter().sum::<u64>() / kv_per_block.len() as u64
+                    };
+                    let effective = bytes_per_layer.saturating_add(average_kv);
+                    if available_base == 0 || effective == 0 {
+                        0
+                    } else {
+                        u32::try_from((available_base / effective).min(u64::from(total_layers)))
+                            .unwrap_or(total_layers)
+                            .min(total_layers)
+                    }
                 }
-            }
+            };
+            (layers, runtime_reserve)
         };
-        (layers, runtime_reserve)
-    };
 
     let mut recommended_context = compute_recommended_context(
         &metadata,
@@ -738,7 +835,22 @@ pub(super) fn plan_smart_gpu_offload(
         .clamp(1, metadata.max_context_length);
     let (mut kv_per_block, mut kv_bytes_per_layer) = kv_for_context(planned_context);
     let (mut estimated_gpu_layers, mut estimated_runtime_reserve_bytes) =
-        layers_for_context(planned_context, &kv_per_block);
+        layers_for_context(planned_context, &kv_per_block, None);
+
+    let measured_compute = measure_device_compute_bytes(
+        model_path,
+        estimated_gpu_layers.max(1),
+        planned_context,
+        n_batch,
+        resolved_offload_kqv,
+        llama_kv_type,
+        flash_attention_policy,
+    );
+    if measured_compute.is_some() {
+        let refreshed = layers_for_context(planned_context, &kv_per_block, measured_compute);
+        estimated_gpu_layers = refreshed.0;
+        estimated_runtime_reserve_bytes = refreshed.1;
+    }
 
     if requested_context.is_none() {
         let resident_weights = costs
@@ -760,7 +872,7 @@ pub(super) fn plan_smart_gpu_offload(
             let refreshed = kv_for_context(planned_context);
             kv_per_block = refreshed.0;
             kv_bytes_per_layer = refreshed.1;
-            let refreshed = layers_for_context(planned_context, &kv_per_block);
+            let refreshed = layers_for_context(planned_context, &kv_per_block, measured_compute);
             estimated_gpu_layers = refreshed.0;
             estimated_runtime_reserve_bytes = refreshed.1;
         }
@@ -1463,6 +1575,23 @@ mod real_model_plan {
             None => println!("kv geometry unavailable"),
         }
         println!("output unit bytes={}", costs.gpu_bytes(1));
+        let guessed = estimated_runtime_reserve_bytes(
+            &metadata,
+            free_vram,
+            ctx,
+            512,
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO,
+        );
+        let measured = measure_device_compute_bytes(
+            &path,
+            9,
+            ctx,
+            512,
+            Some(true),
+            Some("q8_0"),
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO,
+        );
+        println!("compute reserve guessed={guessed} measured={measured:?}");
 
         let plan = plan_smart_gpu_offload(
             &path,
