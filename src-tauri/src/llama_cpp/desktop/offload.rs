@@ -445,26 +445,21 @@ fn push_unique(out: &mut Vec<u32>, value: u32) {
 const ATTENTION_SCORE_BYTES: u64 = 4;
 const COMPUTE_BUFFER_SAFETY_FACTOR: u64 = 2;
 const COMPUTE_RESERVE_FLOOR_BYTES: u64 = 256 * 1024 * 1024;
-const MTP_COMPUTE_REFERENCE_CONTEXT: u64 = 16_384;
-const MTP_COMPUTE_REFERENCE_BYTES: u64 = 384 * 1024 * 1024;
-const MTP_COMPUTE_MIN_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(super) fn estimate_mtp_gpu_reserve_bytes(
     model_path: &str,
     planned_context: u32,
+    n_ubatch: u32,
+    llama_kv_type: Option<&str>,
 ) -> Result<u64, String> {
     let metadata = load_model_metadata(model_path)?;
-    Ok(metadata
-        .model_size_bytes
-        .saturating_add(estimate_mtp_compute_reserve_bytes(planned_context)))
-}
-
-fn estimate_mtp_compute_reserve_bytes(planned_context: u32) -> u64 {
-    MTP_COMPUTE_REFERENCE_BYTES
-        .saturating_mul(u64::from(planned_context.max(1)))
-        .checked_div(MTP_COMPUTE_REFERENCE_CONTEXT)
-        .unwrap_or(MTP_COMPUTE_REFERENCE_BYTES)
-        .max(MTP_COMPUTE_MIN_BYTES)
+    let draft_kv_bytes = match load_kv_geometry(model_path) {
+        Some(geometry) => geometry.total_bytes(planned_context, n_ubatch, llama_kv_type),
+        None => estimate_kv_bytes_per_token(&metadata, llama_kv_type)
+            .unwrap_or(0)
+            .saturating_mul(u64::from(planned_context.max(1))),
+    };
+    Ok(metadata.model_size_bytes.saturating_add(draft_kv_bytes))
 }
 
 pub(super) fn select_mtp_gpu_device(
@@ -1085,9 +1080,9 @@ pub(super) fn plan_multi_gpu_distribution(
 #[cfg(test)]
 mod tests {
     use super::{
-        candidate_gpu_layers, estimate_mtp_compute_reserve_bytes, estimated_runtime_reserve_bytes,
-        model_weight_split_bytes, plan_multi_gpu_distribution, reserve_device_vram,
-        select_mtp_gpu_device, LlamaModelMetadata,
+        candidate_gpu_layers, estimated_runtime_reserve_bytes, model_weight_split_bytes,
+        plan_multi_gpu_distribution, reserve_device_vram, select_mtp_gpu_device,
+        LlamaModelMetadata,
     };
 
     fn large_context_metadata() -> LlamaModelMetadata {
@@ -1102,16 +1097,6 @@ mod tests {
             n_embd_head_k: 128,
             n_embd_head_v: 128,
         }
-    }
-
-    #[test]
-    fn mtp_compute_reserve_scales_with_context_and_has_a_floor() {
-        assert_eq!(
-            estimate_mtp_compute_reserve_bytes(16_384),
-            384 * 1024 * 1024
-        );
-        assert_eq!(estimate_mtp_compute_reserve_bytes(8_192), 192 * 1024 * 1024);
-        assert_eq!(estimate_mtp_compute_reserve_bytes(1), 128 * 1024 * 1024);
     }
 
     #[test]

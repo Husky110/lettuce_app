@@ -1783,7 +1783,14 @@ mod desktop {
             let planned_mtp_context = requested_context.unwrap_or(16_384).max(1);
             let mtp_gpu_reserve_bytes = llama_mtp_external_path
                 .as_deref()
-                .map(|path| estimate_mtp_gpu_reserve_bytes(path, planned_mtp_context))
+                .map(|path| {
+                    estimate_mtp_gpu_reserve_bytes(
+                        path,
+                        planned_mtp_context,
+                        llama_compute_batch_size,
+                        llama_kv_type_raw.as_deref(),
+                    )
+                })
                 .transpose()?
                 .unwrap_or(0);
             let mtp_drafter_on_gpu = if !backend_supports_gpu_offload
