@@ -7,6 +7,7 @@ use super::types::ImageGenerationRequest;
 pub mod automatic1111;
 pub mod diffusers;
 pub mod google_gemini;
+pub mod literouter;
 pub mod nanogpt;
 pub mod openai;
 pub mod openrouter;
@@ -17,6 +18,12 @@ pub mod xai;
 pub enum ImageRequestPayload {
     Json(Value),
     Multipart(Form),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageResponseFormat {
+    Json,
+    Binary,
 }
 
 pub trait ImageProviderAdapter: Send + Sync {
@@ -34,6 +41,10 @@ pub trait ImageProviderAdapter: Send + Sync {
 
     fn payload(&self, request: &ImageGenerationRequest) -> Result<ImageRequestPayload, String>;
     fn parse_response(&self, response: Value) -> Result<Vec<ImageResponseData>, String>;
+
+    fn response_format(&self) -> ImageResponseFormat {
+        ImageResponseFormat::Json
+    }
 
     #[allow(dead_code)]
     fn supports_stream(&self) -> bool {
@@ -84,6 +95,8 @@ pub fn get_adapter(provider_id: &str) -> Result<Box<dyn ImageProviderAdapter>, S
         "stability" => Ok(Box::new(stability::StabilityAdapter)),
         "xai" => Ok(Box::new(xai::XAIAdapter)),
         "nanogpt" => Ok(Box::new(nanogpt::NanoGPTAdapter)),
+        "literouter" => Ok(Box::new(literouter::LiteRouterAdapter)),
+        "custom" | "lettuce-host" => Ok(Box::new(openai::OpenAIAdapter)),
         _ => Err(format!(
             "Provider {} does not support image generation",
             provider_id

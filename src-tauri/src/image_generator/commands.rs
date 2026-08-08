@@ -12,7 +12,7 @@ use crate::usage::{
 };
 use crate::utils::{log_error, log_info, now_millis};
 
-use super::provider_adapter::{get_adapter, ImageRequestPayload, ImageResponseData};
+use super::provider_adapter::{get_adapter, ImageRequestPayload, ImageResponseData, ImageResponseFormat};
 use super::storage::save_image;
 use super::types::{GeneratedImage, ImageGenerationRequest, ImageGenerationResponse, ImageLora};
 
@@ -331,6 +331,40 @@ pub async fn generate_image(
                 module_path!(),
                 line!(),
                 format!("API error {}: {}", status, error_text),
+            ));
+        }
+
+        if adapter.response_format() == ImageResponseFormat::Binary {
+            let bytes = response.bytes().await.map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to read image bytes: {}", e),
+                )
+            })?;
+            if bytes.is_empty() {
+                return Err(crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    "Provider returned an empty image response".to_string(),
+                ));
+            }
+            let saved = crate::image_generator::storage::save_image_bytes(&app, &bytes)?;
+            return Ok((
+                ImageGenerationResponse {
+                    images: vec![GeneratedImage {
+                        asset_id: saved.asset_id,
+                        file_path: saved.file_path,
+                        mime_type: saved.mime_type,
+                        url: None,
+                        width: saved.width,
+                        height: saved.height,
+                        text: None,
+                    }],
+                    model: request.model.clone(),
+                    provider_id: request.provider_id.clone(),
+                },
+                None,
             ));
         }
 
