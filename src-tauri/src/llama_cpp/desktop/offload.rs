@@ -15,6 +15,10 @@ pub(super) struct LlamaModelMetadata {
     pub(super) n_embd: u64,
     pub(super) n_head: u64,
     pub(super) n_head_kv: u64,
+    /// Per-head key/value width. Read from the GGUF rather than inferred from
+    /// `n_embd / n_head`, which is wrong on every model that sets them.
+    pub(super) n_embd_head_k: u64,
+    pub(super) n_embd_head_v: u64,
 }
 
 impl LlamaModelMetadata {
@@ -199,31 +203,45 @@ fn kv_bytes_per_value(llama_kv_type: Option<&str>) -> f64 {
         .map(|value| value.trim().to_ascii_lowercase())
         .as_deref()
     {
+        // ggml stores quantized data in blocks that carry scales alongside the
+        // weights, so the real cost per value is `type_size / blck_size`, not
+        // the nominal bit width. Values below are `ggml_type_size(t) as f64 /
+        // ggml_blck_size(t) as f64` for each type llama.cpp accepts as a KV
+        // cache type; using the nominal width under-counts every quantized
+        // cache by 6-24%.
         Some("f32") => 4.0,
-        Some("f16") => 2.0,
-        Some("q8_1") | Some("q8_0") => 1.0,
-        Some("q6_k") => 0.75,
-        Some("q5_k") | Some("q5_1") | Some("q5_0") => 0.625,
-        Some("q4_k") | Some("q4_1") | Some("q4_0") => 0.5,
-        Some("q3_k") | Some("iq3_s") | Some("iq3_xxs") => 0.375,
-        Some("q2_k") | Some("iq2_xs") | Some("iq2_xxs") | Some("iq1_s") => 0.25,
-        Some("iq4_nl") => 0.5,
+        Some("f16") | Some("bf16") => 2.0,
+        Some("q8_1") => 36.0 / 32.0,
+        Some("q8_0") => 34.0 / 32.0,
+        Some("q6_k") => 210.0 / 256.0,
+        Some("q5_k") => 176.0 / 256.0,
+        Some("q5_1") => 24.0 / 32.0,
+        Some("q5_0") => 22.0 / 32.0,
+        Some("q4_k") => 144.0 / 256.0,
+        Some("q4_1") => 20.0 / 32.0,
+        Some("q4_0") | Some("iq4_nl") => 18.0 / 32.0,
+        Some("q3_k") => 110.0 / 256.0,
+        Some("q2_k") => 84.0 / 256.0,
         _ => 2.0,
     }
 }
 
+/// KV cache bytes for one token across every attention layer.
+///
+/// The head dimension is read from the model rather than inferred as
+/// `n_embd / n_head`: Qwen3.x, Gemma and DeepSeek all set `key_length` /
+/// `value_length` explicitly and none of them match the division (Qwen3.6-27B
+/// is 256 against an implied 213, gemma-4-12B is 512 against 240), so the old
+/// inference under-counted KV by 1.2x to 2.1x.
 fn estimate_kv_bytes_per_token(
     metadata: &LlamaModelMetadata,
     llama_kv_type: Option<&str>,
 ) -> Option<u64> {
     let n_layer = u64::from(metadata.layer_count.max(1));
-    let n_embd = metadata.n_embd.max(1);
-    let n_head = metadata.n_head.max(1);
     let n_head_kv = metadata.n_head_kv.max(1);
-    let gqa_correction = n_head_kv as f64 / n_head as f64;
-    let effective_n_embd = (n_embd as f64 * gqa_correction) as u64;
+    let head_bytes = metadata.n_embd_head_k.max(1) + metadata.n_embd_head_v.max(1);
     let bytes_per_value = kv_bytes_per_value(llama_kv_type);
-    let bytes = (n_layer as f64) * (effective_n_embd as f64) * 2.0 * bytes_per_value;
+    let bytes = (n_layer as f64) * (n_head_kv as f64) * (head_bytes as f64) * bytes_per_value;
     Some(bytes.max(0.0) as u64)
 }
 
@@ -277,15 +295,51 @@ fn load_model_metadata_uncached(model_path: &str) -> Result<LlamaModelMetadata, 
         )
     })?;
 
+    let n_embd = u64::try_from(model.n_embd()).unwrap_or(0).max(1);
+    let n_head = u64::from(model.n_head()).max(1);
+    let implied_head_dim = (n_embd / n_head).max(1);
+    let (n_embd_head_k, n_embd_head_v) = gguf_head_dims(model_path, implied_head_dim);
+
     Ok(LlamaModelMetadata {
         model_size_bytes: model.size(),
         layer_count: model.n_layer().max(1),
         nextn_layer_count: model.n_layer_nextn(),
         max_context_length: model.n_ctx_train().max(1),
-        n_embd: u64::try_from(model.n_embd()).unwrap_or(0).max(1),
-        n_head: u64::from(model.n_head()).max(1),
+        n_embd,
+        n_head,
         n_head_kv: u64::from(model.n_head_kv()).max(1),
+        n_embd_head_k,
+        n_embd_head_v,
     })
+}
+
+/// Reads `{arch}.attention.key_length` / `value_length` from the GGUF.
+///
+/// These are absent on older architectures, where the head dimension really is
+/// `n_embd / n_head`; `fallback` covers that case.
+fn gguf_head_dims(model_path: &str, fallback: u64) -> (u64, u64) {
+    let Some(gguf) = GgufContext::from_file(Path::new(model_path)) else {
+        return (fallback, fallback);
+    };
+    let arch_idx = gguf.find_key("general.architecture");
+    if arch_idx < 0 {
+        return (fallback, fallback);
+    }
+    let Some(arch) = gguf.val_str(arch_idx) else {
+        return (fallback, fallback);
+    };
+    let read = |suffix: &str| -> Option<u64> {
+        let idx = gguf.find_key(&format!("{arch}.attention.{suffix}"));
+        if idx < 0 {
+            return None;
+        }
+        let value = gguf.val_u32(idx);
+        (value > 0).then(|| u64::from(value))
+    };
+    (
+        read("key_length").unwrap_or(fallback),
+        read("value_length").unwrap_or(fallback),
+    )
 }
 
 pub(super) fn load_model_metadata(model_path: &str) -> Result<LlamaModelMetadata, String> {
@@ -838,6 +892,8 @@ mod tests {
             n_embd: 4096,
             n_head: 32,
             n_head_kv: 8,
+            n_embd_head_k: 128,
+            n_embd_head_v: 128,
         }
     }
 
@@ -1026,6 +1082,57 @@ mod offload_cost_tests {
             costs.max_units_within(1030, 5, 0),
             2,
             "no KV charged at all"
+        );
+    }
+
+    fn qwen36_27b() -> LlamaModelMetadata {
+        // Measured from the GGUF: n_embd 5120, n_head 24, n_head_kv 4,
+        // key_length = value_length = 256 (implied n_embd/n_head is 213).
+        LlamaModelMetadata {
+            model_size_bytes: 21_182_275_040,
+            layer_count: 64,
+            nextn_layer_count: 1,
+            max_context_length: 262_144,
+            n_embd: 5120,
+            n_head: 24,
+            n_head_kv: 4,
+            n_embd_head_k: 256,
+            n_embd_head_v: 256,
+        }
+    }
+
+    #[test]
+    fn kv_per_token_uses_declared_head_dims_not_n_embd_over_n_head() {
+        // 64 layers * 4 kv heads * (256 + 256) * 1.0625 bytes (q8_0 block).
+        assert_eq!(
+            estimate_kv_bytes_per_token(&qwen36_27b(), Some("q8_0")),
+            Some(139_264)
+        );
+        // The old inference produced 109,184 here, 27.6% low.
+        assert_eq!(
+            estimate_kv_bytes_per_token(&qwen36_27b(), Some("f16")),
+            Some(262_144)
+        );
+    }
+
+    #[test]
+    fn quantized_kv_types_include_their_block_scales() {
+        // ggml_type_size / ggml_blck_size, not the nominal bit width.
+        assert_eq!(kv_bytes_per_value(Some("q8_0")), 34.0 / 32.0);
+        assert_eq!(kv_bytes_per_value(Some("q4_0")), 18.0 / 32.0);
+        assert_eq!(kv_bytes_per_value(Some("q6_k")), 210.0 / 256.0);
+        assert_eq!(kv_bytes_per_value(Some("f16")), 2.0);
+        assert_eq!(kv_bytes_per_value(None), 2.0, "llama.cpp defaults to f16");
+    }
+
+    #[test]
+    fn head_dims_fall_back_to_the_division_when_undeclared() {
+        let mut metadata = qwen36_27b();
+        metadata.n_embd_head_k = 213;
+        metadata.n_embd_head_v = 213;
+        assert_eq!(
+            estimate_kv_bytes_per_token(&metadata, Some("f16")),
+            Some(218_112)
         );
     }
 
