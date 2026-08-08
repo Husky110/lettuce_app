@@ -2217,6 +2217,7 @@ mod desktop {
                         fit_context_params,
                         &fit_margins,
                         fit_context,
+                        llama_mtp_bundled,
                     ) {
                         Ok(plan) => {
                             let mut candidates = vec![plan.n_gpu_layers];
@@ -2418,6 +2419,7 @@ mod desktop {
                 },
                 llama_strict_mode,
                 active_mmproj_path,
+                llama_mtp_bundled,
                 llama_mtp_external_path.as_deref(),
                 mtp_drafter_on_gpu,
                 llama_mtp_placement == "auto",

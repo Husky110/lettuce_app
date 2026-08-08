@@ -144,6 +144,7 @@ pub(super) fn fit_model_params(
     mut context_params: LlamaContextParams,
     margins: &[usize],
     n_ctx_min: u32,
+    load_mtp: bool,
 ) -> Result<NativeFitPlan, String> {
     let path = CString::new(model_path).map_err(|e| {
         crate::utils::err_msg(
@@ -152,7 +153,9 @@ pub(super) fn fit_model_params(
             format!("Invalid llama model path for native fitting: {e}"),
         )
     })?;
-    let mut model_params = LlamaModelParams::default();
+    // The fitter counts nextn layers into its budget only when this is set, so a
+    // bundled-MTP model must be fitted with it on or the plan under-reserves.
+    let mut model_params = LlamaModelParams::default().with_load_mtp(load_mtp);
     if !device_ids.is_empty() {
         model_params = model_params.with_devices(device_ids).map_err(|e| {
             crate::utils::err_msg(
@@ -632,6 +635,7 @@ pub(super) fn load_engine(
     gpu_config: LlamaGpuConfig,
     strict_mode: bool,
     mmproj_path: Option<&str>,
+    load_bundled_mtp: bool,
     mtp_model_path: Option<&str>,
     mtp_drafter_on_gpu: bool,
     mtp_gpu_fallback_allowed: bool,
@@ -739,7 +743,8 @@ pub(super) fn load_engine(
         })
         .unwrap_or_else(|| "none".to_string());
     let model_params_key = format!(
-        "requested_gpu_layers={requested_gpu_layers_key};native_fit={native_fit_key};strict_mode={};multi_gpu={};devices={};distribution={};tensor_split={};main_gpu={}",
+        "requested_gpu_layers={requested_gpu_layers_key};native_fit={native_fit_key};load_mtp={};strict_mode={};multi_gpu={};devices={};distribution={};tensor_split={};main_gpu={}",
+        load_bundled_mtp,
         strict_mode,
         gpu_config.multi_gpu_enabled,
         gpu_config
@@ -871,7 +876,7 @@ pub(super) fn load_engine(
                         native_fit_plan
                             .filter(|plan| index == 0 && plan.n_gpu_layers == candidate)
                             .map(|plan| plan.model_params.as_ref().get_ref()),
-                        false,
+                        load_bundled_mtp,
                     ) {
                         Ok(model) => {
                             backend_path_used = "gpu_offload".to_string();
@@ -987,7 +992,7 @@ pub(super) fn load_engine(
                                 MODEL_LOAD_STAGE_CPU
                             },
                             None,
-                            false,
+                            load_bundled_mtp,
                         )
                         .inspect_err(|_err| {
                             if let Some(app) = app {
@@ -1018,7 +1023,7 @@ pub(super) fn load_engine(
                     "gpu_offload",
                     MODEL_LOAD_STAGE_GPU_OFFLOAD,
                     native_fit_plan.map(|plan| plan.model_params.as_ref().get_ref()),
-                    false,
+                    load_bundled_mtp,
                 ) {
                     Ok(model) => {
                         backend_path_used = "gpu_offload".to_string();
@@ -1102,7 +1107,7 @@ pub(super) fn load_engine(
                                 "cpu",
                                 MODEL_LOAD_STAGE_CPU_FALLBACK,
                                 None,
-                                false,
+                                load_bundled_mtp,
                             )
                             .inspect_err(|_err| {
                                 if let Some(app) = app {
@@ -1133,7 +1138,7 @@ pub(super) fn load_engine(
                     "cpu",
                     MODEL_LOAD_STAGE_CPU,
                     None,
-                    false,
+                    load_bundled_mtp,
                 )
                 .inspect_err(|_err| {
                     if let Some(app) = app {
