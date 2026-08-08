@@ -54,6 +54,7 @@ pub(super) struct SmartGpuOffloadPlan {
     pub(super) estimated_runtime_reserve_bytes: u64,
     pub(super) effective_vram_budget_bytes: u64,
     pub(super) bytes_per_layer: u64,
+    pub(super) offload_unit_costs: Vec<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -71,6 +72,21 @@ impl ModelOffloadCosts {
         self.unit_bytes[self.unit_bytes.len() - take..]
             .iter()
             .fold(0u64, |acc, bytes| acc.saturating_add(*bytes))
+    }
+
+    fn combined_units(&self, kv_per_block: &[u64]) -> Vec<u64> {
+        let output_index = self.unit_bytes.len().saturating_sub(1);
+        self.unit_bytes
+            .iter()
+            .enumerate()
+            .map(|(index, weight)| {
+                if index == output_index {
+                    *weight
+                } else {
+                    weight.saturating_add(kv_per_block.get(index).copied().unwrap_or_default())
+                }
+            })
+            .collect()
     }
 
     fn max_units_within(&self, budget: u64, kv_per_block: &[u64]) -> u32 {
@@ -761,6 +777,11 @@ pub(super) fn plan_smart_gpu_offload(
         .take(estimated_gpu_layers as usize)
         .fold(0u64, |acc, bytes| acc.saturating_add(*bytes));
 
+    let offload_unit_costs = costs
+        .as_ref()
+        .map(|costs| costs.combined_units(&kv_per_block))
+        .unwrap_or_default();
+
     Ok(SmartGpuOffloadPlan {
         total_layers,
         recommended_context,
@@ -775,7 +796,57 @@ pub(super) fn plan_smart_gpu_offload(
         estimated_runtime_reserve_bytes,
         effective_vram_budget_bytes,
         bytes_per_layer,
+        offload_unit_costs,
     })
+}
+
+fn offloaded_units(unit_costs: &[u64], total: u32) -> Vec<u64> {
+    let take = (total as usize).min(unit_costs.len());
+    unit_costs[unit_costs.len() - take..].to_vec()
+}
+
+fn distribution_fits(offloaded: &[u64], split: &[f32], device_free: &[u64]) -> bool {
+    if offloaded.is_empty() {
+        return true;
+    }
+    let mut used = vec![0u64; device_free.len()];
+    for (position, cost) in offloaded.iter().enumerate() {
+        let fraction = position as f32 / offloaded.len() as f32;
+        let device = split
+            .iter()
+            .position(|bound| fraction < *bound)
+            .unwrap_or(device_free.len().saturating_sub(1));
+        if let Some(slot) = used.get_mut(device) {
+            *slot = slot.saturating_add(*cost);
+        }
+    }
+    used.iter()
+        .zip(device_free)
+        .all(|(used, free)| used <= free)
+}
+
+fn largest_total_that_fits(
+    unit_costs: &[u64],
+    auto_total: u32,
+    split: &[f32],
+    device_free: &[u64],
+) -> u32 {
+    let mut cumulative = Vec::with_capacity(split.len());
+    let mut running = 0.0f32;
+    for weight in split {
+        running += *weight;
+        cumulative.push(running);
+    }
+    for total in (0..=auto_total).rev() {
+        if distribution_fits(
+            &offloaded_units(unit_costs, total),
+            &cumulative,
+            device_free,
+        ) {
+            return total;
+        }
+    }
+    0
 }
 
 #[derive(Debug, Clone, Default)]
@@ -847,12 +918,14 @@ pub(super) fn plan_multi_gpu_distribution(
     smart_total_estimate: u32,
     manual: Option<&[u32]>,
     priority_limit_bytes: Option<u64>,
+    unit_costs: Option<&[u64]>,
 ) -> MultiGpuDistribution {
     let n = device_free_vram.len();
     if n == 0 {
         return MultiGpuDistribution::default();
     }
     let auto_total = smart_total_estimate.min(total_layers);
+    let exact = unit_costs.filter(|costs| !costs.is_empty());
 
     match mode {
         "manual" => {
@@ -876,6 +949,8 @@ pub(super) fn plan_multi_gpu_distribution(
             let effective_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
             let mut remaining = auto_total;
             let mut per_device = vec![0u32; n];
+            let offloaded = exact.map(|costs| offloaded_units(costs, auto_total));
+            let mut cursor = 0usize;
             for (i, free) in device_free_vram.iter().enumerate() {
                 if remaining == 0 {
                     break;
@@ -887,7 +962,20 @@ pub(super) fn plan_multi_gpu_distribution(
                 } else {
                     *free
                 };
-                let cap = if effective_per_layer == 0 {
+                let cap = if let Some(offloaded) = offloaded.as_ref() {
+                    let mut spent = 0u64;
+                    let mut taken = 0u32;
+                    while (cursor + taken as usize) < offloaded.len() {
+                        let next = spent.saturating_add(offloaded[cursor + taken as usize]);
+                        if next > budget {
+                            break;
+                        }
+                        spent = next;
+                        taken += 1;
+                    }
+                    cursor += taken as usize;
+                    taken
+                } else if effective_per_layer == 0 {
                     remaining
                 } else {
                     u32::try_from(budget / effective_per_layer).unwrap_or(remaining)
@@ -916,7 +1004,11 @@ pub(super) fn plan_multi_gpu_distribution(
         }
         "proportional" => {
             let effective_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
-            let capped_total = if effective_per_layer == 0 {
+            let weights: Vec<f32> = device_free_vram.iter().map(|f| *f as f32).collect();
+            let split = normalize_weights(&weights);
+            let capped_total = if let Some(costs) = exact {
+                largest_total_that_fits(costs, auto_total, &split, device_free_vram)
+            } else if effective_per_layer == 0 {
                 auto_total
             } else {
                 let feasible: u64 = device_free_vram
@@ -925,8 +1017,6 @@ pub(super) fn plan_multi_gpu_distribution(
                     .sum();
                 auto_total.min(u32::try_from(feasible).unwrap_or(auto_total))
             };
-            let weights: Vec<f32> = device_free_vram.iter().map(|f| *f as f32).collect();
-            let split = normalize_weights(&weights);
             MultiGpuDistribution {
                 n_gpu_layers: capped_total,
                 per_device_layers: distribute_by_weights(capped_total, &split),
@@ -937,9 +1027,20 @@ pub(super) fn plan_multi_gpu_distribution(
         // "balanced" and any unknown strategy fall through to an even split.
         _ => {
             let effective_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
+            let even: Vec<f32> = vec![1.0; n];
+            let even_split = normalize_weights(&even);
+            let exact_total = exact.map(|costs| {
+                largest_total_that_fits(costs, auto_total, &even_split, device_free_vram)
+            });
             let capacities: Vec<u32> = device_free_vram
                 .iter()
-                .map(|free| {
+                .enumerate()
+                .map(|(index, free)| {
+                    if let Some(total) = exact_total {
+                        let base = total / n as u32;
+                        let extra = u32::from((index as u32) < total % n as u32);
+                        return base + extra;
+                    }
                     if effective_per_layer == 0 {
                         auto_total
                     } else {
@@ -1108,7 +1209,8 @@ mod tests {
 
     #[test]
     fn proportional_distribution_caps_total_to_per_device_free_capacity() {
-        let dist = plan_multi_gpu_distribution("proportional", &[8, 24], 60, 1, 0, 60, None, None);
+        let dist =
+            plan_multi_gpu_distribution("proportional", &[8, 24], 60, 1, 0, 60, None, None, None);
 
         assert_eq!(dist.n_gpu_layers, 32);
         assert_eq!(dist.per_device_layers, vec![8, 24]);
@@ -1116,7 +1218,8 @@ mod tests {
 
     #[test]
     fn balanced_distribution_keeps_even_split_for_identical_cards() {
-        let dist = plan_multi_gpu_distribution("balanced", &[16, 16], 60, 1, 0, 32, None, None);
+        let dist =
+            plan_multi_gpu_distribution("balanced", &[16, 16], 60, 1, 0, 32, None, None, None);
 
         assert_eq!(dist.n_gpu_layers, 32);
         assert_eq!(dist.per_device_layers, vec![16, 16]);
@@ -1125,7 +1228,8 @@ mod tests {
 
     #[test]
     fn balanced_distribution_respects_a_sidecar_reduced_device_budget() {
-        let dist = plan_multi_gpu_distribution("balanced", &[4, 16], 20, 1, 0, 16, None, None);
+        let dist =
+            plan_multi_gpu_distribution("balanced", &[4, 16], 20, 1, 0, 16, None, None, None);
 
         assert_eq!(dist.n_gpu_layers, 16);
         assert_eq!(dist.per_device_layers, vec![4, 12]);
@@ -1277,6 +1381,42 @@ mod offload_cost_tests {
         let per_layer = geometry.bytes_per_layer(8192, 512, Some("f16"));
         assert_eq!(per_layer[0], 1536 * 8 * 1024 * 2);
         assert_eq!(per_layer[5], 8192 * 1 * 1024 * 2);
+    }
+
+    #[test]
+    fn multi_gpu_split_prices_the_output_layer_on_its_actual_device() {
+        let units = vec![100u64, 100, 100, 1000];
+        let uniform = plan_multi_gpu_distribution(
+            "proportional",
+            &[700, 700],
+            4,
+            325,
+            0,
+            4,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            uniform.n_gpu_layers, 4,
+            "the flat average claims all four units fit"
+        );
+
+        let exact = plan_multi_gpu_distribution(
+            "proportional",
+            &[700, 700],
+            4,
+            325,
+            0,
+            4,
+            None,
+            None,
+            Some(&units),
+        );
+        assert!(
+            exact.n_gpu_layers < 4,
+            "the 1000-byte output unit cannot fit on a 700-byte device"
+        );
     }
 
     #[test]

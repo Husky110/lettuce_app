@@ -898,6 +898,7 @@ pub(crate) async fn llamacpp_context_info(
                 0,
                 Some(&manual_aligned),
                 None,
+                None,
             )
         } else {
             let flash_attention_policy = if using_rocm_backend() {
@@ -927,6 +928,7 @@ pub(crate) async fn llamacpp_context_info(
                 plan.estimated_gpu_layers,
                 None,
                 llama_priority_vram_limit_bytes,
+                Some(&plan.offload_unit_costs),
             )
         };
         let vram = per_dev

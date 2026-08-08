@@ -1912,6 +1912,7 @@ mod desktop {
                     0,
                     Some(&manual_layers_aligned),
                     None,
+                    None,
                 );
                 effective_gpu_layers = Some(dist.n_gpu_layers);
                 smart_gpu_layer_candidates = None;
@@ -2069,6 +2070,7 @@ mod desktop {
                         smart_offload_plan.estimated_gpu_layers,
                         None,
                         llama_priority_vram_limit_bytes,
+                        Some(&smart_offload_plan.offload_unit_costs),
                     ));
                 }
                 update_runtime_report_field(
@@ -2326,6 +2328,7 @@ mod desktop {
                     effective_gpu_layers.unwrap_or(0),
                     None,
                     llama_priority_vram_limit_bytes,
+                    None,
                 ));
             }
             let multi_gpu_tensor_split = multi_gpu_distribution
