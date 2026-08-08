@@ -762,6 +762,10 @@ pub(crate) async fn llamacpp_context_info(
         .map(str::trim)
         .unwrap_or("auto")
         .to_ascii_lowercase();
+    // Mirrors the request path: a model carrying its own NextN layers drafts
+    // from itself, so no external draft is consulted at all.
+    let bundled_mtp_draft =
+        llama_mtp_enabled == Some(true) && super::mtp::model_has_mtp(&model_path);
     let mtp_requested_reserve_bytes =
         if supports_gpu_offload && llama_mtp_enabled == Some(true) && mtp_placement != "cpu" {
             llama_mtp_model_path
@@ -835,6 +839,7 @@ pub(crate) async fn llamacpp_context_info(
             llama_kv_type.as_deref(),
             flash_attention_policy,
             sidecar_vram_reserve_bytes,
+            bundled_mtp_draft,
         )?
         .estimated_gpu_layers
     };
@@ -848,6 +853,7 @@ pub(crate) async fn llamacpp_context_info(
     } else {
         compute_recommended_context_for_gpu_layers(
             &metadata,
+            super::offload::load_offload_costs(&model_path).as_ref(),
             available_memory_bytes,
             available_vram_bytes,
             resolved_gpu_layers,
@@ -909,6 +915,7 @@ pub(crate) async fn llamacpp_context_info(
                 llama_kv_type.as_deref(),
                 flash_attention_policy,
                 sidecar_vram_reserve_bytes,
+                bundled_mtp_draft,
             )?;
             let kv_bytes_per_layer = plan.kv_bytes_per_layer;
             plan_multi_gpu_distribution(

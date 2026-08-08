@@ -1930,6 +1930,7 @@ mod desktop {
                     llama_kv_type_raw.as_deref(),
                     resolved_flash_attention_policy,
                     sidecar_vram_reserve_bytes,
+                    llama_mtp_bundled,
                 )?;
                 // Capture the planner's own KV-aware estimate before any cache
                 // merge overwrites it: the GPU-KV context-OOM retry must step

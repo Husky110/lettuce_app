@@ -1,7 +1,9 @@
 use super::engine::shared_backend;
+use llama_cpp_2::gguf::GgufContext;
 use llama_cpp_2::model::{params::LlamaModelParams, LlamaModel};
 use llama_cpp_sys_2::llama_flash_attn_type;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug)]
@@ -50,6 +52,140 @@ pub(super) struct SmartGpuOffloadPlan {
     pub(super) estimated_runtime_reserve_bytes: u64,
     pub(super) effective_vram_budget_bytes: u64,
     pub(super) bytes_per_layer: u64,
+}
+
+/// Byte cost of every llama.cpp offload unit, indexed the way llama.cpp
+/// indexes them.
+///
+/// `llama-model.cpp` walks `il` over `0..=n_layer_all`, where `0..n_layer_all`
+/// are the repeating blocks and `il == n_layer_all` is the output layer, and
+/// sends a unit to the GPU when `il >= max(n_layer_all + 1 - n_gpu_layers, 0)`.
+/// So `n_gpu_layers` always takes the *last* units of that list, output layer
+/// first. The input embedding is pinned to the CPU no matter what
+/// (`dev_input`), so it is not a unit here.
+///
+/// Sizes come straight from the GGUF tensor index. They have to be per-unit:
+/// the output layer routinely dwarfs a block (2.4 GiB vs 258 MiB on a
+/// large-vocab model with a high-precision head), and it is the very first
+/// unit offloaded, so charging every unit an average of the file understates
+/// the first GPU layers badly.
+#[derive(Clone, Debug)]
+pub(super) struct ModelOffloadCosts {
+    unit_bytes: Vec<u64>,
+}
+
+impl ModelOffloadCosts {
+    /// Number of offload units, equal to llama.cpp's `n_layer_all + 1`.
+    pub(super) fn unit_count(&self) -> u32 {
+        u32::try_from(self.unit_bytes.len()).unwrap_or(u32::MAX)
+    }
+
+    /// Weight bytes that land on the GPU for `gpu_layers`, i.e. the last
+    /// `gpu_layers` units.
+    pub(super) fn gpu_bytes(&self, gpu_layers: u32) -> u64 {
+        let take = (gpu_layers as usize).min(self.unit_bytes.len());
+        self.unit_bytes[self.unit_bytes.len() - take..]
+            .iter()
+            .fold(0u64, |acc, bytes| acc.saturating_add(*bytes))
+    }
+
+    /// Largest `gpu_layers` whose weights plus per-block KV fit in `budget`.
+    ///
+    /// `kv_bytes_per_layer` is charged only for block units, and only for the
+    /// first `kv_layer_count` of them, because the KV cache is sized from the
+    /// attention layers rather than from the offload unit list.
+    fn max_units_within(&self, budget: u64, kv_bytes_per_layer: u64, kv_layer_count: u32) -> u32 {
+        let mut running = 0u64;
+        let mut kv_charged = 0u32;
+        let mut fitted = 0u32;
+        let output_index = self.unit_bytes.len().saturating_sub(1);
+        for (offset, index) in (0..self.unit_bytes.len()).rev().enumerate() {
+            running = running.saturating_add(self.unit_bytes[index]);
+            if index != output_index && kv_charged < kv_layer_count {
+                running = running.saturating_add(kv_bytes_per_layer);
+                kv_charged += 1;
+            }
+            if running > budget {
+                break;
+            }
+            fitted = u32::try_from(offset + 1).unwrap_or(u32::MAX);
+        }
+        fitted
+    }
+}
+
+/// Reads the per-unit costs out of the GGUF tensor index.
+///
+/// Returns `None` when the file cannot be opened or carries no blocks, in
+/// which case callers fall back to the flat file average.
+fn load_offload_costs_uncached(model_path: &str) -> Option<ModelOffloadCosts> {
+    let gguf = GgufContext::from_file(Path::new(model_path))?;
+    let mut blocks: BTreeMap<u32, u64> = BTreeMap::new();
+    let mut output_bytes = 0u64;
+    let mut input_bytes = 0u64;
+    let mut has_output_weight = false;
+
+    for index in 0..gguf.n_tensors() {
+        let Some(name) = gguf.tensor_name(index) else {
+            continue;
+        };
+        let size = gguf.tensor_size(index);
+        if let Some(block) = block_index(name) {
+            let entry = blocks.entry(block).or_default();
+            *entry = entry.saturating_add(size);
+        } else if name.starts_with("token_embd") {
+            input_bytes = input_bytes.saturating_add(size);
+        } else {
+            if name == "output.weight" {
+                has_output_weight = true;
+            }
+            output_bytes = output_bytes.saturating_add(size);
+        }
+    }
+
+    let n_layer_all = usize::try_from(*blocks.keys().max()? + 1).ok()?;
+    // Models with a tied head carry no `output.weight`; llama.cpp then builds
+    // the output tensor as a duplicate of the embedding, which is a second
+    // allocation of that size on the output device.
+    if !has_output_weight {
+        output_bytes = output_bytes.saturating_add(input_bytes);
+    }
+
+    let mut unit_bytes = vec![0u64; n_layer_all + 1];
+    for (block, bytes) in blocks {
+        if let Some(slot) = unit_bytes.get_mut(block as usize) {
+            *slot = bytes;
+        }
+    }
+    unit_bytes[n_layer_all] = output_bytes;
+
+    Some(ModelOffloadCosts { unit_bytes })
+}
+
+/// `blk.<n>.` prefix parser, matching llama.cpp's repeating-layer naming.
+fn block_index(tensor_name: &str) -> Option<u32> {
+    let rest = tensor_name.strip_prefix("blk.")?;
+    let (digits, _) = rest.split_once('.')?;
+    digits.parse().ok()
+}
+
+pub(super) fn load_offload_costs(model_path: &str) -> Option<ModelOffloadCosts> {
+    if let Some(costs) = offload_costs_cache().lock().ok()?.get(model_path).cloned() {
+        return costs;
+    }
+    let costs = load_offload_costs_uncached(model_path);
+    offload_costs_cache()
+        .lock()
+        .ok()?
+        .insert(model_path.to_string(), costs.clone());
+    costs
+}
+
+static MODEL_OFFLOAD_COSTS_CACHE: OnceLock<Mutex<HashMap<String, Option<ModelOffloadCosts>>>> =
+    OnceLock::new();
+
+fn offload_costs_cache() -> &'static Mutex<HashMap<String, Option<ModelOffloadCosts>>> {
+    MODEL_OFFLOAD_COSTS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 static MODEL_METADATA_CACHE: OnceLock<Mutex<HashMap<String, LlamaModelMetadata>>> = OnceLock::new();
@@ -311,8 +447,18 @@ pub(super) fn merge_cached_candidate_layers(
 
 pub(super) fn model_weight_split_bytes(
     metadata: &LlamaModelMetadata,
+    costs: Option<&ModelOffloadCosts>,
     gpu_layers: u32,
 ) -> (u64, u64) {
+    if let Some(costs) = costs {
+        let gpu_weight_bytes = costs.gpu_bytes(gpu_layers);
+        // The embedding never leaves the CPU, so bill it against host memory
+        // alongside whatever units stayed behind.
+        let cpu_weight_bytes = metadata
+            .model_size_bytes
+            .saturating_sub(gpu_weight_bytes.min(metadata.model_size_bytes));
+        return (cpu_weight_bytes, gpu_weight_bytes);
+    }
     let total_layers = metadata.offload_layer_count();
     let clamped_gpu_layers = gpu_layers.min(total_layers);
     let gpu_weight_bytes = metadata
@@ -326,6 +472,7 @@ pub(super) fn model_weight_split_bytes(
 
 pub(super) fn compute_recommended_context_for_gpu_layers(
     metadata: &LlamaModelMetadata,
+    costs: Option<&ModelOffloadCosts>,
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     gpu_layers: u32,
@@ -333,7 +480,8 @@ pub(super) fn compute_recommended_context_for_gpu_layers(
     llama_kv_type: Option<&str>,
     sidecar_vram_reserve_bytes: u64,
 ) -> Option<u32> {
-    let (cpu_weight_bytes, gpu_weight_bytes) = model_weight_split_bytes(metadata, gpu_layers);
+    let (cpu_weight_bytes, gpu_weight_bytes) =
+        model_weight_split_bytes(metadata, costs, gpu_layers);
     let available_for_ctx = if llama_offload_kqv == Some(true) {
         let vram = available_vram_bytes?;
         let reserve = default_memory_reserve_bytes(vram);
@@ -365,9 +513,14 @@ pub(super) fn plan_smart_gpu_offload(
     llama_kv_type: Option<&str>,
     flash_attention_policy: llama_flash_attn_type,
     sidecar_vram_reserve_bytes: u64,
+    bundled_mtp_draft: bool,
 ) -> Result<SmartGpuOffloadPlan, String> {
     let metadata = load_model_metadata(model_path)?;
-    let total_layers = metadata.offload_layer_count();
+    let costs = load_offload_costs(model_path);
+    let total_layers = costs
+        .as_ref()
+        .map(ModelOffloadCosts::unit_count)
+        .unwrap_or_else(|| metadata.offload_layer_count());
     let recommended_context = compute_recommended_context(
         &metadata,
         available_memory_bytes,
@@ -396,73 +549,57 @@ pub(super) fn plan_smart_gpu_offload(
         .unwrap_or(0);
     let kv_bytes_per_token = estimate_kv_bytes_per_token(&metadata, llama_kv_type).unwrap_or(0);
 
-    let planning_modes: &[Option<bool>] = match resolved_offload_kqv {
-        Some(true) => &[Some(true)],
-        Some(false) => &[Some(false)],
-        None => &[Some(false), Some(true), None],
+    // Plan for the mode the runtime will actually use. `None` hands the choice
+    // to llama.cpp, whose `llama_context_default_params` sets
+    // `offload_kqv = true`, so it costs VRAM just like an explicit `true`.
+    // Shopping for whichever mode fits the most layers used to budget zero KV
+    // VRAM and then let the runtime put the KV cache on the GPU anyway.
+    let planning_offload_kqv = resolved_offload_kqv;
+    let kqv_vram_reserved = planning_offload_kqv != Some(false);
+    // Only the GPU-resident layers' KV goes to VRAM, not the whole model's, so
+    // this is charged per layer as units are accumulated.
+    // A bundled-MTP draft reuses the model's weights but stands up a second
+    // context, whose KV cache is placed per layer exactly like the main one.
+    // That doubles the per-layer KV price rather than adding a fixed block, so
+    // it stays correct however many layers end up on the GPU.
+    let kv_contexts = if bundled_mtp_draft { 2 } else { 1 };
+    let kv_bytes_per_layer = if kqv_vram_reserved {
+        kv_bytes_per_token
+            .saturating_mul(u64::from(planned_context))
+            .checked_div(u64::from(metadata.layer_count.max(1)))
+            .unwrap_or(0)
+            .saturating_mul(kv_contexts)
+    } else {
+        0
     };
-
-    let mut selected_plan: Option<(Option<bool>, bool, u64, u64, u32)> = None;
-    for planning_offload_kqv in planning_modes {
-        let kqv_vram_reserved = *planning_offload_kqv == Some(true);
-        // When KV is GPU-resident, only the GPU-resident layers' KV goes to VRAM —
-        // not the full model's KV. Include KV cost in the per-layer price so the
-        // estimate self-corrects: more layers → more KV, fewer layers → less KV.
-        let kv_bytes_per_layer = if kqv_vram_reserved {
-            kv_bytes_per_token
-                .saturating_mul(u64::from(planned_context))
-                .checked_div(u64::from(metadata.layer_count.max(1)))
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        let effective_bytes_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
-        let available_base = effective_vram_budget_bytes
-            .saturating_sub(estimated_runtime_reserve_bytes)
-            .saturating_sub(sidecar_vram_reserve_bytes);
-        let estimated_gpu_layers = if available_base == 0 || effective_bytes_per_layer == 0 {
-            0
-        } else {
-            u32::try_from((available_base / effective_bytes_per_layer).min(u64::from(total_layers)))
+    let available_base = effective_vram_budget_bytes
+        .saturating_sub(estimated_runtime_reserve_bytes)
+        .saturating_sub(sidecar_vram_reserve_bytes);
+    let estimated_gpu_layers = match costs.as_ref() {
+        Some(costs) => costs
+            .max_units_within(
+                available_base,
+                kv_bytes_per_layer,
+                metadata.layer_count.max(1),
+            )
+            .min(total_layers),
+        None => {
+            let effective_bytes_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
+            if available_base == 0 || effective_bytes_per_layer == 0 {
+                0
+            } else {
+                u32::try_from(
+                    (available_base / effective_bytes_per_layer).min(u64::from(total_layers)),
+                )
                 .unwrap_or(total_layers)
                 .min(total_layers)
-        };
-        // Report the KV bytes that will actually land on GPU (scales with GPU layers).
-        let estimated_kv_bytes = kv_bytes_per_layer.saturating_mul(u64::from(
-            estimated_gpu_layers.min(metadata.layer_count.max(1)),
-        ));
-
-        if selected_plan.is_none() {
-            selected_plan = Some((
-                *planning_offload_kqv,
-                kqv_vram_reserved,
-                estimated_kv_bytes,
-                kv_bytes_per_layer,
-                estimated_gpu_layers,
-            ));
-        }
-
-        if estimated_gpu_layers > 0 || *planning_offload_kqv == Some(false) {
-            selected_plan = Some((
-                *planning_offload_kqv,
-                kqv_vram_reserved,
-                estimated_kv_bytes,
-                kv_bytes_per_layer,
-                estimated_gpu_layers,
-            ));
-            if estimated_gpu_layers > 0 {
-                break;
             }
         }
-    }
-
-    let (
-        planning_offload_kqv,
-        kqv_vram_reserved,
-        estimated_kv_bytes,
-        kv_bytes_per_layer,
-        estimated_gpu_layers,
-    ) = selected_plan.unwrap_or((Some(false), false, 0, 0, 0));
+    };
+    // Report the KV bytes that will actually land on GPU (scales with GPU layers).
+    let estimated_kv_bytes = kv_bytes_per_layer.saturating_mul(u64::from(
+        estimated_gpu_layers.min(metadata.layer_count.max(1)),
+    ));
 
     Ok(SmartGpuOffloadPlan {
         total_layers,
@@ -801,7 +938,7 @@ mod tests {
         let metadata = large_context_metadata();
 
         let (cpu_bytes, gpu_bytes) =
-            model_weight_split_bytes(&metadata, metadata.offload_layer_count());
+            model_weight_split_bytes(&metadata, None, metadata.offload_layer_count());
 
         assert_eq!(cpu_bytes, 0);
         assert_eq!(gpu_bytes, metadata.model_size_bytes);
@@ -831,5 +968,73 @@ mod tests {
         assert_eq!(dist.n_gpu_layers, 16);
         assert_eq!(dist.per_device_layers, vec![4, 12]);
         assert_eq!(dist.tensor_split, vec![0.25, 0.75]);
+    }
+}
+
+#[cfg(test)]
+mod offload_cost_tests {
+    use super::*;
+
+    fn costs(units: &[u64]) -> ModelOffloadCosts {
+        ModelOffloadCosts {
+            unit_bytes: units.to_vec(),
+        }
+    }
+
+    #[test]
+    fn gpu_bytes_takes_the_last_units_output_layer_first() {
+        // blocks 0..2 then the output layer, matching llama.cpp's il ordering.
+        let costs = costs(&[10, 20, 30, 1000]);
+        assert_eq!(costs.gpu_bytes(0), 0);
+        assert_eq!(
+            costs.gpu_bytes(1),
+            1000,
+            "first unit offloaded is the output"
+        );
+        assert_eq!(costs.gpu_bytes(2), 1030);
+        assert_eq!(costs.gpu_bytes(4), 1060);
+        assert_eq!(costs.gpu_bytes(99), 1060, "saturates at the unit count");
+    }
+
+    #[test]
+    fn a_heavy_output_layer_is_not_averaged_away() {
+        // The failure this guards: a flat file average prices the output layer
+        // like a block and overshoots. 1060 total over 4 units averages 265,
+        // which would claim 3 units fit in 900. Only one actually does.
+        let costs = costs(&[10, 20, 30, 1000]);
+        assert_eq!(costs.max_units_within(900, 0, 3), 0);
+        assert_eq!(costs.max_units_within(1000, 0, 3), 1);
+        assert_eq!(costs.max_units_within(1029, 0, 3), 1);
+        assert_eq!(costs.max_units_within(1030, 0, 3), 2);
+    }
+
+    #[test]
+    fn kv_is_charged_per_block_but_not_for_the_output_unit() {
+        let costs = costs(&[10, 20, 30, 1000]);
+        // Output alone: no KV.
+        assert_eq!(costs.max_units_within(1000, 5, 3), 1);
+        // Output + one block: one KV charge.
+        assert_eq!(costs.max_units_within(1034, 5, 3), 1);
+        assert_eq!(costs.max_units_within(1035, 5, 3), 2);
+    }
+
+    #[test]
+    fn kv_charges_stop_at_the_attention_layer_count() {
+        // nextn blocks sit in the unit list but are not attention layers.
+        let costs = costs(&[10, 20, 30, 1000]);
+        assert_eq!(
+            costs.max_units_within(1030, 5, 0),
+            2,
+            "no KV charged at all"
+        );
+    }
+
+    #[test]
+    fn block_index_parses_only_repeating_layers() {
+        assert_eq!(block_index("blk.0.attn_q.weight"), Some(0));
+        assert_eq!(block_index("blk.64.nextn.eh_proj.weight"), Some(64));
+        assert_eq!(block_index("output.weight"), None);
+        assert_eq!(block_index("token_embd.weight"), None);
+        assert_eq!(block_index("blk.notanumber.weight"), None);
     }
 }
