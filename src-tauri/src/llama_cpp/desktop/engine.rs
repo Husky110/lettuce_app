@@ -153,8 +153,6 @@ pub(super) fn fit_model_params(
             format!("Invalid llama model path for native fitting: {e}"),
         )
     })?;
-    // The fitter counts nextn layers into its budget only when this is set, so a
-    // bundled-MTP model must be fitted with it on or the plan under-reserves.
     let mut model_params = LlamaModelParams::default().with_load_mtp(load_mtp);
     if !device_ids.is_empty() {
         model_params = model_params.with_devices(device_ids).map_err(|e| {

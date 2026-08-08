@@ -15,8 +15,6 @@ pub(super) struct LlamaModelMetadata {
     pub(super) n_embd: u64,
     pub(super) n_head: u64,
     pub(super) n_head_kv: u64,
-    /// Per-head key/value width. Read from the GGUF rather than inferred from
-    /// `n_embd / n_head`, which is wrong on every model that sets them.
     pub(super) n_embd_head_k: u64,
     pub(super) n_embd_head_v: u64,
 }
@@ -58,34 +56,16 @@ pub(super) struct SmartGpuOffloadPlan {
     pub(super) bytes_per_layer: u64,
 }
 
-/// Byte cost of every llama.cpp offload unit, indexed the way llama.cpp
-/// indexes them.
-///
-/// `llama-model.cpp` walks `il` over `0..=n_layer_all`, where `0..n_layer_all`
-/// are the repeating blocks and `il == n_layer_all` is the output layer, and
-/// sends a unit to the GPU when `il >= max(n_layer_all + 1 - n_gpu_layers, 0)`.
-/// So `n_gpu_layers` always takes the *last* units of that list, output layer
-/// first. The input embedding is pinned to the CPU no matter what
-/// (`dev_input`), so it is not a unit here.
-///
-/// Sizes come straight from the GGUF tensor index. They have to be per-unit:
-/// the output layer routinely dwarfs a block (2.4 GiB vs 258 MiB on a
-/// large-vocab model with a high-precision head), and it is the very first
-/// unit offloaded, so charging every unit an average of the file understates
-/// the first GPU layers badly.
 #[derive(Clone, Debug)]
 pub(super) struct ModelOffloadCosts {
     unit_bytes: Vec<u64>,
 }
 
 impl ModelOffloadCosts {
-    /// Number of offload units, equal to llama.cpp's `n_layer_all + 1`.
     pub(super) fn unit_count(&self) -> u32 {
         u32::try_from(self.unit_bytes.len()).unwrap_or(u32::MAX)
     }
 
-    /// Weight bytes that land on the GPU for `gpu_layers`, i.e. the last
-    /// `gpu_layers` units.
     pub(super) fn gpu_bytes(&self, gpu_layers: u32) -> u64 {
         let take = (gpu_layers as usize).min(self.unit_bytes.len());
         self.unit_bytes[self.unit_bytes.len() - take..]
@@ -93,11 +73,6 @@ impl ModelOffloadCosts {
             .fold(0u64, |acc, bytes| acc.saturating_add(*bytes))
     }
 
-    /// Largest `gpu_layers` whose weights plus per-block KV fit in `budget`.
-    ///
-    /// `kv_bytes_per_layer` is charged only for block units, and only for the
-    /// first `kv_layer_count` of them, because the KV cache is sized from the
-    /// attention layers rather than from the offload unit list.
     fn max_units_within(&self, budget: u64, kv_bytes_per_layer: u64, kv_layer_count: u32) -> u32 {
         let mut running = 0u64;
         let mut kv_charged = 0u32;
@@ -118,10 +93,6 @@ impl ModelOffloadCosts {
     }
 }
 
-/// Reads the per-unit costs out of the GGUF tensor index.
-///
-/// Returns `None` when the file cannot be opened or carries no blocks, in
-/// which case callers fall back to the flat file average.
 fn load_offload_costs_uncached(model_path: &str) -> Option<ModelOffloadCosts> {
     let gguf = GgufContext::from_file(Path::new(model_path))?;
     let mut blocks: BTreeMap<u32, u64> = BTreeMap::new();
@@ -148,9 +119,6 @@ fn load_offload_costs_uncached(model_path: &str) -> Option<ModelOffloadCosts> {
     }
 
     let n_layer_all = usize::try_from(*blocks.keys().max()? + 1).ok()?;
-    // Models with a tied head carry no `output.weight`; llama.cpp then builds
-    // the output tensor as a duplicate of the embedding, which is a second
-    // allocation of that size on the output device.
     if !has_output_weight {
         output_bytes = output_bytes.saturating_add(input_bytes);
     }
@@ -166,7 +134,6 @@ fn load_offload_costs_uncached(model_path: &str) -> Option<ModelOffloadCosts> {
     Some(ModelOffloadCosts { unit_bytes })
 }
 
-/// `blk.<n>.` prefix parser, matching llama.cpp's repeating-layer naming.
 fn block_index(tensor_name: &str) -> Option<u32> {
     let rest = tensor_name.strip_prefix("blk.")?;
     let (digits, _) = rest.split_once('.')?;
@@ -203,12 +170,6 @@ fn kv_bytes_per_value(llama_kv_type: Option<&str>) -> f64 {
         .map(|value| value.trim().to_ascii_lowercase())
         .as_deref()
     {
-        // ggml stores quantized data in blocks that carry scales alongside the
-        // weights, so the real cost per value is `type_size / blck_size`, not
-        // the nominal bit width. Values below are `ggml_type_size(t) as f64 /
-        // ggml_blck_size(t) as f64` for each type llama.cpp accepts as a KV
-        // cache type; using the nominal width under-counts every quantized
-        // cache by 6-24%.
         Some("f32") => 4.0,
         Some("f16") | Some("bf16") => 2.0,
         Some("q8_1") => 36.0 / 32.0,
@@ -226,13 +187,6 @@ fn kv_bytes_per_value(llama_kv_type: Option<&str>) -> f64 {
     }
 }
 
-/// KV cache bytes for one token across every attention layer.
-///
-/// The head dimension is read from the model rather than inferred as
-/// `n_embd / n_head`: Qwen3.x, Gemma and DeepSeek all set `key_length` /
-/// `value_length` explicitly and none of them match the division (Qwen3.6-27B
-/// is 256 against an implied 213, gemma-4-12B is 512 against 240), so the old
-/// inference under-counted KV by 1.2x to 2.1x.
 fn estimate_kv_bytes_per_token(
     metadata: &LlamaModelMetadata,
     llama_kv_type: Option<&str>,
@@ -313,10 +267,6 @@ fn load_model_metadata_uncached(model_path: &str) -> Result<LlamaModelMetadata, 
     })
 }
 
-/// Reads `{arch}.attention.key_length` / `value_length` from the GGUF.
-///
-/// These are absent on older architectures, where the head dimension really is
-/// `n_embd / n_head`; `fallback` covers that case.
 fn gguf_head_dims(model_path: &str, fallback: u64) -> (u64, u64) {
     let Some(gguf) = GgufContext::from_file(Path::new(model_path)) else {
         return (fallback, fallback);
@@ -506,8 +456,6 @@ pub(super) fn model_weight_split_bytes(
 ) -> (u64, u64) {
     if let Some(costs) = costs {
         let gpu_weight_bytes = costs.gpu_bytes(gpu_layers);
-        // The embedding never leaves the CPU, so bill it against host memory
-        // alongside whatever units stayed behind.
         let cpu_weight_bytes = metadata
             .model_size_bytes
             .saturating_sub(gpu_weight_bytes.min(metadata.model_size_bytes));
@@ -603,20 +551,12 @@ pub(super) fn plan_smart_gpu_offload(
         .unwrap_or(0);
     let kv_bytes_per_token = estimate_kv_bytes_per_token(&metadata, llama_kv_type).unwrap_or(0);
 
-    // Plan for the mode the runtime will actually use. `None` hands the choice
-    // to llama.cpp, whose `llama_context_default_params` sets
-    // `offload_kqv = true`, so it costs VRAM just like an explicit `true`.
-    // Shopping for whichever mode fits the most layers used to budget zero KV
-    // VRAM and then let the runtime put the KV cache on the GPU anyway.
     let planning_offload_kqv = resolved_offload_kqv;
     let kqv_vram_reserved = planning_offload_kqv != Some(false);
-    // Only the GPU-resident layers' KV goes to VRAM, not the whole model's, so
-    // this is charged per layer as units are accumulated.
-    // A bundled-MTP draft reuses the model's weights but stands up a second
-    // context, whose KV cache is placed per layer exactly like the main one.
-    // That doubles the per-layer KV price rather than adding a fixed block, so
-    // it stays correct however many layers end up on the GPU.
     let kv_contexts = if bundled_mtp_draft { 2 } else { 1 };
+    // When KV is GPU-resident, only the GPU-resident layers' KV goes to VRAM —
+    // not the full model's KV. Include KV cost in the per-layer price so the
+    // estimate self-corrects: more layers → more KV, fewer layers → less KV.
     let kv_bytes_per_layer = if kqv_vram_reserved {
         kv_bytes_per_token
             .saturating_mul(u64::from(planned_context))
@@ -1039,7 +979,6 @@ mod offload_cost_tests {
 
     #[test]
     fn gpu_bytes_takes_the_last_units_output_layer_first() {
-        // blocks 0..2 then the output layer, matching llama.cpp's il ordering.
         let costs = costs(&[10, 20, 30, 1000]);
         assert_eq!(costs.gpu_bytes(0), 0);
         assert_eq!(
@@ -1054,9 +993,6 @@ mod offload_cost_tests {
 
     #[test]
     fn a_heavy_output_layer_is_not_averaged_away() {
-        // The failure this guards: a flat file average prices the output layer
-        // like a block and overshoots. 1060 total over 4 units averages 265,
-        // which would claim 3 units fit in 900. Only one actually does.
         let costs = costs(&[10, 20, 30, 1000]);
         assert_eq!(costs.max_units_within(900, 0, 3), 0);
         assert_eq!(costs.max_units_within(1000, 0, 3), 1);
@@ -1067,16 +1003,13 @@ mod offload_cost_tests {
     #[test]
     fn kv_is_charged_per_block_but_not_for_the_output_unit() {
         let costs = costs(&[10, 20, 30, 1000]);
-        // Output alone: no KV.
         assert_eq!(costs.max_units_within(1000, 5, 3), 1);
-        // Output + one block: one KV charge.
         assert_eq!(costs.max_units_within(1034, 5, 3), 1);
         assert_eq!(costs.max_units_within(1035, 5, 3), 2);
     }
 
     #[test]
     fn kv_charges_stop_at_the_attention_layer_count() {
-        // nextn blocks sit in the unit list but are not attention layers.
         let costs = costs(&[10, 20, 30, 1000]);
         assert_eq!(
             costs.max_units_within(1030, 5, 0),
@@ -1086,8 +1019,6 @@ mod offload_cost_tests {
     }
 
     fn qwen36_27b() -> LlamaModelMetadata {
-        // Measured from the GGUF: n_embd 5120, n_head 24, n_head_kv 4,
-        // key_length = value_length = 256 (implied n_embd/n_head is 213).
         LlamaModelMetadata {
             model_size_bytes: 21_182_275_040,
             layer_count: 64,
@@ -1103,12 +1034,10 @@ mod offload_cost_tests {
 
     #[test]
     fn kv_per_token_uses_declared_head_dims_not_n_embd_over_n_head() {
-        // 64 layers * 4 kv heads * (256 + 256) * 1.0625 bytes (q8_0 block).
         assert_eq!(
             estimate_kv_bytes_per_token(&qwen36_27b(), Some("q8_0")),
             Some(139_264)
         );
-        // The old inference produced 109,184 here, 27.6% low.
         assert_eq!(
             estimate_kv_bytes_per_token(&qwen36_27b(), Some("f16")),
             Some(262_144)
@@ -1117,7 +1046,6 @@ mod offload_cost_tests {
 
     #[test]
     fn quantized_kv_types_include_their_block_scales() {
-        // ggml_type_size / ggml_blck_size, not the nominal bit width.
         assert_eq!(kv_bytes_per_value(Some("q8_0")), 34.0 / 32.0);
         assert_eq!(kv_bytes_per_value(Some("q4_0")), 18.0 / 32.0);
         assert_eq!(kv_bytes_per_value(Some("q6_k")), 210.0 / 256.0);

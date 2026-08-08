@@ -762,8 +762,6 @@ pub(crate) async fn llamacpp_context_info(
         .map(str::trim)
         .unwrap_or("auto")
         .to_ascii_lowercase();
-    // Mirrors the request path: a model carrying its own NextN layers drafts
-    // from itself, so no external draft is consulted at all.
     let bundled_mtp_draft =
         llama_mtp_enabled == Some(true) && super::mtp::model_has_mtp(&model_path);
     let mtp_requested_reserve_bytes =
