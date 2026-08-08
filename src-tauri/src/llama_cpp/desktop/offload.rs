@@ -307,6 +307,7 @@ fn compute_recommended_context(
     metadata: &LlamaModelMetadata,
     geometry: Option<&KvCacheGeometry>,
     n_ubatch: u32,
+    gpu_weight_bytes: u64,
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     llama_offload_kqv: Option<bool>,
@@ -315,7 +316,7 @@ fn compute_recommended_context(
     let available_for_ctx = if llama_offload_kqv == Some(true) {
         let vram = available_vram_bytes?;
         let reserve = default_memory_reserve_bytes(vram);
-        vram.saturating_sub(reserve)
+        vram.saturating_sub(reserve.saturating_add(gpu_weight_bytes))
     } else {
         let ram = available_memory_bytes?;
         ram_budget_for_context(metadata, ram)
@@ -643,85 +644,117 @@ pub(super) fn plan_smart_gpu_offload(
         .map(ModelOffloadCosts::unit_count)
         .unwrap_or_else(|| metadata.offload_layer_count());
     let geometry = load_kv_geometry(model_path);
-    let recommended_context = compute_recommended_context(
-        &metadata,
-        geometry.as_ref(),
-        n_batch,
-        available_memory_bytes,
-        available_vram_bytes,
-        resolved_offload_kqv,
-        llama_kv_type,
-    );
-    let planned_context = requested_context
-        .or(recommended_context)
-        .unwrap_or(metadata.max_context_length)
-        .clamp(1, metadata.max_context_length);
-
     let available_vram = available_vram_bytes.unwrap_or(0);
     let effective_vram_budget_bytes = available_vram.saturating_mul(9) / 10;
-    let estimated_runtime_reserve_bytes = estimated_runtime_reserve_bytes(
-        &metadata,
-        available_vram,
-        planned_context,
-        n_batch,
-        flash_attention_policy,
-    );
     let bytes_per_layer = metadata
         .model_size_bytes
         .checked_add(u64::from(metadata.model_layer_count()) - 1)
         .and_then(|bytes| bytes.checked_div(u64::from(metadata.model_layer_count())))
         .unwrap_or(0);
     let kv_bytes_per_token = estimate_kv_bytes_per_token(&metadata, llama_kv_type).unwrap_or(0);
-
     let planning_offload_kqv = resolved_offload_kqv;
     let kqv_vram_reserved = planning_offload_kqv != Some(false);
     let kv_contexts = if bundled_mtp_draft { 2 } else { 1 };
-    let uniform_kv_bytes_per_layer = kv_bytes_per_token
-        .saturating_mul(u64::from(planned_context))
-        .checked_div(u64::from(metadata.layer_count.max(1)))
-        .unwrap_or(0)
-        .saturating_mul(kv_contexts);
-    let kv_per_block: Vec<u64> = if !kqv_vram_reserved {
-        Vec::new()
-    } else if let Some(geometry) = geometry.as_ref() {
-        geometry
-            .bytes_per_layer(planned_context, n_batch, llama_kv_type)
-            .into_iter()
-            .map(|bytes| bytes.saturating_mul(kv_contexts))
-            .collect()
-    } else {
-        vec![uniform_kv_bytes_per_layer; metadata.layer_count.max(1) as usize]
-    };
-    let kv_bytes_per_layer = if kqv_vram_reserved {
-        uniform_kv_bytes_per_layer
-    } else {
-        0
-    };
-    let available_base = effective_vram_budget_bytes
-        .saturating_sub(estimated_runtime_reserve_bytes)
-        .saturating_sub(sidecar_vram_reserve_bytes);
-    let estimated_gpu_layers = match costs.as_ref() {
-        Some(costs) => costs
-            .max_units_within(available_base, &kv_per_block)
-            .min(total_layers),
-        None => {
-            let average_kv = if kv_per_block.is_empty() {
-                0
-            } else {
-                kv_per_block.iter().sum::<u64>() / kv_per_block.len() as u64
-            };
-            let effective_bytes_per_layer = bytes_per_layer.saturating_add(average_kv);
-            if available_base == 0 || effective_bytes_per_layer == 0 {
-                0
-            } else {
-                u32::try_from(
-                    (available_base / effective_bytes_per_layer).min(u64::from(total_layers)),
-                )
-                .unwrap_or(total_layers)
-                .min(total_layers)
-            }
+
+    let kv_for_context = |planned_context: u32| -> (Vec<u64>, u64) {
+        if !kqv_vram_reserved {
+            return (Vec::new(), 0);
         }
+        let uniform = kv_bytes_per_token
+            .saturating_mul(u64::from(planned_context))
+            .checked_div(u64::from(metadata.layer_count.max(1)))
+            .unwrap_or(0)
+            .saturating_mul(kv_contexts);
+        let per_block = if let Some(geometry) = geometry.as_ref() {
+            geometry
+                .bytes_per_layer(planned_context, n_batch, llama_kv_type)
+                .into_iter()
+                .map(|bytes| bytes.saturating_mul(kv_contexts))
+                .collect()
+        } else {
+            vec![uniform; metadata.layer_count.max(1) as usize]
+        };
+        (per_block, uniform)
     };
+
+    let layers_for_context = |planned_context: u32, kv_per_block: &[u64]| -> (u32, u64) {
+        let runtime_reserve = estimated_runtime_reserve_bytes(
+            &metadata,
+            available_vram,
+            planned_context,
+            n_batch,
+            flash_attention_policy,
+        );
+        let available_base = effective_vram_budget_bytes
+            .saturating_sub(runtime_reserve)
+            .saturating_sub(sidecar_vram_reserve_bytes);
+        let layers = match costs.as_ref() {
+            Some(costs) => costs
+                .max_units_within(available_base, kv_per_block)
+                .min(total_layers),
+            None => {
+                let average_kv = if kv_per_block.is_empty() {
+                    0
+                } else {
+                    kv_per_block.iter().sum::<u64>() / kv_per_block.len() as u64
+                };
+                let effective = bytes_per_layer.saturating_add(average_kv);
+                if available_base == 0 || effective == 0 {
+                    0
+                } else {
+                    u32::try_from((available_base / effective).min(u64::from(total_layers)))
+                        .unwrap_or(total_layers)
+                        .min(total_layers)
+                }
+            }
+        };
+        (layers, runtime_reserve)
+    };
+
+    let mut recommended_context = compute_recommended_context(
+        &metadata,
+        geometry.as_ref(),
+        n_batch,
+        0,
+        available_memory_bytes,
+        available_vram_bytes,
+        resolved_offload_kqv,
+        llama_kv_type,
+    );
+    let mut planned_context = requested_context
+        .or(recommended_context)
+        .unwrap_or(metadata.max_context_length)
+        .clamp(1, metadata.max_context_length);
+    let (mut kv_per_block, mut kv_bytes_per_layer) = kv_for_context(planned_context);
+    let (mut estimated_gpu_layers, mut estimated_runtime_reserve_bytes) =
+        layers_for_context(planned_context, &kv_per_block);
+
+    if requested_context.is_none() {
+        let resident_weights = costs
+            .as_ref()
+            .map(|costs| costs.gpu_bytes(estimated_gpu_layers))
+            .unwrap_or_else(|| model_weight_split_bytes(&metadata, None, estimated_gpu_layers).1);
+        recommended_context = compute_recommended_context(
+            &metadata,
+            geometry.as_ref(),
+            n_batch,
+            resident_weights,
+            available_memory_bytes,
+            available_vram_bytes,
+            resolved_offload_kqv,
+            llama_kv_type,
+        );
+        if let Some(recommended) = recommended_context.filter(|value| *value > 0) {
+            planned_context = recommended.clamp(1, metadata.max_context_length);
+            let refreshed = kv_for_context(planned_context);
+            kv_per_block = refreshed.0;
+            kv_bytes_per_layer = refreshed.1;
+            let refreshed = layers_for_context(planned_context, &kv_per_block);
+            estimated_gpu_layers = refreshed.0;
+            estimated_runtime_reserve_bytes = refreshed.1;
+        }
+    }
+
     let estimated_kv_bytes = kv_per_block
         .iter()
         .rev()
