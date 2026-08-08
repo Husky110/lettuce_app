@@ -79,10 +79,6 @@ fn scene_image_protocol_kind(entry: &SystemPromptEntry) -> Option<SceneImageProt
     }
 }
 
-fn is_scene_image_protocol_entry(entry: &SystemPromptEntry) -> bool {
-    scene_image_protocol_kind(entry).is_some()
-}
-
 pub fn partition_prompt_entries(
     entries: Vec<SystemPromptEntry>,
 ) -> (Vec<SystemPromptEntry>, Vec<SystemPromptEntry>) {
@@ -269,7 +265,7 @@ pub fn swapped_prompt_entities(
 mod tests {
     use super::{
         append_image_directive_instructions, assemble_prompt_messages,
-        insert_in_chat_prompt_entries, is_scene_image_protocol_entry,
+        insert_in_chat_prompt_entries, scene_image_protocol_kind, SceneImageProtocolKind,
     };
     use crate::chat_manager::entries::{in_chat_system_entry, relative_system_entry};
     use crate::chat_manager::types::{PromptEntryPosition, PromptEntryRole, SystemPromptEntry};
@@ -390,11 +386,17 @@ mod tests {
             "Scene Image Protocol",
             "remote",
         );
-        assert!(is_scene_image_protocol_entry(&entry));
+        assert_eq!(
+            scene_image_protocol_kind(&entry),
+            Some(SceneImageProtocolKind::Remote)
+        );
         entry.id = "entry_scene_image_protocol_local".to_string();
-        assert!(is_scene_image_protocol_entry(&entry));
+        assert_eq!(
+            scene_image_protocol_kind(&entry),
+            Some(SceneImageProtocolKind::Local)
+        );
         entry.id = "entry_instructions".to_string();
-        assert!(!is_scene_image_protocol_entry(&entry));
+        assert_eq!(scene_image_protocol_kind(&entry), None);
     }
 
     #[test]
