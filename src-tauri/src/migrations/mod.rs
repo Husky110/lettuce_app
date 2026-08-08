@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 91;
+pub const CURRENT_MIGRATION_VERSION: u32 = 92;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -937,6 +937,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v90_to_v91(app)?;
         version = 91;
+    }
+
+    if version < 92 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v91 -> v92: Repair group chat schema drift",
+        );
+        migrate_v91_to_v92(app)?;
+        version = 92;
     }
 
     // Update the stored version
@@ -4331,6 +4341,9 @@ pub(crate) fn run_preflight_migrations(
     if version >= 90 && version < 91 {
         migrate_v90_to_v91_conn(conn)?;
     }
+    if version >= 91 && version < 92 {
+        migrate_v91_to_v92_conn(conn)?;
+    }
     Ok(())
 }
 
@@ -4357,6 +4370,39 @@ fn migrate_v89_to_v90(app: &AppHandle) -> Result<(), String> {
 fn migrate_v90_to_v91(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     migrate_v90_to_v91_conn(&conn)
+}
+
+fn migrate_v91_to_v92(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    migrate_v91_to_v92_conn(&conn)
+}
+
+fn ensure_group_session_config_overrides(
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let has_config_overrides = conn
+        .query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM pragma_table_info('group_sessions')
+               WHERE name = 'config_overrides'
+             )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    if !has_config_overrides {
+        conn.execute(
+            "ALTER TABLE group_sessions ADD COLUMN config_overrides TEXT NOT NULL DEFAULT '{\"version\":1}'",
+            [],
+        )
+        .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
+    }
+    Ok(())
+}
+
+fn migrate_v91_to_v92_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+    ensure_group_session_config_overrides(conn)?;
+    migrate_v87_to_v88_conn(conn)
 }
 
 fn migrate_v90_to_v91_conn(conn: &rusqlite::Connection) -> Result<(), String> {
@@ -4909,6 +4955,8 @@ fn sync_layouts_are_canonical(conn: &rusqlite::Connection) -> Result<bool, Strin
 }
 
 fn migrate_v87_to_v88_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+    ensure_group_session_config_overrides(conn)?;
+
     let migration_recorded = conn
         .query_row(
             "SELECT EXISTS(
@@ -5387,7 +5435,7 @@ fn migrate_v71_to_v72(app: &AppHandle) -> Result<(), String> {
 mod tests {
     use super::{
         migrate_image_lora_metadata_columns, migrate_sync_v2_schema,
-        migrate_v87_to_v88_conn, migrate_v88_to_v89_conn, migrate_v89_to_v90_conn,
+        migrate_v88_to_v89_conn, migrate_v89_to_v90_conn,
         migrate_v90_to_v91_conn,
         run_preflight_migrations,
         table_column_names,
@@ -5828,13 +5876,13 @@ mod tests {
     }
 
     #[test]
-    fn v88_canonicalizes_upgraded_sync_tables_without_losing_rows() {
+    fn v92_repairs_missing_group_overrides_and_canonicalizes_the_schema() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
             r#"
             PRAGMA foreign_keys = ON;
             CREATE TABLE settings (id INTEGER PRIMARY KEY, migration_version INTEGER NOT NULL);
-            INSERT INTO settings VALUES (1, 87);
+            INSERT INTO settings VALUES (1, 91);
             CREATE TABLE personas (id TEXT PRIMARY KEY);
             CREATE TABLE group_characters (id TEXT PRIMARY KEY);
             CREATE TABLE lorebooks (id TEXT PRIMARY KEY);
@@ -5853,8 +5901,7 @@ mod tests {
               memory_summary TEXT NOT NULL DEFAULT '', memory_summary_token_count INTEGER NOT NULL DEFAULT 0,
               memory_tool_events TEXT NOT NULL DEFAULT '[]', memory_status TEXT, memory_error TEXT,
               memory_progress_step INTEGER, speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
-              config_overrides TEXT NOT NULL DEFAULT '{"version":1}', parent_session_id TEXT,
-              branched_from_message_id TEXT, root_session_id TEXT,
+              parent_session_id TEXT, branched_from_message_id TEXT, root_session_id TEXT,
               memory_type TEXT NOT NULL DEFAULT 'manual',
               FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
               FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
@@ -5898,19 +5945,20 @@ mod tests {
         .unwrap();
         crate::sync::v2::create_schema(&conn).unwrap();
 
-        migrate_v87_to_v88_conn(&conn).unwrap();
-        migrate_v87_to_v88_conn(&conn).unwrap();
+        run_preflight_migrations(&conn).unwrap();
+        run_preflight_migrations(&conn).unwrap();
 
         assert_eq!(table_column_names(&conn, "group_sessions").unwrap(), GROUP_SESSIONS_V88_COLUMNS);
         assert_eq!(table_column_names(&conn, "image_loras").unwrap(), IMAGE_LORAS_V88_COLUMNS);
         assert_eq!(table_column_names(&conn, "lorebook_entries").unwrap(), LOREBOOK_ENTRIES_V88_COLUMNS);
         assert_eq!(
             conn.query_row(
-                "SELECT name || ':' || memory_type FROM group_sessions WHERE id = 'session'",
+                "SELECT name || ':' || memory_type || ':' || config_overrides
+                 FROM group_sessions WHERE id = 'session'",
                 [],
                 |row| row.get::<_, String>(0),
             ).unwrap(),
-            "Preserved group:dynamic"
+            "Preserved group:dynamic:{\"version\":1}"
         );
         assert_eq!(
             conn.query_row(

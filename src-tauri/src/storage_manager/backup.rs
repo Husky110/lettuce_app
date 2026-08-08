@@ -795,7 +795,7 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     for (session_id, mut session_json) in sessions {
         let mut messages_stmt = conn
             .prepare("SELECT id, role, content, created_at, visible_in_chat, scene_edited, prompt_tokens, completion_tokens, total_tokens,
-                             first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, effective_at FROM messages
+                             first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, parent_message_id, effective_at FROM messages
                       WHERE session_id = ? ORDER BY created_at ASC")
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
@@ -822,7 +822,8 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                     "used_lorebook_entries": r.get::<_, String>(16)?,
                     "attachments": r.get::<_, String>(17)?,
                     "reasoning": r.get::<_, Option<String>>(18)?,
-                    "effective_at": r.get::<_, Option<i64>>(19)?,
+                    "parent_message_id": r.get::<_, Option<String>>(19)?,
+                    "effective_at": r.get::<_, Option<i64>>(20)?,
                 });
                 Ok((msg_id, json))
             })
@@ -876,7 +877,8 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
             "SELECT id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
                     chat_type, starting_scene, background_image_path,
                     lorebook_ids, disable_character_lorebooks, author_note, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events,
-                    memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides
+                    memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides,
+                    parent_session_id, branched_from_message_id, root_session_id
              FROM group_sessions",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -911,6 +913,9 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
                 "speaker_selection_method": r.get::<_, Option<String>>(23)?,
                 "memory_type": r.get::<_, Option<String>>(24)?,
                 "config_overrides": r.get::<_, Option<String>>(25)?.unwrap_or_else(|| "{\"version\":1}".to_string()),
+                "parent_session_id": r.get::<_, Option<String>>(26)?,
+                "branched_from_message_id": r.get::<_, Option<String>>(27)?,
+                "root_session_id": r.get::<_, Option<String>>(28)?,
             });
             Ok((id, json))
         })
@@ -967,7 +972,7 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
             .prepare(
                 "SELECT id, role, content, speaker_character_id, turn_number, created_at,
                         prompt_tokens, completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, selected_variant_id,
-                        is_pinned, attachments, used_lorebook_entries, memory_refs, reasoning, selection_reasoning, model_id, gemini_content, usage_json
+                        is_pinned, attachments, used_lorebook_entries, memory_refs, reasoning, selection_reasoning, model_id, gemini_content, usage_json, parent_message_id
                  FROM group_messages WHERE session_id = ? ORDER BY created_at ASC",
             )
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -998,6 +1003,7 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
                     "model_id": r.get::<_, Option<String>>(19)?,
                     "gemini_content": r.get::<_, Option<String>>(20)?,
                     "usage_json": r.get::<_, Option<String>>(21)?,
+                    "parent_message_id": r.get::<_, Option<String>>(22)?,
                 });
                 Ok((msg_id, json))
             })
@@ -1901,9 +1907,7 @@ fn import_settings(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
             advanced_model_settings,
             data.get("prompt_template_id").and_then(|v| v.as_str()),
             data.get("system_prompt").and_then(|v| v.as_str()),
-            data.get("migration_version")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            crate::migrations::CURRENT_MIGRATION_VERSION,
             advanced_settings,
             data.get("created_at")
                 .and_then(|v| v.as_i64())
@@ -2590,8 +2594,8 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
 
                     conn.execute(
                         "INSERT INTO messages (id, session_id, role, content, created_at, effective_at, visible_in_chat, scene_edited, prompt_tokens,
-                         completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                         completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, model_id, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, parent_message_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
                         params![
                             msg_id,
                             session_id,
@@ -2616,6 +2620,7 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
                                 .unwrap_or("[]"),
                             msg.get("attachments").and_then(|v| v.as_str()).unwrap_or("[]"),
                             msg.get("reasoning").and_then(|v| v.as_str()),
+                            msg.get("parent_message_id").and_then(|v| v.as_str()),
                         ],
                     ).map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Failed to insert message in session {}: {}", session_id, e)))?;
                     message_count += 1;
@@ -2887,8 +2892,9 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
             conn.execute(
                 "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
                  chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks,
-                 author_note, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+                 author_note, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides,
+                 parent_session_id, branched_from_message_id, root_session_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
                 params![
                     session_id,
                     group_character_id,
@@ -2926,6 +2932,11 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
                     item.get("config_overrides")
                         .and_then(|v| v.as_str())
                         .unwrap_or("{\"version\":1}"),
+                    item.get("parent_session_id").and_then(|v| v.as_str()),
+                    item.get("branched_from_message_id").and_then(|v| v.as_str()),
+                    item.get("root_session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(session_id),
                 ],
             )
             .map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Failed to insert group session {}: {}", session_id, e)))?;
@@ -2962,8 +2973,8 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
 
                     conn.execute(
                         "INSERT INTO group_messages (id, session_id, role, content, speaker_character_id, turn_number, created_at,
-                         prompt_tokens, completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, selected_variant_id, is_pinned, attachments, used_lorebook_entries, memory_refs, reasoning, selection_reasoning, model_id, gemini_content, usage_json)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                         prompt_tokens, completion_tokens, total_tokens, first_token_ms, tokens_per_second, mtp_stats, selected_variant_id, is_pinned, attachments, used_lorebook_entries, memory_refs, reasoning, selection_reasoning, model_id, gemini_content, usage_json, parent_message_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
                         params![
                             msg_id,
                             session_id,
@@ -2988,6 +2999,7 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
                             msg.get("model_id").and_then(|v| v.as_str()),
                             msg.get("gemini_content").and_then(|v| v.as_str()),
                             msg.get("usage_json").and_then(|v| v.as_str()),
+                            msg.get("parent_message_id").and_then(|v| v.as_str()),
                         ],
                     )
                     .map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Failed to insert group message in session {}: {}", session_id, e)))?;
