@@ -31,7 +31,7 @@ pub fn append_image_directive_instructions(
         .advanced_settings
         .as_ref()
         .and_then(|advanced| advanced.scene_generation_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
 
     let active = if scene_generation_enabled {
         scene_image_protocol_variant(settings)
@@ -294,6 +294,9 @@ mod tests {
 
     fn settings_with(provider_id: &str) -> crate::chat_manager::types::Settings {
         let mut settings = crate::chat_manager::persistence::storage::default_settings();
+        if let Some(advanced) = settings.advanced_settings.as_mut() {
+            advanced.scene_generation_enabled = Some(true);
+        }
         settings.models = vec![crate::chat_manager::types::Model {
             id: "m1".into(),
             name: "img".into(),
@@ -341,7 +344,10 @@ mod tests {
 
     #[test]
     fn no_image_model_drops_both_scene_protocol_variants() {
-        let settings = crate::chat_manager::persistence::storage::default_settings();
+        let mut settings = crate::chat_manager::persistence::storage::default_settings();
+        if let Some(advanced) = settings.advanced_settings.as_mut() {
+            advanced.scene_generation_enabled = Some(true);
+        }
         assert_eq!(kept_ids(&settings), vec!["entry_instructions".to_string()]);
     }
 
@@ -357,6 +363,15 @@ mod tests {
         let ids = kept_ids(&settings_with("sdcpp"));
         assert!(ids.contains(&"entry_scene_image_protocol_local".to_string()));
         assert!(!ids.contains(&"entry_scene_image_protocol".to_string()));
+    }
+
+    #[test]
+    fn scene_generation_is_off_when_unset() {
+        let mut settings = settings_with("literouter");
+        if let Some(advanced) = settings.advanced_settings.as_mut() {
+            advanced.scene_generation_enabled = None;
+        }
+        assert_eq!(kept_ids(&settings), vec!["entry_instructions".to_string()]);
     }
 
     #[test]

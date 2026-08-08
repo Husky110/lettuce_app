@@ -368,7 +368,7 @@ export function resolveSceneGenerationOptions(settings: Settings): ImageGenerati
   return resolveImageGenerationOptionsWithPreference(
     settings,
     settings.advancedSettings?.sceneGenerationModelId,
-    settings.advancedSettings?.sceneGenerationEnabled ?? true,
+    settings.advancedSettings?.sceneGenerationEnabled ?? false,
   );
 }
 

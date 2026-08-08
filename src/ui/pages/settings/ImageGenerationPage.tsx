@@ -367,7 +367,7 @@ export function ImageGenerationPage() {
           writerModels: writerOptions.models,
           avatarEnabled: settings.advancedSettings?.avatarGenerationEnabled ?? true,
           avatarModelId: settings.advancedSettings?.avatarGenerationModelId ?? null,
-          sceneEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
+          sceneEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? false,
           sceneMode:
             settings.advancedSettings?.sceneGenerationMode === "manual"
               ? "manual"
@@ -408,7 +408,7 @@ export function ImageGenerationPage() {
           key === "avatarModelId"
             ? (modelId ?? undefined)
             : settings.advancedSettings?.avatarGenerationModelId,
-        sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
+        sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? false,
         sceneGenerationMode:
           settings.advancedSettings?.sceneGenerationMode === "manual"
             ? "manual"
@@ -460,7 +460,7 @@ export function ImageGenerationPage() {
         sceneGenerationEnabled:
           key === "sceneEnabled"
             ? enabled
-            : (settings.advancedSettings?.sceneGenerationEnabled ?? true),
+            : (settings.advancedSettings?.sceneGenerationEnabled ?? false),
         sceneGenerationMode:
           settings.advancedSettings?.sceneGenerationMode === "manual"
             ? "manual"
@@ -492,7 +492,7 @@ export function ImageGenerationPage() {
         ...(settings.advancedSettings ?? {}),
         avatarGenerationEnabled: settings.advancedSettings?.avatarGenerationEnabled ?? true,
         avatarGenerationModelId: settings.advancedSettings?.avatarGenerationModelId,
-        sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
+        sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? false,
         sceneGenerationMode: mode,
         sceneGenerationModelId: settings.advancedSettings?.sceneGenerationModelId,
         sceneWriterModelId: settings.advancedSettings?.sceneWriterModelId,

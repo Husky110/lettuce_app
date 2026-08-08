@@ -3395,7 +3395,7 @@ export function createDefaultSettings(): Settings {
       avatarGenerationEnabled: true,
       creationHelperEnabled: false,
       helpMeReplyEnabled: true,
-      sceneGenerationEnabled: true,
+      sceneGenerationEnabled: false,
       sceneGenerationMode: "auto",
       appUpdateChecksEnabled: true,
       developerModeEnabled: false,

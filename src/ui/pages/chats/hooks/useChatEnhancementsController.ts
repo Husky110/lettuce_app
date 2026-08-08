@@ -77,7 +77,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
         hapticsEnabledRef.current = acc?.haptics ?? false;
         hapticIntensityRef.current = acc?.hapticIntensity ?? "light";
         sceneGenerationEnabledRef.current =
-          settings.advancedSettings?.sceneGenerationEnabled ?? true;
+          settings.advancedSettings?.sceneGenerationEnabled ?? false;
         sceneGenerationModeRef.current =
           settings.advancedSettings?.sceneGenerationMode === "manual"
             ? "manual"
@@ -254,7 +254,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       let sceneGenerationAvailable = false;
       try {
         const settings = await readSettings();
-        sceneGenerationEnabled = settings.advancedSettings?.sceneGenerationEnabled ?? true;
+        sceneGenerationEnabled = settings.advancedSettings?.sceneGenerationEnabled ?? false;
         sceneGenerationMode =
           settings.advancedSettings?.sceneGenerationMode === "manual"
             ? "manual"

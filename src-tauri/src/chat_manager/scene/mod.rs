@@ -141,7 +141,7 @@ fn scene_generation_enabled(settings: &Settings) -> bool {
         .advanced_settings
         .as_ref()
         .and_then(|advanced| advanced.scene_generation_enabled)
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 fn avatar_generation_enabled(settings: &Settings) -> bool {
@@ -362,18 +362,15 @@ fn build_scene_loras(character: &Character, persona: Option<&Persona>) -> Vec<Im
     if let Some(lora) = entity_scene_lora(character.lora_name.as_deref(), character.lora_strength) {
         loras.push(lora);
     }
-    if let Some(lora) = persona.and_then(|persona| {
-        entity_scene_lora(persona.lora_name.as_deref(), persona.lora_strength)
-    }) {
+    if let Some(lora) = persona
+        .and_then(|persona| entity_scene_lora(persona.lora_name.as_deref(), persona.lora_strength))
+    {
         loras.push(lora);
     }
     loras
 }
 
-fn local_scene_subject_binding(
-    lora: Option<&ImageLora>,
-    fallback: &str,
-) -> String {
+fn local_scene_subject_binding(lora: Option<&ImageLora>, fallback: &str) -> String {
     let Some(lora) = lora else {
         return fallback.to_string();
     };
@@ -403,9 +400,8 @@ pub(crate) fn local_scene_lora_bindings(
         }
     }
 
-    let mut persona_lora = persona.and_then(|persona| {
-        entity_scene_lora(persona.lora_name.as_deref(), persona.lora_strength)
-    });
+    let mut persona_lora = persona
+        .and_then(|persona| entity_scene_lora(persona.lora_name.as_deref(), persona.lora_strength));
     if let Some(lora) = persona_lora.as_mut() {
         if let Err(error) = crate::image_generator::sdcpp::hydrate_lora_list_keywords(
             app,
@@ -1006,10 +1002,7 @@ fn render_scene_generation_prompt_content(
     prompt = prompt.replace("{{persona.desc}}", &persona_desc);
     prompt = prompt.replace("{{recent_messages}}", recent_messages_text);
     prompt = prompt.replace("{{image_model_instructions}}", image_model_instructions);
-    prompt = prompt.replace(
-        "{{lora_keywords[character]}}",
-        character_lora_keywords,
-    );
+    prompt = prompt.replace("{{lora_keywords[character]}}", character_lora_keywords);
     prompt = prompt.replace("{{lora_keywords[persona]}}", persona_lora_keywords);
     let scene_request = if let Some(persona) = persona {
         format!(
@@ -1900,12 +1893,8 @@ pub async fn chat_generate_scene_prompt(
         LlmFeature::SceneWriter,
         SCENE_WRITER_DEFAULTS,
     ));
-    let (request_settings, extra_body_fields) = prepare_feature_request(
-        &credential.provider_id,
-        &request_session,
-        model,
-        settings,
-    );
+    let (request_settings, extra_body_fields) =
+        prepare_feature_request(&credential.provider_id, &request_session, model, settings);
 
     let built = super::request_builder::build_chat_request(
         credential,
@@ -2091,12 +2080,8 @@ pub async fn chat_generate_design_reference_description(
     );
     preview_session.title = "Scene writer preview".to_string();
 
-    let (request_settings, extra_body_fields) = prepare_feature_request(
-        &credential.provider_id,
-        &preview_session,
-        model,
-        settings,
-    );
+    let (request_settings, extra_body_fields) =
+        prepare_feature_request(&credential.provider_id, &preview_session, model, settings);
 
     let built = super::request_builder::build_chat_request(
         credential,
@@ -2187,7 +2172,10 @@ mod tests {
         );
 
         lora.keywords.clear();
-        assert_eq!(local_scene_subject_binding(Some(&lora), "primary subject"), "");
+        assert_eq!(
+            local_scene_subject_binding(Some(&lora), "primary subject"),
+            ""
+        );
         assert_eq!(
             local_scene_subject_binding(None, "primary subject"),
             "primary subject"

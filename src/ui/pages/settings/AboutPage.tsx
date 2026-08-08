@@ -31,7 +31,7 @@ function ensureAdvancedSettings(settings: Settings): NonNullable<Settings["advan
     avatarGenerationEnabled: settings.advancedSettings?.avatarGenerationEnabled ?? true,
     creationHelperEnabled: settings.advancedSettings?.creationHelperEnabled ?? false,
     helpMeReplyEnabled: settings.advancedSettings?.helpMeReplyEnabled ?? true,
-    sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
+    sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? false,
     sceneGenerationMode: settings.advancedSettings?.sceneGenerationMode ?? "auto",
     accessibility: settings.advancedSettings?.accessibility,
     appUpdateChecksEnabled: settings.advancedSettings?.appUpdateChecksEnabled ?? true,
