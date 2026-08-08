@@ -33,21 +33,54 @@ pub fn append_image_directive_instructions(
         .and_then(|advanced| advanced.scene_generation_enabled)
         .unwrap_or(true);
 
-    if !scene_generation_enabled {
-        return system_prompt_entries
-            .into_iter()
-            .filter(|entry| !is_scene_image_protocol_entry(entry))
-            .collect();
-    }
+    let active = if scene_generation_enabled {
+        scene_image_protocol_variant(settings)
+    } else {
+        None
+    };
 
     system_prompt_entries
+        .into_iter()
+        .filter(|entry| match scene_image_protocol_kind(entry) {
+            Some(kind) => Some(kind) == active,
+            None => true,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SceneImageProtocolKind {
+    Remote,
+    Local,
+}
+
+fn scene_image_protocol_variant(settings: &Settings) -> Option<SceneImageProtocolKind> {
+    let (model, _) = crate::chat_manager::scene::resolve_image_generation_target(
+        settings,
+        settings
+            .advanced_settings
+            .as_ref()
+            .and_then(|advanced| advanced.scene_generation_model_id.as_deref()),
+    )
+    .ok()?;
+
+    Some(if model.provider_id == "sdcpp" {
+        SceneImageProtocolKind::Local
+    } else {
+        SceneImageProtocolKind::Remote
+    })
+}
+
+fn scene_image_protocol_kind(entry: &SystemPromptEntry) -> Option<SceneImageProtocolKind> {
+    match entry.id.as_str() {
+        "entry_scene_image_protocol" => Some(SceneImageProtocolKind::Remote),
+        "entry_scene_image_protocol_local" => Some(SceneImageProtocolKind::Local),
+        _ => None,
+    }
 }
 
 fn is_scene_image_protocol_entry(entry: &SystemPromptEntry) -> bool {
-    matches!(
-        entry.id.as_str(),
-        "entry_scene_image_protocol" | "entry_scene_image_protocol_local"
-    )
+    scene_image_protocol_kind(entry).is_some()
 }
 
 pub fn partition_prompt_entries(
@@ -235,7 +268,8 @@ pub fn swapped_prompt_entities(
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_prompt_messages, insert_in_chat_prompt_entries, is_scene_image_protocol_entry,
+        append_image_directive_instructions, assemble_prompt_messages,
+        insert_in_chat_prompt_entries, is_scene_image_protocol_entry,
     };
     use crate::chat_manager::entries::{in_chat_system_entry, relative_system_entry};
     use crate::chat_manager::types::{PromptEntryPosition, PromptEntryRole, SystemPromptEntry};
@@ -256,6 +290,82 @@ mod tests {
             conditions: None,
             prompt_entry_payload: None,
         }
+    }
+
+    fn settings_with(provider_id: &str) -> crate::chat_manager::types::Settings {
+        let mut settings = crate::chat_manager::persistence::storage::default_settings();
+        settings.models = vec![crate::chat_manager::types::Model {
+            id: "m1".into(),
+            name: "img".into(),
+            provider_id: provider_id.into(),
+            provider_credential_id: Some("cred1".into()),
+            provider_label: provider_id.into(),
+            display_name: "Img".into(),
+            created_at: 0,
+            input_scopes: vec!["text".into()],
+            output_scopes: vec!["image".into()],
+            advanced_model_settings: None,
+            prompt_template_id: None,
+            system_prompt: None,
+            voice_config: None,
+        }];
+        settings
+            .provider_credentials
+            .push(crate::chat_manager::types::ProviderCredential {
+                id: "cred1".into(),
+                provider_id: provider_id.into(),
+                label: provider_id.into(),
+                api_key: Some("k".into()),
+                base_url: None,
+                default_model: None,
+                headers: None,
+                config: None,
+            });
+        settings
+    }
+
+    fn protocol_entries() -> Vec<SystemPromptEntry> {
+        vec![
+            relative_system_entry("entry_instructions", "Instructions", "body"),
+            relative_system_entry("entry_scene_image_protocol", "Remote", "remote"),
+            relative_system_entry("entry_scene_image_protocol_local", "Local", "local"),
+        ]
+    }
+
+    fn kept_ids(settings: &crate::chat_manager::types::Settings) -> Vec<String> {
+        append_image_directive_instructions(protocol_entries(), settings)
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect()
+    }
+
+    #[test]
+    fn no_image_model_drops_both_scene_protocol_variants() {
+        let settings = crate::chat_manager::persistence::storage::default_settings();
+        assert_eq!(kept_ids(&settings), vec!["entry_instructions".to_string()]);
+    }
+
+    #[test]
+    fn a_remote_image_model_keeps_only_the_remote_protocol() {
+        let ids = kept_ids(&settings_with("literouter"));
+        assert!(ids.contains(&"entry_scene_image_protocol".to_string()));
+        assert!(!ids.contains(&"entry_scene_image_protocol_local".to_string()));
+    }
+
+    #[test]
+    fn a_local_image_model_keeps_only_the_local_protocol() {
+        let ids = kept_ids(&settings_with("sdcpp"));
+        assert!(ids.contains(&"entry_scene_image_protocol_local".to_string()));
+        assert!(!ids.contains(&"entry_scene_image_protocol".to_string()));
+    }
+
+    #[test]
+    fn disabling_scene_generation_drops_both_variants() {
+        let mut settings = settings_with("literouter");
+        if let Some(advanced) = settings.advanced_settings.as_mut() {
+            advanced.scene_generation_enabled = Some(false);
+        }
+        assert_eq!(kept_ids(&settings), vec!["entry_instructions".to_string()]);
     }
 
     #[test]
