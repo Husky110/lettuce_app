@@ -766,11 +766,16 @@ pub(super) fn plan_smart_gpu_offload(
         }
     }
 
-    let estimated_kv_bytes = kv_per_block
-        .iter()
-        .rev()
-        .take(estimated_gpu_layers as usize)
-        .fold(0u64, |acc, bytes| acc.saturating_add(*bytes));
+    let estimated_kv_bytes = if estimated_gpu_layers == 0 {
+        0
+    } else {
+        let unit_count = total_layers as usize;
+        let first_offloaded = unit_count.saturating_sub(estimated_gpu_layers as usize);
+        let output_index = unit_count.saturating_sub(1);
+        (first_offloaded..output_index)
+            .filter_map(|index| kv_per_block.get(index))
+            .fold(0u64, |acc, bytes| acc.saturating_add(*bytes))
+    };
 
     let offload_unit_costs = costs
         .as_ref()
@@ -1411,5 +1416,79 @@ mod offload_cost_tests {
         assert_eq!(block_index("output.weight"), None);
         assert_eq!(block_index("token_embd.weight"), None);
         assert_eq!(block_index("blk.notanumber.weight"), None);
+    }
+}
+
+#[cfg(test)]
+mod real_model_plan {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn print_plan_for_real_model() {
+        let Ok(path) = std::env::var("LETTUCE_PLAN_MODEL") else {
+            return;
+        };
+        let free_vram: u64 = std::env::var("LETTUCE_PLAN_FREE_VRAM")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(6_759_383_040);
+        let ctx: u32 = std::env::var("LETTUCE_PLAN_CTX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(16_384);
+        let bundled: bool = std::env::var("LETTUCE_PLAN_MTP").is_ok();
+
+        let costs = load_offload_costs(&path).expect("unit costs");
+        let metadata = load_model_metadata(&path).expect("metadata");
+        let geometry = load_kv_geometry(&path);
+
+        println!(
+            "units={} layer_count={}",
+            costs.unit_count(),
+            metadata.layer_count
+        );
+        println!(
+            "head_k={} head_v={}",
+            metadata.n_embd_head_k, metadata.n_embd_head_v
+        );
+        match geometry.as_ref() {
+            Some(g) => println!(
+                "kv layers={} n_swa={} swa_layers={} kv_total@ctx={}",
+                g.layers.len(),
+                g.n_swa,
+                g.layers.iter().filter(|l| l.is_swa).count(),
+                g.total_bytes(ctx, 512, Some("q8_0"))
+            ),
+            None => println!("kv geometry unavailable"),
+        }
+        println!("output unit bytes={}", costs.gpu_bytes(1));
+
+        let plan = plan_smart_gpu_offload(
+            &path,
+            Some(32 * 1024 * 1024 * 1024),
+            Some(free_vram),
+            Some(ctx),
+            512,
+            Some(true),
+            Some("q8_0"),
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO,
+            0,
+            bundled,
+        )
+        .expect("plan");
+        println!(
+            "PLAN layers={} of {} ctx={} kv={} runtime_reserve={} budget={}",
+            plan.estimated_gpu_layers,
+            plan.total_layers,
+            plan.planned_context,
+            plan.estimated_kv_bytes,
+            plan.estimated_runtime_reserve_bytes,
+            plan.effective_vram_budget_bytes
+        );
+        println!(
+            "weights for that plan = {}",
+            costs.gpu_bytes(plan.estimated_gpu_layers)
+        );
     }
 }
