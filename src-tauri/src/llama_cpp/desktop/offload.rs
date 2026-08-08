@@ -73,16 +73,15 @@ impl ModelOffloadCosts {
             .fold(0u64, |acc, bytes| acc.saturating_add(*bytes))
     }
 
-    fn max_units_within(&self, budget: u64, kv_bytes_per_layer: u64, kv_layer_count: u32) -> u32 {
+    fn max_units_within(&self, budget: u64, kv_per_block: &[u64]) -> u32 {
         let mut running = 0u64;
-        let mut kv_charged = 0u32;
         let mut fitted = 0u32;
         let output_index = self.unit_bytes.len().saturating_sub(1);
         for (offset, index) in (0..self.unit_bytes.len()).rev().enumerate() {
             running = running.saturating_add(self.unit_bytes[index]);
-            if index != output_index && kv_charged < kv_layer_count {
-                running = running.saturating_add(kv_bytes_per_layer);
-                kv_charged += 1;
+            if index != output_index {
+                running =
+                    running.saturating_add(kv_per_block.get(index).copied().unwrap_or_default());
             }
             if running > budget {
                 break;
@@ -91,6 +90,102 @@ impl ModelOffloadCosts {
         }
         fitted
     }
+}
+
+const KV_CELL_PAD: u64 = 256;
+
+#[derive(Clone, Debug)]
+pub(super) struct KvCacheGeometry {
+    layers: Vec<llama_cpp_2::model::KvLayerGeometry>,
+    n_swa: u32,
+}
+
+impl KvCacheGeometry {
+    fn cells_for_layer(&self, is_swa: bool, planned_context: u32, n_ubatch: u32) -> u64 {
+        let base = u64::from(planned_context.max(1));
+        if !is_swa || self.n_swa == 0 {
+            return base;
+        }
+        let swa = u64::from(self.n_swa).saturating_add(u64::from(n_ubatch.max(1)));
+        let capped = base.min(swa);
+        capped
+            .div_ceil(KV_CELL_PAD)
+            .saturating_mul(KV_CELL_PAD)
+            .min(base)
+    }
+
+    fn bytes_per_layer(
+        &self,
+        planned_context: u32,
+        n_ubatch: u32,
+        llama_kv_type: Option<&str>,
+    ) -> Vec<u64> {
+        let bytes_per_value = kv_bytes_per_value(llama_kv_type);
+        self.layers
+            .iter()
+            .map(|layer| {
+                let cells = self.cells_for_layer(layer.is_swa, planned_context, n_ubatch);
+                let per_cell = u64::from(layer.n_head_kv).saturating_mul(
+                    u64::from(layer.n_embd_head_k) + u64::from(layer.n_embd_head_v),
+                );
+                ((cells.saturating_mul(per_cell)) as f64 * bytes_per_value) as u64
+            })
+            .collect()
+    }
+
+    fn total_bytes(&self, planned_context: u32, n_ubatch: u32, llama_kv_type: Option<&str>) -> u64 {
+        self.bytes_per_layer(planned_context, n_ubatch, llama_kv_type)
+            .into_iter()
+            .fold(0u64, |acc, bytes| acc.saturating_add(bytes))
+    }
+
+    fn max_context_within(
+        &self,
+        budget: u64,
+        n_ubatch: u32,
+        llama_kv_type: Option<&str>,
+        max_context: u32,
+    ) -> u32 {
+        if self.total_bytes(1, n_ubatch, llama_kv_type) > budget {
+            return 0;
+        }
+        let (mut lo, mut hi) = (1u32, max_context.max(1));
+        if self.total_bytes(hi, n_ubatch, llama_kv_type) <= budget {
+            return hi;
+        }
+        while lo + 1 < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.total_bytes(mid, n_ubatch, llama_kv_type) <= budget {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+}
+
+fn load_kv_geometry_from_model(model: &LlamaModel) -> Option<KvCacheGeometry> {
+    let geometry = model.kv_geometry()?;
+    (!geometry.layers.is_empty()).then_some(KvCacheGeometry {
+        layers: geometry.layers,
+        n_swa: geometry.n_swa,
+    })
+}
+
+pub(super) fn load_kv_geometry(model_path: &str) -> Option<KvCacheGeometry> {
+    if let Some(cached) = kv_geometry_cache().lock().ok()?.get(model_path).cloned() {
+        return cached;
+    }
+    load_model_metadata(model_path).ok()?;
+    kv_geometry_cache().lock().ok()?.get(model_path).cloned()?
+}
+
+static KV_GEOMETRY_CACHE: OnceLock<Mutex<HashMap<String, Option<KvCacheGeometry>>>> =
+    OnceLock::new();
+
+fn kv_geometry_cache() -> &'static Mutex<HashMap<String, Option<KvCacheGeometry>>> {
+    KV_GEOMETRY_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn load_offload_costs_uncached(model_path: &str) -> Option<ModelOffloadCosts> {
@@ -210,6 +305,8 @@ fn ram_budget_for_context(metadata: &LlamaModelMetadata, available_memory_bytes:
 
 fn compute_recommended_context(
     metadata: &LlamaModelMetadata,
+    geometry: Option<&KvCacheGeometry>,
+    n_ubatch: u32,
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     llama_offload_kqv: Option<bool>,
@@ -223,6 +320,14 @@ fn compute_recommended_context(
         let ram = available_memory_bytes?;
         ram_budget_for_context(metadata, ram)
     };
+    if let Some(geometry) = geometry {
+        return Some(geometry.max_context_within(
+            available_for_ctx,
+            n_ubatch,
+            llama_kv_type,
+            metadata.max_context_length,
+        ));
+    }
     let kv_bytes_per_token = estimate_kv_bytes_per_token(metadata, llama_kv_type)?;
     if kv_bytes_per_token == 0 {
         return None;
@@ -253,6 +358,10 @@ fn load_model_metadata_uncached(model_path: &str) -> Result<LlamaModelMetadata, 
     let n_head = u64::from(model.n_head()).max(1);
     let implied_head_dim = (n_embd / n_head).max(1);
     let (n_embd_head_k, n_embd_head_v) = gguf_head_dims(model_path, implied_head_dim);
+
+    if let Ok(mut cache) = kv_geometry_cache().lock() {
+        cache.insert(model_path.to_string(), load_kv_geometry_from_model(&model));
+    }
 
     Ok(LlamaModelMetadata {
         model_size_bytes: model.size(),
@@ -475,6 +584,8 @@ pub(super) fn model_weight_split_bytes(
 pub(super) fn compute_recommended_context_for_gpu_layers(
     metadata: &LlamaModelMetadata,
     costs: Option<&ModelOffloadCosts>,
+    geometry: Option<&KvCacheGeometry>,
+    n_ubatch: u32,
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     gpu_layers: u32,
@@ -494,6 +605,14 @@ pub(super) fn compute_recommended_context_for_gpu_layers(
         let reserve = default_memory_reserve_bytes(ram);
         ram.saturating_sub(cpu_weight_bytes.saturating_add(reserve))
     };
+    if let Some(geometry) = geometry {
+        return Some(geometry.max_context_within(
+            available_for_ctx,
+            n_ubatch,
+            llama_kv_type,
+            metadata.max_context_length,
+        ));
+    }
     let kv_bytes_per_token = estimate_kv_bytes_per_token(metadata, llama_kv_type)?;
     if kv_bytes_per_token == 0 {
         return None;
@@ -523,8 +642,11 @@ pub(super) fn plan_smart_gpu_offload(
         .as_ref()
         .map(ModelOffloadCosts::unit_count)
         .unwrap_or_else(|| metadata.offload_layer_count());
+    let geometry = load_kv_geometry(model_path);
     let recommended_context = compute_recommended_context(
         &metadata,
+        geometry.as_ref(),
+        n_batch,
         available_memory_bytes,
         available_vram_bytes,
         resolved_offload_kqv,
@@ -554,15 +676,24 @@ pub(super) fn plan_smart_gpu_offload(
     let planning_offload_kqv = resolved_offload_kqv;
     let kqv_vram_reserved = planning_offload_kqv != Some(false);
     let kv_contexts = if bundled_mtp_draft { 2 } else { 1 };
-    // When KV is GPU-resident, only the GPU-resident layers' KV goes to VRAM —
-    // not the full model's KV. Include KV cost in the per-layer price so the
-    // estimate self-corrects: more layers → more KV, fewer layers → less KV.
+    let uniform_kv_bytes_per_layer = kv_bytes_per_token
+        .saturating_mul(u64::from(planned_context))
+        .checked_div(u64::from(metadata.layer_count.max(1)))
+        .unwrap_or(0)
+        .saturating_mul(kv_contexts);
+    let kv_per_block: Vec<u64> = if !kqv_vram_reserved {
+        Vec::new()
+    } else if let Some(geometry) = geometry.as_ref() {
+        geometry
+            .bytes_per_layer(planned_context, n_batch, llama_kv_type)
+            .into_iter()
+            .map(|bytes| bytes.saturating_mul(kv_contexts))
+            .collect()
+    } else {
+        vec![uniform_kv_bytes_per_layer; metadata.layer_count.max(1) as usize]
+    };
     let kv_bytes_per_layer = if kqv_vram_reserved {
-        kv_bytes_per_token
-            .saturating_mul(u64::from(planned_context))
-            .checked_div(u64::from(metadata.layer_count.max(1)))
-            .unwrap_or(0)
-            .saturating_mul(kv_contexts)
+        uniform_kv_bytes_per_layer
     } else {
         0
     };
@@ -571,14 +702,15 @@ pub(super) fn plan_smart_gpu_offload(
         .saturating_sub(sidecar_vram_reserve_bytes);
     let estimated_gpu_layers = match costs.as_ref() {
         Some(costs) => costs
-            .max_units_within(
-                available_base,
-                kv_bytes_per_layer,
-                metadata.layer_count.max(1),
-            )
+            .max_units_within(available_base, &kv_per_block)
             .min(total_layers),
         None => {
-            let effective_bytes_per_layer = bytes_per_layer.saturating_add(kv_bytes_per_layer);
+            let average_kv = if kv_per_block.is_empty() {
+                0
+            } else {
+                kv_per_block.iter().sum::<u64>() / kv_per_block.len() as u64
+            };
+            let effective_bytes_per_layer = bytes_per_layer.saturating_add(average_kv);
             if available_base == 0 || effective_bytes_per_layer == 0 {
                 0
             } else {
@@ -590,10 +722,11 @@ pub(super) fn plan_smart_gpu_offload(
             }
         }
     };
-    // Report the KV bytes that will actually land on GPU (scales with GPU layers).
-    let estimated_kv_bytes = kv_bytes_per_layer.saturating_mul(u64::from(
-        estimated_gpu_layers.min(metadata.layer_count.max(1)),
-    ));
+    let estimated_kv_bytes = kv_per_block
+        .iter()
+        .rev()
+        .take(estimated_gpu_layers as usize)
+        .fold(0u64, |acc, bytes| acc.saturating_add(*bytes));
 
     Ok(SmartGpuOffloadPlan {
         total_layers,
@@ -994,28 +1127,24 @@ mod offload_cost_tests {
     #[test]
     fn a_heavy_output_layer_is_not_averaged_away() {
         let costs = costs(&[10, 20, 30, 1000]);
-        assert_eq!(costs.max_units_within(900, 0, 3), 0);
-        assert_eq!(costs.max_units_within(1000, 0, 3), 1);
-        assert_eq!(costs.max_units_within(1029, 0, 3), 1);
-        assert_eq!(costs.max_units_within(1030, 0, 3), 2);
+        assert_eq!(costs.max_units_within(900, &[]), 0);
+        assert_eq!(costs.max_units_within(1000, &[]), 1);
+        assert_eq!(costs.max_units_within(1029, &[]), 1);
+        assert_eq!(costs.max_units_within(1030, &[]), 2);
     }
 
     #[test]
     fn kv_is_charged_per_block_but_not_for_the_output_unit() {
         let costs = costs(&[10, 20, 30, 1000]);
-        assert_eq!(costs.max_units_within(1000, 5, 3), 1);
-        assert_eq!(costs.max_units_within(1034, 5, 3), 1);
-        assert_eq!(costs.max_units_within(1035, 5, 3), 2);
+        assert_eq!(costs.max_units_within(1000, &[5, 5, 5]), 1);
+        assert_eq!(costs.max_units_within(1034, &[5, 5, 5]), 1);
+        assert_eq!(costs.max_units_within(1035, &[5, 5, 5]), 2);
     }
 
     #[test]
     fn kv_charges_stop_at_the_attention_layer_count() {
         let costs = costs(&[10, 20, 30, 1000]);
-        assert_eq!(
-            costs.max_units_within(1030, 5, 0),
-            2,
-            "no KV charged at all"
-        );
+        assert_eq!(costs.max_units_within(1030, &[]), 2, "no KV charged at all");
     }
 
     fn qwen36_27b() -> LlamaModelMetadata {
@@ -1062,6 +1191,59 @@ mod offload_cost_tests {
             estimate_kv_bytes_per_token(&metadata, Some("f16")),
             Some(218_112)
         );
+    }
+
+    fn gemma4_12b_geometry() -> KvCacheGeometry {
+        let mut layers = Vec::new();
+        for il in 0..48 {
+            let global = il % 6 == 5;
+            layers.push(llama_cpp_2::model::KvLayerGeometry {
+                n_head_kv: if global { 1 } else { 8 },
+                n_embd_head_k: 512,
+                n_embd_head_v: 512,
+                is_swa: !global,
+            });
+        }
+        KvCacheGeometry {
+            layers,
+            n_swa: 1024,
+        }
+    }
+
+    #[test]
+    fn sliding_window_layers_are_capped_to_the_window() {
+        let geometry = gemma4_12b_geometry();
+        assert_eq!(geometry.cells_for_layer(false, 8192, 512), 8192);
+        assert_eq!(geometry.cells_for_layer(true, 8192, 512), 1536);
+        assert_eq!(geometry.cells_for_layer(true, 1024, 512), 1024);
+    }
+
+    #[test]
+    fn gemma_kv_total_matches_the_iswa_cache_sizing() {
+        let geometry = gemma4_12b_geometry();
+        let total = geometry.total_bytes(8192, 512, Some("f16"));
+        assert_eq!(total, 1_140_850_688);
+    }
+
+    #[test]
+    fn recommended_context_is_solved_against_the_real_curve() {
+        let geometry = gemma4_12b_geometry();
+        let budget = geometry.total_bytes(8192, 512, Some("f16"));
+        let solved = geometry.max_context_within(budget, 512, Some("f16"), 131_072);
+        assert!(
+            solved >= 8192,
+            "solved {solved} should reach the probed context"
+        );
+        assert!(geometry.total_bytes(solved, 512, Some("f16")) <= budget);
+        assert!(geometry.total_bytes(solved + 1, 512, Some("f16")) > budget);
+    }
+
+    #[test]
+    fn per_layer_kv_bills_global_and_sliding_layers_differently() {
+        let geometry = gemma4_12b_geometry();
+        let per_layer = geometry.bytes_per_layer(8192, 512, Some("f16"));
+        assert_eq!(per_layer[0], 1536 * 8 * 1024 * 2);
+        assert_eq!(per_layer[5], 8192 * 1 * 1024 * 2);
     }
 
     #[test]

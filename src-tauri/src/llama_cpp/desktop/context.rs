@@ -852,6 +852,8 @@ pub(crate) async fn llamacpp_context_info(
         compute_recommended_context_for_gpu_layers(
             &metadata,
             super::offload::load_offload_costs(&model_path).as_ref(),
+            super::offload::load_kv_geometry(&model_path).as_ref(),
+            512,
             available_memory_bytes,
             available_vram_bytes,
             resolved_gpu_layers,
