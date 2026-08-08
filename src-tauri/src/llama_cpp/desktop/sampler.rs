@@ -232,6 +232,7 @@ pub(super) fn build_sampler(
             active_params.insert("frequency_penalty".to_string(), json!(penalty_freq));
             active_params.insert("presence_penalty".to_string(), json!(penalty_present));
             Some(LlamaSampler::penalties(
+                model,
                 n_pen_range,
                 repeat_penalty as f32,
                 penalty_freq as f32,
