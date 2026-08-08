@@ -514,7 +514,7 @@ fn estimated_runtime_reserve_bytes(
         } else {
             u64::from(planned_context.max(1))
                 .saturating_mul(u64::from(n_batch.max(1)))
-                .saturating_mul(metadata.n_head_kv.max(1))
+                .saturating_mul(metadata.n_head.max(1))
                 .saturating_mul(ATTENTION_SCORE_BYTES)
                 .saturating_mul(COMPUTE_BUFFER_SAFETY_FACTOR)
         };
@@ -1138,7 +1138,7 @@ mod tests {
             llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_DISABLED,
         );
 
-        assert_eq!(reserve, available / 20 + 4_294_967_296);
+        assert_eq!(reserve, available / 20 + 17_179_869_184);
     }
 
     #[test]
