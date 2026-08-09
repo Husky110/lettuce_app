@@ -19,6 +19,11 @@ fn abort_pending_work(handler: &tauri::AppHandle) {
     }
 }
 
+fn shutdown_local_processes() {
+    crate::image_generator::sdcpp::begin_shutdown();
+    tauri::async_runtime::block_on(crate::image_generator::sdcpp::shutdown());
+}
+
 pub(crate) fn handle_run_event(handler: &tauri::AppHandle, event: tauri::RunEvent) {
     match event {
         tauri::RunEvent::Resumed => {
@@ -40,6 +45,7 @@ pub(crate) fn handle_run_event(handler: &tauri::AppHandle, event: tauri::RunEven
         }
         tauri::RunEvent::ExitRequested { .. } => {
             abort_pending_work(handler);
+            shutdown_local_processes();
             flush_usage_state(handler);
         }
         tauri::RunEvent::Exit => {

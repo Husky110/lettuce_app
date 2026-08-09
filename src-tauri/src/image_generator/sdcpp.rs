@@ -49,6 +49,8 @@ lazy_static::lazy_static! {
         regex::Regex::new(r"\|\s*(\d+)/(\d+)\s*-\s*(\S+)").expect("valid sdcpp progress pattern");
 }
 
+static APP_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+
 fn emit_generation_progress(app: &AppHandle, payload: Value) {
     let _ = app.emit(GENERATION_PROGRESS_EVENT, payload);
 }
@@ -4715,6 +4717,9 @@ async fn ensure_server(
     config: &InstalledModelConfig,
     conservative: bool,
 ) -> Result<String, String> {
+    if APP_SHUTTING_DOWN.load(Ordering::SeqCst) {
+        return Err("Lettuce is shutting down.".to_string());
+    }
     if let Some(profile) = config
         .profile_id
         .as_deref()
@@ -4909,6 +4914,11 @@ async fn ensure_server(
     let capabilities_url = format!("{}/sdcpp/v1/capabilities", base_url);
     let mut ready = false;
     for _ in 0..300 {
+        if APP_SHUTTING_DOWN.load(Ordering::SeqCst) {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err("Lettuce is shutting down.".to_string());
+        }
         if let Some(status) = child
             .try_wait()
             .map_err(|e| format!("Failed to inspect stable-diffusion.cpp: {}", e))?
@@ -4955,6 +4965,19 @@ pub async fn stop_for_llama() -> Result<(), String> {
     }
     *managed = None;
     Ok(())
+}
+
+pub fn begin_shutdown() {
+    APP_SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    if let Ok(mut active) = ACTIVE_GENERATION.lock() {
+        if let Some(active) = active.take() {
+            active.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+pub async fn shutdown() {
+    stop_managed_server().await;
 }
 
 pub async fn generate(
