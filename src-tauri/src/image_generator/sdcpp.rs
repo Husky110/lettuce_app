@@ -2932,12 +2932,14 @@ pub async fn sdcpp_disk_usage(app: AppHandle) -> Result<DiskUsage, String> {
     if cfg!(mobile) {
         return Err("Local stable-diffusion.cpp image generation is desktop-only.".to_string());
     }
-    let components_root = image_root(&app)?.join("components");
+    let components_bytes = crate::hf_browser::image_model_roots(&app)?
+        .iter()
+        .map(|root| directory_size(&root.join("components")))
+        .sum();
     let runtimes_root = crate::utils::lettuce_dir(&app)?
         .join("runtimes")
         .join("stable-diffusion.cpp");
     let loras_root = lora_root(&app)?;
-    let components_bytes = directory_size(&components_root);
     let runtimes_bytes = directory_size(&runtimes_root);
     let loras_bytes = directory_size(&loras_root);
     let engine = detect_engine_build(&app);
@@ -5861,8 +5863,8 @@ fn all_components(profile: &ProfileSpec, variant: &VariantSpec) -> Vec<Component
     components
 }
 
-fn image_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(crate::utils::lettuce_dir(app)?.join("models").join("image"))
+pub(crate) fn image_root(app: &AppHandle) -> Result<PathBuf, String> {
+    crate::hf_browser::image_models_dir(app)
 }
 
 pub(crate) fn lora_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -6350,10 +6352,13 @@ fn component_path(app: &AppHandle, component: ComponentSpec) -> Result<PathBuf, 
     let basename = Path::new(component.filename)
         .file_name()
         .ok_or_else(|| format!("Invalid component filename: {}", component.filename))?;
-    Ok(image_root(app)?
-        .join("components")
-        .join(component.sha256)
-        .join(basename))
+    let relative = Path::new("components").join(component.sha256).join(basename);
+    let configured = image_root(app)?.join(&relative);
+    let legacy = crate::hf_browser::default_image_models_dir(app)?.join(relative);
+    if !configured.exists() && legacy.exists() {
+        return Ok(legacy);
+    }
+    Ok(configured)
 }
 
 fn safe_path_segment(value: &str) -> String {

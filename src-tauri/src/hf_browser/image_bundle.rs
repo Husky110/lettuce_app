@@ -654,10 +654,7 @@ struct BundleManifest {
 }
 
 fn bundle_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(crate::utils::lettuce_dir(app)?
-        .join("models")
-        .join("image")
-        .join("huggingface"))
+    Ok(super::image_models_dir(app)?.join("huggingface"))
 }
 
 fn manifest_path(app: &AppHandle, bundle_id: &str) -> Result<PathBuf, String> {

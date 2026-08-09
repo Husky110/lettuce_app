@@ -110,7 +110,7 @@ function PaneResizeHandle({
 
 export function PlaygroundPage() {
   const { t } = useI18n();
-  const { backOrReplace } = useNavigationManager();
+  const { go } = useNavigationManager();
   const settings = usePlaygroundSettings();
   const generation = usePlaygroundGeneration();
   const [prompt, setPrompt] = useState("");
@@ -323,7 +323,7 @@ export function PlaygroundPage() {
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-fg/8 bg-surface/95 px-4 backdrop-blur-md">
         <button
           type="button"
-          onClick={() => backOrReplace(Routes.settingsImageGeneration)}
+          onClick={() => go(Routes.settingsImageGeneration, { replace: true })}
           aria-label={t("playground.back")}
           className="flex h-8 w-8 items-center justify-center rounded-full text-fg/50 transition-all hover:bg-fg/10 hover:text-fg active:scale-95"
         >
