@@ -38,7 +38,8 @@ pub async fn maybe_run_consolidation(
         return Ok(0);
     }
 
-    let active = companion::active_soul_growth_entries(character, session);
+    let effective_now = crate::chat_manager::temporal::companion_effective_now(session);
+    let active = companion::active_soul_growth_entries(character, session, effective_now);
     let accumulated: Vec<SoulGrowthEntry> = active
         .iter()
         .filter(|entry| soul_category_is_changeable(&entry.category) && !entry.id.trim().is_empty())
@@ -130,9 +131,9 @@ pub async fn maybe_run_consolidation(
     }
 
     let (core_entries, retire_ids) = parse_consolidation(app, credential, &response);
-    let now = now_millis()?;
-    let applied_core = companion::append_core_soul_growth(session, character, core_entries, now);
-    let retired = companion::retire_soul_growth_entries(session, &retire_ids, now);
+    let applied_core =
+        companion::append_core_soul_growth(session, character, core_entries, effective_now);
+    let retired = companion::retire_soul_growth_entries(session, &retire_ids, effective_now);
 
     let total = applied_core + retired;
     if total > 0 {

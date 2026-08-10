@@ -1190,7 +1190,7 @@ pub fn companion_remove_soul_growth(
 ) -> Result<bool, String> {
     let mut session = super::storage::load_session(&app, &session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
-    let now = crate::utils::now_millis()?;
+    let now = crate::chat_manager::temporal::companion_effective_now(&session);
     let removed = super::companion::remove_soul_growth_at(&mut session, index as usize, now);
     if removed {
         super::storage::save_session(&app, &session)?;
@@ -1202,7 +1202,7 @@ pub fn companion_remove_soul_growth(
 pub fn companion_clear_soul_growth(app: AppHandle, session_id: String) -> Result<u32, String> {
     let mut session = super::storage::load_session(&app, &session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
-    let now = crate::utils::now_millis()?;
+    let now = crate::chat_manager::temporal::companion_effective_now(&session);
     let removed = super::companion::clear_soul_growth(&mut session, now);
     if removed > 0 {
         super::storage::save_session(&app, &session)?;
@@ -1219,7 +1219,7 @@ pub fn companion_set_soul_growth_lock(
 ) -> Result<bool, String> {
     let mut session = super::storage::load_session(&app, &session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
-    let now = crate::utils::now_millis()?;
+    let now = crate::chat_manager::temporal::companion_effective_now(&session);
     let updated =
         super::companion::set_soul_growth_lock(&mut session, &entry_id, locked, now);
     if updated {

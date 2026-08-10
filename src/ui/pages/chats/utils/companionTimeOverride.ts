@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CompanionTimeOverride } from "../../../../core/storage/schemas";
+import type { CompanionTimeOverride, Session } from "../../../../core/storage/schemas";
 
 export type OverrideMode = CompanionTimeOverride["mode"];
 
@@ -10,6 +10,11 @@ export function effectiveOverrideMs(
   if (!override || override.mode === "off") return nowMs;
   if (override.mode === "frozen") return override.anchorMs;
   return override.anchorMs + (nowMs - override.setAtMs);
+}
+
+export function sessionEffectiveNowMs(session: Session | null | undefined, nowMs: number): number {
+  if (!session?.companionState?.preferences?.timeAwarenessEnabled) return nowMs;
+  return effectiveOverrideMs(session.companionState.preferences.timeOverride, nowMs);
 }
 
 function floorToMinute(ms: number): number {

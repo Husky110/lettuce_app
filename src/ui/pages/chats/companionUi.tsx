@@ -152,9 +152,10 @@ export function buildCompanionMemoryItems(session?: Session | null): CompanionMe
   }));
 }
 
-export function formatRelativeTime(t: T, ts?: number): string {
+export function formatRelativeTime(t: T, ts?: number, referenceMs = Date.now()): string {
   if (!ts) return t("chats.companionUi.unknownTime");
-  const diff = Date.now() - ts;
+  const diff = referenceMs - ts;
+  if (diff < 0) return formatCanonicalDateTime(ts);
   const seconds = Math.floor(diff / 1000);
   if (seconds < 60) return t("chats.companionUi.justNow");
   const minutes = Math.floor(seconds / 60);
@@ -163,7 +164,13 @@ export function formatRelativeTime(t: T, ts?: number): string {
   if (hours < 24) return t("chats.companionUi.hoursAgo", { hours });
   const days = Math.floor(hours / 24);
   if (days < 7) return t("chats.companionUi.daysAgo", { days });
-  return new Date(ts).toLocaleDateString();
+  return formatCanonicalDateTime(ts);
+}
+
+function formatCanonicalDateTime(ts: number): string {
+  const date = new Date(ts);
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function formatPercent(value?: number | null): string {

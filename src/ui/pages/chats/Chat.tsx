@@ -87,6 +87,7 @@ import { ChatAppearanceDrawer } from "./components/appearance/ChatAppearanceDraw
 import { CompanionTimeOverrideCard } from "./components/CompanionTimeOverrideCard";
 import { getChatColumnLayout } from "./utils/chatColumnLayout";
 import { getChatWidgetLayout, useViewportWidth } from "./utils/chatWidgetLayout";
+import { sessionEffectiveNowMs } from "./utils/companionTimeOverride";
 import { ChatWidgetArea } from "./components/ChatWidgetArea";
 import { WidgetDice } from "./components/widgets/WidgetDice";
 import {
@@ -609,6 +610,8 @@ export function ChatConversationPage() {
     generateAiScenePrompt,
     applySceneImagePrompt,
   } = chatController;
+
+  const timestampReferenceMs = sessionEffectiveNowMs(session, Date.now());
 
   const [totalMessageCount, setTotalMessageCount] = useState(0);
   useEffect(() => {
@@ -2952,6 +2955,7 @@ export function ChatConversationPage() {
                       message.role === "assistant" &&
                       index === visibleMessages.length - 1
                     }
+                    timestampReferenceMs={timestampReferenceMs}
                   />
                   </motion.div>
                   {childForks.has(message.id) ? (

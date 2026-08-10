@@ -45,6 +45,7 @@ import {
 } from "./companionUi";
 import { useI18n } from "../../../core/i18n/context";
 import { RELATIONSHIP_AXIS_ANCHORS } from "../characters/utils/companionDefaults";
+import { sessionEffectiveNowMs } from "./utils/companionTimeOverride";
 
 function PageHeader({
   title,
@@ -322,6 +323,7 @@ export function CompanionRelationshipPage() {
   const soulGrowth = session?.companionState?.soulGrowth ?? [];
   const activeGrowth = soulGrowth.filter((entry) => !entry.supersededBy);
   const supersededGrowthCount = soulGrowth.length - activeGrowth.length;
+  const effectiveNow = sessionEffectiveNowMs(session, Date.now());
 
   const handleClearGrowth = async () => {
     if (!session || clearingGrowth || soulGrowth.length === 0) return;
@@ -410,7 +412,7 @@ export function CompanionRelationshipPage() {
         .filter((memory) =>
           ["relationship", "milestone", "emotional_snapshot"].includes(memory.category),
         )
-        .sort((a, b) => b.createdAt - a.createdAt)
+        .sort((a, b) => (b.observedAt ?? b.createdAt) - (a.observedAt ?? a.createdAt))
         .slice(0, 18),
     [memoryItems],
   );
@@ -519,7 +521,7 @@ export function CompanionRelationshipPage() {
             <SectionLabel
               right={
                 relationshipState?.lastInteractionAt
-                  ? t("chats.companionRelationship.lastInteraction", { time: formatRelativeTime(t, relationshipState.lastInteractionAt) })
+                  ? t("chats.companionRelationship.lastInteraction", { time: formatRelativeTime(t, relationshipState.lastInteractionAt, effectiveNow) })
                   : undefined
               }
             >
@@ -584,7 +586,7 @@ export function CompanionRelationshipPage() {
 
           {/* Emotional engine */}
           <section>
-            <SectionLabel right={t("chats.companionRelationship.updatedAt", { time: formatRelativeTime(t, emotionalState?.updatedAt) })}>
+            <SectionLabel right={t("chats.companionRelationship.updatedAt", { time: formatRelativeTime(t, emotionalState?.updatedAt, effectiveNow) })}>
               {t("chats.companionRelationship.emotionalEngine")}
             </SectionLabel>
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -705,7 +707,7 @@ export function CompanionRelationshipPage() {
                             {entry.createdAt ? (
                               <>
                                 <span className="text-fg/20">·</span>
-                                <span>{formatRelativeTime(t, entry.createdAt)}</span>
+                                <span>{formatRelativeTime(t, entry.createdAt, effectiveNow)}</span>
                               </>
                             ) : null}
                             {entry.sourceMemoryIds.length ? (
@@ -818,7 +820,7 @@ export function CompanionRelationshipPage() {
                           {companionCategoryLabel(t, memory.category)}
                         </span>
                         <span className="text-fg/20">·</span>
-                        <span>{formatRelativeTime(t, memory.createdAt)}</span>
+                        <span>{formatRelativeTime(t, memory.observedAt ?? memory.createdAt, effectiveNow)}</span>
                         {memory.sourceRole ? (
                           <>
                             <span className="text-fg/20">·</span>

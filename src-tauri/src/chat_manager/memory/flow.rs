@@ -3494,7 +3494,10 @@ async fn run_memory_tool_update(
 ) -> Result<Vec<Value>, String> {
     let overwrite_llama_sampler_config = dynamic_memory_llama_sampler_overwrite_enabled(settings, model);
     let memory_supersede_enabled = companion::is_companion_mode(session, character);
-    let tool_config = build_memory_tool_config(memory_supersede_enabled);
+    let tool_config = build_memory_tool_config(
+        memory_supersede_enabled,
+        companion_time_awareness_enabled(session),
+    );
     let max_entries = dynamic_max_entries(settings);
 
     let system_role = request_builder::system_role_for(provider_cred);
@@ -4719,7 +4722,7 @@ async fn run_memory_tag_repair(
     Ok(repaired)
 }
 
-fn build_memory_tool_config(is_companion: bool) -> ToolConfig {
+fn build_memory_tool_config(is_companion: bool, require_source_message_id: bool) -> ToolConfig {
     let mut create_memory_params = json!({
         "type": "object",
         "properties": {
@@ -4750,6 +4753,14 @@ fn build_memory_tool_config(is_companion: bool) -> ToolConfig {
                     "description": "6-digit IDs (shown in brackets) of older memories this entry replaces. Use this to correct an outdated fact instead of deleting it."
                 }),
             );
+        }
+    }
+    if require_source_message_id {
+        if let Some(required) = create_memory_params
+            .get_mut("required")
+            .and_then(Value::as_array_mut)
+        {
+            required.push(json!("source_message_id"));
         }
     }
     ToolConfig {
@@ -5190,5 +5201,26 @@ fn payload_contains_function_call(value: &Value) -> bool {
         }
         Value::Array(items) => items.iter().any(payload_contains_function_call),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_memory_tool_config;
+
+    fn required_fields(require_source_message_id: bool) -> Vec<String> {
+        let config = build_memory_tool_config(true, require_source_message_id);
+        config.tools[0].parameters["required"]
+            .as_array()
+            .expect("create_memory required fields")
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn time_aware_companion_memories_require_a_source_turn() {
+        assert!(required_fields(true).contains(&"source_message_id".to_string()));
+        assert!(!required_fields(false).contains(&"source_message_id".to_string()));
     }
 }

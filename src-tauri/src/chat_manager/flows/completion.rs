@@ -172,12 +172,13 @@ impl CompletionFlow {
         session.messages.push(user_msg.clone());
         session.updated_at = now;
 
+        let companion_effective_at = user_msg.effective_at.unwrap_or(now);
         let companion_effect_seed = companion::update_state_for_user_message(
             &app,
             &mut session,
             &character,
             &user_message,
-            now,
+            companion_effective_at,
         )
         .await;
         if companion_effect_seed.is_some() {

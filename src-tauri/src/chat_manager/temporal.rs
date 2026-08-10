@@ -199,6 +199,9 @@ fn read_time_override(session: &Session) -> Option<TimeOverride> {
 
 pub fn companion_effective_now(session: &Session) -> u64 {
     let real_now = crate::utils::now_millis().unwrap_or_default();
+    if !companion_time_awareness_enabled(session) {
+        return real_now;
+    }
     let Some(override_value) = read_time_override(session) else {
         return real_now;
     };
@@ -364,7 +367,7 @@ pub fn format_memory_for_prompt(memory: &MemoryEmbedding, effective_now: u64) ->
         );
         line.push_str(&format!(
             " (observed {}, {})",
-            observed.format("%Y-%m-%d %H:%M %Z"),
+            observed.format("%Y-%m-%d %H:%M"),
             relative
         ));
     }

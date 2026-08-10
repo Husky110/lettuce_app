@@ -3510,7 +3510,9 @@ pub fn build_system_prompt_entries(
         get_lorebook_content(app, &character.id, persona, session).unwrap_or_default();
     let has_lorebook_content = !lorebook_content.trim().is_empty();
     let author_note_text = render_author_note_text(character, persona, session);
-    let companion_state_text = companion::render_prompt_state(session, character, persona);
+    let companion_now = companion_effective_now(session);
+    let companion_state_text =
+        companion::render_prompt_state(session, character, persona, companion_now);
     let has_companion_state = companion_state_text
         .as_ref()
         .map(|value| !value.trim().is_empty())
@@ -3519,7 +3521,7 @@ pub fn build_system_prompt_entries(
         crate::storage_manager::companion_scheduled_notes::render_scheduled_notes_block(
             app,
             &character.id,
-            crate::utils::now_millis().unwrap_or_default(),
+            companion_now,
         )
         .unwrap_or(None)
     } else {
@@ -4313,7 +4315,8 @@ pub fn render_with_context_internal(
     }
     let author_note_text = render_author_note_text(character, persona, session).unwrap_or_default();
     let companion_state_text =
-        companion::render_prompt_state(session, character, persona).unwrap_or_default();
+        companion::render_prompt_state(session, character, persona, reference_ms)
+            .unwrap_or_default();
     let scheduled_notes_text = scheduled_notes_text_override
         .map(str::to_string)
         .or_else(|| {

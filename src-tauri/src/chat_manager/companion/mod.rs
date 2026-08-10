@@ -815,6 +815,7 @@ pub fn render_prompt_state(
     session: &Session,
     character: &Character,
     persona: Option<&Persona>,
+    effective_at: u64,
 ) -> Option<String> {
     if !is_companion_mode(session, character) {
         return None;
@@ -877,7 +878,6 @@ pub fn render_prompt_state(
     }
 
     let growth = &state.soul_growth;
-    let effective_at = crate::utils::now_millis().unwrap_or(state.updated_at);
     push_soul_line(
         &mut lines,
         "Soul essence",
@@ -1047,10 +1047,13 @@ pub fn soul_category_label(category: &str) -> &'static str {
     }
 }
 
-pub fn changeable_soul_snapshot(character: &Character, session: &Session) -> Vec<(String, String)> {
+pub fn changeable_soul_snapshot(
+    character: &Character,
+    session: &Session,
+    effective_at: u64,
+) -> Vec<(String, String)> {
     let config = companion_config(character);
     let state = current_state(session, &config);
-    let effective_at = crate::utils::now_millis().unwrap_or(state.updated_at);
     CHANGEABLE_SOUL_CATEGORIES
         .iter()
         .map(|category| {
@@ -1116,14 +1119,14 @@ pub fn core_soul_authored(character: &Character) -> Vec<(String, String)> {
 pub fn active_soul_growth_entries(
     character: &Character,
     session: &Session,
+    effective_at: u64,
 ) -> Vec<SoulGrowthEntry> {
     let config = companion_config(character);
     let state = current_state(session, &config);
-    let now = crate::utils::now_millis().unwrap_or(state.updated_at);
     state
         .soul_growth
         .into_iter()
-        .filter(|entry| entry.is_effective_at(now))
+        .filter(|entry| entry.is_effective_at(effective_at))
         .collect()
 }
 

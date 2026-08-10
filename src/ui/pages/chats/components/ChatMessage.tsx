@@ -63,6 +63,7 @@ interface ChatMessageProps {
   modelName?: string;
   models?: Model[];
   scenePromptStreaming?: boolean;
+  timestampReferenceMs?: number;
 }
 
 // CSS class mappings for chat appearance settings
@@ -105,6 +106,7 @@ function formatMessageTimestamp(
   ms: number,
   format: "relative" | "time" | "datetime",
   t: (key: TranslationKey, params?: TranslateParams) => string,
+  referenceMs = Date.now(),
 ): string {
   const date = new Date(ms);
   const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -112,12 +114,16 @@ function formatMessageTimestamp(
   if (format === "datetime") {
     return `${date.toLocaleDateString()} ${time}`;
   }
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfToday = startOfLocalDay(referenceMs);
   const dayMs = 86_400_000;
   if (ms >= startOfToday) return time;
   if (ms >= startOfToday - dayMs) return t("chats.message.yesterdayAt", { time });
   return `${date.toLocaleDateString()}, ${time}`;
+}
+
+function startOfLocalDay(ms = Date.now()): number {
+  const date = new Date(ms);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 function BubbleHeaderWrap({
@@ -614,6 +620,7 @@ function ChatMessageInner({
   modelName,
   models,
   scenePromptStreaming = false,
+  timestampReferenceMs,
 }: ChatMessageProps) {
   const { t } = useI18n();
   const prevRoleRef = useRef(message.role);
@@ -735,9 +742,10 @@ function ChatMessageInner({
       {chatAppearance?.showMessageTimestamp && (
         <span className="text-[11px] font-normal opacity-50">
           {formatMessageTimestamp(
-            message.createdAt,
+            message.effectiveAt ?? message.createdAt,
             chatAppearance?.timestampFormat ?? "relative",
             t,
+            timestampReferenceMs,
           )}
         </span>
       )}
@@ -1308,6 +1316,7 @@ export const ChatMessage = React.memo(ChatMessageInner, (prev, next) => {
     a.role === b.role &&
     a.visibleInChat === b.visibleInChat &&
     a.content === b.content &&
+    a.effectiveAt === b.effectiveAt &&
     a.selectedVariantId === b.selectedVariantId &&
     (a.variants?.length ?? 0) === (b.variants?.length ?? 0) &&
     areAttachmentsEqual &&
@@ -1347,6 +1356,7 @@ export const ChatMessage = React.memo(ChatMessageInner, (prev, next) => {
     prev.modelName === next.modelName &&
     prev.models === next.models &&
     prev.scenePromptStreaming === next.scenePromptStreaming &&
+    startOfLocalDay(prev.timestampReferenceMs) === startOfLocalDay(next.timestampReferenceMs) &&
     prev.swapPlaces === next.swapPlaces &&
     prev.audioStatus === next.audioStatus &&
     a.reasoning === b.reasoning &&

@@ -48,8 +48,10 @@ pub async fn run_growthcycle(
         return Ok(0);
     }
 
-    let snapshot = companion::changeable_soul_snapshot(character, session);
-    let existing_growth = companion::active_soul_growth_entries(character, session);
+    let effective_now = crate::chat_manager::temporal::companion_effective_now(session);
+    let snapshot = companion::changeable_soul_snapshot(character, session, effective_now);
+    let existing_growth =
+        companion::active_soul_growth_entries(character, session, effective_now);
 
     let model_id = resolve_dynamic_memory_summarisation_model_id(app, settings, None)?;
     let (model, credential) = find_model_with_credential(settings, &model_id)
@@ -129,8 +131,7 @@ pub async fn run_growthcycle(
         return Ok(0);
     }
 
-    let now = now_millis()?;
-    let applied = companion::append_soul_growth(session, character, entries, now);
+    let applied = companion::append_soul_growth(session, character, entries, effective_now);
     if applied > 0 {
         log_info(
             app,

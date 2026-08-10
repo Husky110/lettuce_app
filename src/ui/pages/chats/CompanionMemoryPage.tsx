@@ -60,6 +60,7 @@ import {
   MemoryCycleHub,
   type DynamicMemoryCycleStatus,
 } from "../../components/MemoryCycleHub";
+import { sessionEffectiveNowMs } from "./utils/companionTimeOverride";
 
 type MemoryFilter = "all" | "active" | "superseded";
 
@@ -248,6 +249,7 @@ type CardProps = {
   editCategory: CompanionMemoryCategory;
   saving: boolean;
   actionBusy: boolean;
+  effectiveNow: number;
   onToggleExpand: () => void;
   onStartEdit: (memory: CompanionMemoryItem) => void;
   onEditValue: (value: string) => void;
@@ -268,6 +270,7 @@ function MemoryCard({
   editCategory,
   saving,
   actionBusy,
+  effectiveNow,
   onToggleExpand,
   onStartEdit,
   onEditValue,
@@ -327,7 +330,7 @@ function MemoryCard({
                 {companionCategoryLabel(t, memory.category)}
               </span>
               <span className="text-fg/20">·</span>
-              <span>{formatRelativeTime(t, memory.createdAt)}</span>
+              <span>{formatRelativeTime(t, memory.observedAt ?? memory.createdAt, effectiveNow)}</span>
               {memory.isPinned && (
                 <>
                   <span className="text-fg/20">·</span>
@@ -428,18 +431,18 @@ function MemoryCard({
                   {memory.observedAt ? (
                     <span className="inline-flex items-center gap-1 text-fg/55">
                       <CalendarClock size={10} />
-                      {t("chats.companionMemoryPage.detail.dated", { time: formatRelativeTime(t, memory.observedAt) })}
+                      {t("chats.companionMemoryPage.detail.dated", { time: formatRelativeTime(t, memory.observedAt, effectiveNow) })}
                     </span>
                   ) : null}
                   {memory.lastAccessedAt ? (
-                    <span>{t("chats.companionMemoryPage.detail.lastUsed", { time: formatRelativeTime(t, memory.lastAccessedAt) })}</span>
+                    <span>{t("chats.companionMemoryPage.detail.lastUsed", { time: formatRelativeTime(t, memory.lastAccessedAt, effectiveNow) })}</span>
                   ) : null}
                   {memory.factSignature ? <span>{t("chats.companionMemoryPage.detail.key", { key: memory.factSignature })}</span> : null}
                   {memory.supersedes.length ? (
                     <span>{t("chats.companionMemoryPage.detail.replaces", { count: memory.supersedes.length })}</span>
                   ) : null}
                   {memory.supersededAt ? (
-                    <span>{t("chats.companionMemoryPage.detail.superseded", { time: formatRelativeTime(t, memory.supersededAt) })}</span>
+                    <span>{t("chats.companionMemoryPage.detail.superseded", { time: formatRelativeTime(t, memory.supersededAt, effectiveNow) })}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -563,6 +566,7 @@ export function CompanionMemoryPage() {
   const [genTokens, setGenTokens] = useState<number | null>(null);
   const [genTps, setGenTps] = useState<number | null>(null);
   const [genLastBeatAt, setGenLastBeatAt] = useState<number | null>(null);
+  const effectiveNow = sessionEffectiveNowMs(session, Date.now());
   const [genRecentText, setGenRecentText] = useState<string | null>(null);
   const [showLiveOutput, setShowLiveOutput] = useState(false);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -1023,7 +1027,7 @@ export function CompanionMemoryPage() {
         >
           {/* Snapshot */}
           <section className="space-y-3 xl:sticky xl:top-4">
-            <SectionLabel right={t("chats.companionMemoryPage.updatedAt", { time: formatRelativeTime(t, emotionalState?.updatedAt) })}>
+            <SectionLabel right={t("chats.companionMemoryPage.updatedAt", { time: formatRelativeTime(t, emotionalState?.updatedAt, effectiveNow) })}>
               {t("chats.companionMemoryPage.currentState")}
             </SectionLabel>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-2">
@@ -1310,6 +1314,7 @@ export function CompanionMemoryPage() {
                       editCategory={editingId === memory.id ? editingCategory : memory.category}
                       saving={actionBusyId === memory.id}
                       actionBusy={actionBusyId === memory.id}
+                      effectiveNow={effectiveNow}
                       onToggleExpand={() => toggleExpand(memory.id)}
                       onStartEdit={startEdit}
                       onEditValue={setEditingValue}
