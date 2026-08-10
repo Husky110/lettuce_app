@@ -2007,6 +2007,7 @@ pub async fn hf_search_models(
     mode: Option<String>,
     profile_id: Option<String>,
     bundle_role: Option<String>,
+    bundle_format: Option<String>,
     unfiltered: Option<bool>,
 ) -> Result<Vec<HfSearchResult>, String> {
     let limit = limit.unwrap_or(20).min(100);
@@ -2027,6 +2028,7 @@ pub async fn hf_search_models(
                 query.trim(),
                 &sort_field,
                 author.as_deref(),
+                image_bundle::normalized_bundle_format(bundle_format.as_deref()),
             )
             .await;
         }

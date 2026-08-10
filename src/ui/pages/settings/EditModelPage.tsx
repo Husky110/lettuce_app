@@ -219,7 +219,7 @@ function formatBytes(bytes: number): string {
 function deriveDisplayNameFromPath(path: string): string {
   const filename = path.split(/[/\\]/).filter(Boolean).pop() || path;
   return filename
-    .replace(/\.gguf$/i, "")
+    .replace(/\.(gguf|safetensors|sft)$/i, "")
     .replace(/[-_]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -2046,7 +2046,12 @@ export function EditModelPage() {
     try {
       const selected = await open({
         multiple: false,
-        filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
+        filters: [
+          {
+            name: t("editModel.sdcpp.modelFilesFilter"),
+            extensions: ["gguf", "safetensors", "sft"],
+          },
+        ],
       });
       if (!selected || typeof selected !== "string") return;
       handleSdcppModelPathChange(selected);
@@ -2101,7 +2106,11 @@ export function EditModelPage() {
       const filename = entry.filename.toLowerCase();
       if (role === "vae") return filename.endsWith(".safetensors") || filename.endsWith(".sft");
       if (role === "vision_encoder") return filename.includes("mmproj");
-      return filename.endsWith(".gguf");
+      return (
+        filename.endsWith(".gguf") ||
+        filename.endsWith(".safetensors") ||
+        filename.endsWith(".sft")
+      );
     });
   })();
 

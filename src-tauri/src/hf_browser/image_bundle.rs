@@ -329,6 +329,13 @@ fn role_search_matches(
     }
 }
 
+pub(crate) fn normalized_bundle_format(format: Option<&str>) -> &'static str {
+    match format.map(str::trim) {
+        Some("safetensors") => "safetensors",
+        _ => "gguf",
+    }
+}
+
 pub(crate) async fn bundle_role_search(
     app: &AppHandle,
     profile_id: &str,
@@ -336,6 +343,7 @@ pub(crate) async fn bundle_role_search(
     query: &str,
     sort_field: &str,
     author: Option<&str>,
+    format: &str,
 ) -> Result<Vec<super::HfSearchResult>, String> {
     let profile = sdcpp::hf_bundle_profile(profile_id)?;
     if !profile.required_roles.contains(&role) {
@@ -366,9 +374,9 @@ pub(crate) async fn bundle_role_search(
     if !effective_query.is_empty() {
         base.push_str(&format!("&search={}", urlencoding::encode(&effective_query)));
     }
-    let format_filter = if role == "vae" { "safetensors" } else { "gguf" };
+    let format_filter = if role == "vae" { "safetensors" } else { format };
     let mut results = super::fetch_models_list(app, &format!("{base}&filter={format_filter}")).await?;
-    if results.is_empty() && role == "vae" {
+    if results.is_empty() && format_filter == "safetensors" {
         results = super::fetch_models_list(app, &base).await?;
     }
     let (matched, unmatched): (Vec<_>, Vec<_>) = results

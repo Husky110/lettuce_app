@@ -1407,6 +1407,7 @@ export function HuggingFaceBrowserPage() {
   const [filterAuthor, setFilterAuthor] = useState<string>("");
   const [debouncedFilterAuthor, setDebouncedFilterAuthor] = useState<string>("");
   const [unfilteredSearch, setUnfilteredSearch] = useState(false);
+  const [bundleFormat, setBundleFormat] = useState<"gguf" | "safetensors">("gguf");
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFilterAuthor(filterAuthor.trim()), 350);
@@ -1691,6 +1692,7 @@ export function HuggingFaceBrowserPage() {
         mode: browserMode,
         profileId: isBundleMode ? bundle.profile?.id : null,
         bundleRole: isBundleMode ? bundle.currentRole : null,
+        bundleFormat: isBundleMode ? bundleFormat : null,
         unfiltered: unfilteredActive,
       });
       if (isDirectLookup && !isBundleMode) {
@@ -1719,6 +1721,7 @@ export function HuggingFaceBrowserPage() {
     isBundleMode,
     bundle.profile,
     bundle.currentRole,
+    bundleFormat,
     unfilteredActive,
   ]);
 
@@ -2697,6 +2700,29 @@ export function HuggingFaceBrowserPage() {
                           </button>
                         );
                       })}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10.5px] text-fg/35">
+                        {t("hfBrowser.bundle.formatLabel")}
+                      </span>
+                      {(["gguf", "safetensors"] as const).map((format) => (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => setBundleFormat(format)}
+                          title={t("hfBrowser.bundle.formatHint")}
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-[10.5px] font-medium transition",
+                            bundleFormat === format
+                              ? "border-accent/35 bg-accent/10 text-accent"
+                              : "border-fg/10 text-fg/35 hover:border-fg/25 hover:text-fg/60",
+                          )}
+                        >
+                          {format === "gguf"
+                            ? t("hfBrowser.bundle.formatGguf")
+                            : t("hfBrowser.bundle.formatSafetensors")}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
