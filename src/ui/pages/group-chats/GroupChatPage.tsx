@@ -99,6 +99,7 @@ export function GroupChatPage() {
 
   // State variables
   const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [totalMessageCount, setTotalMessageCount] = useState(0);
   const beetrootRain = useBeetrootRain();
   useBeetrootEasterEgg({ messages, fire: beetrootRain.fire });
   const [_participationStats, setParticipationStats] = useState<GroupParticipation[]>([]);
@@ -266,15 +267,17 @@ export function GroupChatPage() {
     if (!groupSessionId) return;
 
     try {
-      const [msgs, stats] = await Promise.all([
+      const [msgs, stats, msgCount] = await Promise.all([
         storageBridge.groupMessagesList(groupSessionId, MESSAGES_PAGE_SIZE),
         storageBridge.groupParticipationStats(groupSessionId),
+        storageBridge.groupMessageCount(groupSessionId),
       ]);
 
       setMessages(msgs);
       messagesRef.current = msgs;
       hasMoreOlderRef.current = msgs.length >= MESSAGES_PAGE_SIZE;
       setParticipationStats(stats);
+      setTotalMessageCount(msgCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.labels.loading"));
     } finally {
@@ -289,6 +292,15 @@ export function GroupChatPage() {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  const refreshMessageCount = useCallback(async () => {
+    if (!groupSessionId) return;
+    try {
+      setTotalMessageCount(await storageBridge.groupMessageCount(groupSessionId));
+    } catch (err) {
+      console.warn("GroupChatPage: failed to load message count", err);
+    }
+  }, [groupSessionId]);
 
   const loadOlderGroupMessages = useCallback(async () => {
     if (!groupSessionId) return;
@@ -621,6 +633,7 @@ export function GroupChatPage() {
         await storageBridge.groupChatAddUserMessage(groupSessionId, trimmed);
         const updated = await storageBridge.groupMessagesList(groupSessionId, MESSAGES_PAGE_SIZE);
         setMessages(updated);
+        await refreshMessageCount();
         return true;
       } catch (err) {
         console.error("Failed to add user message:", err);
@@ -629,7 +642,7 @@ export function GroupChatPage() {
         return false;
       }
     },
-    [groupSessionId, messages.length, scrollToBottom],
+    [groupSessionId, messages.length, refreshMessageCount, scrollToBottom],
   );
 
   const handleSend = useCallback(async () => {
@@ -788,6 +801,7 @@ export function GroupChatPage() {
       setSelectedCharacterId(null);
       setSelectedCharacterName(null);
       setSelectedCharacterAvatarUrl(null);
+      void refreshMessageCount();
     }
   }, [
     groupSessionId,
@@ -795,6 +809,7 @@ export function GroupChatPage() {
     sending,
     pendingAttachments,
     messages.length,
+    refreshMessageCount,
     scrollToBottom,
     triggerTypingHaptic,
     t,
@@ -1009,9 +1024,17 @@ export function GroupChatPage() {
         setSelectedCharacterId(null);
         setSelectedCharacterName(null);
         setSelectedCharacterAvatarUrl(null);
+        void refreshMessageCount();
       }
     },
-    [groupSessionId, sending, messages.length, scrollToBottom, triggerTypingHaptic],
+    [
+      groupSessionId,
+      sending,
+      messages.length,
+      refreshMessageCount,
+      scrollToBottom,
+      triggerTypingHaptic,
+    ],
   );
 
   const handleAbort = useCallback(async () => {
@@ -1211,13 +1234,14 @@ export function GroupChatPage() {
         MESSAGES_PAGE_SIZE,
       );
       setMessages(updatedMessages);
+      await refreshMessageCount();
       closeMessageActions();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setActionBusy(false);
     }
-  }, [messageAction, groupSessionId, closeMessageActions]);
+  }, [messageAction, groupSessionId, closeMessageActions, refreshMessageCount]);
 
   const handleRewindToMessage = useCallback(async () => {
     if (!messageAction || !groupSessionId) return;
@@ -1244,6 +1268,7 @@ export function GroupChatPage() {
         MESSAGES_PAGE_SIZE,
       );
       setMessages(updatedMessages);
+      await refreshMessageCount();
       const stats = await storageBridge.groupParticipationStats(groupSessionId);
       setParticipationStats(stats);
       const refreshedSession = await storageBridge.groupSessionGet(groupSessionId);
@@ -1256,7 +1281,14 @@ export function GroupChatPage() {
     } finally {
       setActionBusy(false);
     }
-  }, [messageAction, groupSessionId, closeMessageActions, messages, updateSession]);
+  }, [
+    messageAction,
+    groupSessionId,
+    closeMessageActions,
+    messages,
+    refreshMessageCount,
+    updateSession,
+  ]);
 
   const handleTogglePin = useCallback(async () => {
     if (!messageAction || !groupSessionId) return;
@@ -1998,7 +2030,7 @@ export function GroupChatPage() {
       persona: currentPersona,
       session: (session as unknown as Session) ?? null,
       hasBackground: !!backgroundImageData,
-      messageCount: messages.filter((m) => !m.id.startsWith("placeholder")).length,
+      messageCount: totalMessageCount,
       sceneName: null,
       memories: session?.memories ?? [],
       personas,
@@ -2064,6 +2096,7 @@ export function GroupChatPage() {
     currentPersona,
     backgroundImageData,
     messages,
+    totalMessageCount,
     session,
     personas,
     settings,
