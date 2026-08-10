@@ -846,10 +846,10 @@ function AppContent() {
 
   const preSettingsPathRef = useRef<string>("/");
   useEffect(() => {
-    if (!isSettingRoute) {
+    if (!isSettingRoute && !isPlaygroundRoute) {
       preSettingsPathRef.current = location.pathname + location.search;
     }
-  }, [isSettingRoute, location.pathname, location.search]);
+  }, [isPlaygroundRoute, isSettingRoute, location.pathname, location.search]);
 
   const [navStyle, setNavStyle] = useState<NavigationStyle>(
     () =>
