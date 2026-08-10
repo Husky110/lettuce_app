@@ -10,6 +10,7 @@ import {
   Trash2,
   Star,
   StarOff,
+  Copy,
   Download,
   AlertTriangle,
   Layers,
@@ -105,6 +106,7 @@ export function ModelsPage() {
   const [exportTarget, setExportTarget] = useState<Model | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     if (typeof window === "undefined") return "alphabetical";
     const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
@@ -233,6 +235,34 @@ export function ModelsPage() {
       toast.error(t("models.toasts.exportFailed"), String(error));
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDuplicateModel = async (model: Model) => {
+    if (duplicating) return;
+    try {
+      setDuplicating(true);
+      const { id, createdAt, ...rest } = model;
+      const baseName = t("models.duplicateSuffix", { name: model.displayName || model.name });
+      const taken = new Set(models.map((entry) => entry.displayName || entry.name));
+      let displayName = baseName;
+      let attempt = 2;
+      while (taken.has(displayName)) {
+        displayName = `${baseName} ${attempt}`;
+        attempt += 1;
+      }
+      const duplicate = await addOrUpdateModel({ ...rest, displayName });
+      toast.success(
+        t("models.toasts.duplicateSuccessTitle"),
+        t("models.toasts.duplicateSuccessDescription", {
+          name: duplicate.displayName || duplicate.name,
+        }),
+      );
+    } catch (error) {
+      console.error("Failed to duplicate model:", error);
+      toast.error(t("models.toasts.duplicateFailed"), String(error));
+    } finally {
+      setDuplicating(false);
     }
   };
 
@@ -589,6 +619,20 @@ export function ModelsPage() {
                 setShowExportMenu(true);
               }}
               color="from-emerald-500 to-emerald-600"
+            />
+
+            <MenuButton
+              icon={Copy}
+              title={t("common.buttons.duplicate")}
+              description={t("models.menu.duplicateDescription")}
+              loading={duplicating}
+              disabled={duplicating}
+              onClick={() => {
+                const target = selectedModel;
+                setSelectedModel(null);
+                void handleDuplicateModel(target);
+              }}
+              color="from-secondary to-secondary/80"
             />
 
             <MenuButton
