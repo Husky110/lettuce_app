@@ -2027,6 +2027,7 @@ export function GroupChatPage() {
     return {
       character: contextCharacter,
       characters: groupCharacters,
+      isGroup: true,
       persona: currentPersona,
       session: (session as unknown as Session) ?? null,
       hasBackground: !!backgroundImageData,

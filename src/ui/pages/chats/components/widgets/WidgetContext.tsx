@@ -1,4 +1,5 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import type { WidgetAvailability } from "./editor/widgetFactories";
 import type {
   Character,
   CompanionTimeOverride,
@@ -11,6 +12,7 @@ export interface WidgetActionContext {
   character: Character | null;
   /** Group members, when in a group chat — enables per-widget character targeting. */
   characters?: Character[];
+  isGroup?: boolean;
   persona: Persona | null;
   session: Session | null;
   hasBackground: boolean;
@@ -64,4 +66,13 @@ export function useWidgetContext(): WidgetActionContext {
     throw new Error("useWidgetContext used outside WidgetContextProvider");
   }
   return ctx;
+}
+
+export function useWidgetAvailability(): WidgetAvailability {
+  const { character, isGroup } = useWidgetContext();
+  const mode = character?.mode;
+  return useMemo(
+    () => ({ isCompanion: mode === "companion", isGroup: !!isGroup }),
+    [mode, isGroup],
+  );
 }

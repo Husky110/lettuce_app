@@ -4,7 +4,7 @@ import type { TimeNode } from "../../../../../core/storage/chatWidgetSchemas";
 import { cn, interactive } from "../../../../design-tokens";
 import { DateTimePicker } from "../../../../components/DateTimePicker";
 import { useI18n, type TranslationKey } from "../../../../../core/i18n/context";
-import { useWidgetContext } from "./WidgetContext";
+import { useWidgetAvailability, useWidgetContext } from "./WidgetContext";
 import { useWidgetEdit } from "./WidgetEditContext";
 import { widgetCardClass } from "./widgetSurface";
 import { useCompanionTimeOverrideEditor } from "../../utils/companionTimeOverride";
@@ -17,12 +17,12 @@ const MODE_OPTIONS = [
 
 export function WidgetTime({ node }: { node: TimeNode }) {
   const { t } = useI18n();
-  const { hasBackground, character, session, onUpdateCompanionTimeOverride } =
-    useWidgetContext();
+  const { hasBackground, session, onUpdateCompanionTimeOverride } = useWidgetContext();
+  const { isCompanion, isGroup } = useWidgetAvailability();
   const { editing: areaEditing } = useWidgetEdit();
 
   const override = session?.companionState?.preferences?.timeOverride;
-  const canEdit = !areaEditing && !!session;
+  const canEdit = !areaEditing && !!session && isCompanion && !isGroup;
   const {
     activeMode,
     selectedMode,
@@ -59,7 +59,6 @@ export function WidgetTime({ node }: { node: TimeNode }) {
     [],
   );
 
-  const isCompanion = character?.mode === "companion";
   const awarenessOff = !session?.companionState?.preferences?.timeAwarenessEnabled;
 
   return (
@@ -176,7 +175,7 @@ export function WidgetTime({ node }: { node: TimeNode }) {
         </div>
       )}
 
-      {canEdit && isCompanion && awarenessOff && (
+      {canEdit && awarenessOff && (
         <p className="text-[10px] italic leading-snug text-fg/35">
           {t("chats.widgets.time.awarenessHint")}
         </p>

@@ -8,7 +8,8 @@ import { WidgetEditList } from "./WidgetEditList";
 import { WidgetEmptyState } from "./WidgetEmptyState";
 import { useWidgetEdit, type WidgetSide } from "./WidgetEditContext";
 import { WidgetTypePickerSheet } from "./editor/WidgetTypePickerSheet";
-import { createWidgetNode } from "./editor/widgetFactories";
+import { createWidgetNode, filterAvailableWidgets } from "./editor/widgetFactories";
+import { useWidgetAvailability } from "./WidgetContext";
 
 interface WidgetListProps {
   nodes: WidgetNode[];
@@ -18,8 +19,11 @@ interface WidgetListProps {
 
 export function WidgetList({ nodes, side, canMove }: WidgetListProps) {
   const edit = useWidgetEdit();
+  const availability = useWidgetAvailability();
   const [topPickerOpen, setTopPickerOpen] = useState(false);
-  const displayNodes = edit.editing ? edit.getNodes(side) : nodes;
+  const displayNodes = edit.editing
+    ? edit.getNodes(side)
+    : filterAvailableWidgets(nodes, availability);
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">

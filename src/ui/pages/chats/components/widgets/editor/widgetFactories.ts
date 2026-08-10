@@ -42,6 +42,37 @@ export const WIDGET_TYPE_DESC = {
   time: "chats.widgets.types.time.desc",
 } satisfies Record<WidgetType, TranslationKey>;
 
+const COMPANION_ONLY_TYPES: readonly WidgetType[] = ["companion_state"];
+
+export interface WidgetAvailability {
+  isCompanion: boolean;
+  isGroup: boolean;
+}
+
+export function isWidgetTypeAvailable(
+  type: WidgetType,
+  availability: WidgetAvailability,
+): boolean {
+  if (COMPANION_ONLY_TYPES.includes(type)) {
+    return availability.isCompanion && !availability.isGroup;
+  }
+  return true;
+}
+
+export function filterAvailableWidgets(
+  nodes: WidgetNode[],
+  availability: WidgetAvailability,
+): WidgetNode[] {
+  const kept = nodes.filter((node) => isWidgetTypeAvailable(node.type, availability));
+  return kept.some((node) => node.type === "box")
+    ? kept.map((node) =>
+        node.type === "box"
+          ? { ...node, children: filterAvailableWidgets(node.children, availability) }
+          : node,
+      )
+    : kept;
+}
+
 export function createWidgetNode(type: WidgetType): WidgetNode {
   const id = uuidv4();
   switch (type) {

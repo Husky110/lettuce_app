@@ -21,8 +21,9 @@ import type { LucideIcon } from "lucide-react";
 import { BottomMenu, MenuButton } from "../../../../../components";
 import { useI18n } from "../../../../../../core/i18n/context";
 import { openDocs } from "../../../../../../core/utils/docs";
-import { useWidgetContext } from "../WidgetContext";
+import { useWidgetAvailability } from "../WidgetContext";
 import {
+  isWidgetTypeAvailable,
   WIDGET_TYPE_DESC,
   WIDGET_TYPE_LABEL,
   type WidgetType,
@@ -78,11 +79,8 @@ export function WidgetTypePickerSheet({
   onPick,
 }: WidgetTypePickerSheetProps) {
   const { t } = useI18n();
-  const { character } = useWidgetContext();
-  const isCompanion = character?.mode === "companion";
-  const types = TYPE_ORDER.filter((type) =>
-    type === "companion_state" ? isCompanion : true,
-  );
+  const availability = useWidgetAvailability();
+  const types = TYPE_ORDER.filter((type) => isWidgetTypeAvailable(type, availability));
   return (
     <BottomMenu isOpen={open} onClose={onClose} title={t("chats.widgets.picker.title")}>
       <div className="flex flex-col gap-2">

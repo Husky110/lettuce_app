@@ -2,7 +2,8 @@ import { Sparkles } from "lucide-react";
 import type { CompanionStateNode } from "../../../../../core/storage/chatWidgetSchemas";
 import { cn } from "../../../../design-tokens";
 import { useI18n, type TranslationKey } from "../../../../../core/i18n/context";
-import { useWidgetContext } from "./WidgetContext";
+import { useWidgetAvailability, useWidgetContext } from "./WidgetContext";
+import { isWidgetTypeAvailable } from "./editor/widgetFactories";
 import { widgetCardClass } from "./widgetSurface";
 import { RELATIONSHIP_AXIS_ANCHORS } from "../../../characters/utils/companionDefaults";
 
@@ -83,8 +84,8 @@ function Meter({
 
 export function WidgetCompanionState({ node }: { node: CompanionStateNode }) {
   const { t } = useI18n();
-  const { character, session, hasBackground } = useWidgetContext();
-  const isCompanion = character?.mode === "companion";
+  const { session, hasBackground } = useWidgetContext();
+  const supported = isWidgetTypeAvailable("companion_state", useWidgetAvailability());
   const relationship = session?.companionState?.relationshipState;
 
   return (
@@ -100,7 +101,7 @@ export function WidgetCompanionState({ node }: { node: CompanionStateNode }) {
           {node.title || t("chats.widgets.companionState.defaultTitle")}
         </h3>
       </header>
-      {!isCompanion ? (
+      {!supported ? (
         <p className="text-[12px] italic text-fg/40">
           {t("chats.widgets.companionState.companionOnly")}
         </p>
