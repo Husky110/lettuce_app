@@ -26,6 +26,110 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "2.2.0 / 2.2.0",
+    date: "2026-08-13",
+    title: "2.2.0 — Local Image Generation, Transactional Sync & Companion Continuity",
+    description:
+      "Image generation now runs entirely on your own machine through stable-diffusion.cpp, with a three-pane Playground for iterating on prompts, LoRAs, and seeds. Device sync was replaced with a transactional engine that applies changes as a unit. Companions carry their soul, relationship, and memory across separate chats, GPU offload measures instead of guessing, and group chats got their own backend with per-character model overrides.",
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Local image generation: stable-diffusion.cpp runs as a managed sidecar on your own hardware, with an installer that pulls complete model bundles from HuggingFace, LoRA support, live progress, cancellation, img2img, inpainting, and upscaling.",
+      },
+      {
+        type: "feature",
+        description:
+          "Playground: a three-pane image workspace with the prompt on one side, settings on the other, and a feed of past generations recording the exact seed, model, and parameters that produced each one. Random seeds are materialized at generation time, so results stay reproducible.",
+      },
+      {
+        type: "feature",
+        description:
+          "LiteRouter and custom OpenAI-format image providers are supported, so any endpoint speaking the OpenAI image API works. The model selector and HuggingFace repo search now accept safetensors files, not just GGUF.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Device sync was replaced with a transactional engine: changes are captured, planned, and applied as a unit, so an interrupted sync no longer leaves half-applied data. Conflicts resolve last-writer-wins by original creation time across every data type.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sync refuses to run between mismatched app builds instead of exchanging data it cannot interpret, and stale sync state is repaired rather than left blocking.",
+      },
+      {
+        type: "feature",
+        description:
+          "Companions carry their soul, earned relationship progress, and shared memory across separate chats instead of starting over. Continuity is evidence-based: what changed is recorded with the moments that caused it, rather than a single number that could drift unexplained.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "Turn effects are separated from passive drift, so a specific exchange and the slow background change no longer overwrite each other, and earned relationship progress is preserved rather than recalculated away.",
+      },
+      {
+        type: "improvement",
+        description:
+          "GPU offload is priced from real tensor sizes read out of the GGUF index instead of estimated from layer counts, the output layer is recognized as offloading first and costing up to ten times a normal block, and the device compute reserve is measured rather than assumed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "KV cache is sized from per-layer geometry, including models that mix sliding-window and full attention. Multi-GPU distribution uses real per-unit costs, and recommending a VRAM context subtracts weights already resident on the card.",
+      },
+      {
+        type: "feature",
+        description:
+          "Custom sampler chains with saveable presets, plus configurable repeat penalty and penalty range. MTP models load and fit their bundled draft tensors, with configurable placement.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Prompt prefixes are cached across conversations, speculative decoding adapts its draft length, per-token streaming overhead was reduced, prompt microbatch size is configured separately from batch size, and native inference timings are reported.",
+      },
+      {
+        type: "feature",
+        description:
+          "Group chats run on a unified conversation backend with a proper session model, per-character model overrides so any participant can run on a different model, group system prompt overrides, branching to a 1-on-1 from any message with a memory cutoff, and classic or detailed list layouts.",
+      },
+      {
+        type: "feature",
+        description:
+          "Deterministic rewind: rewinding a chat restores the memory state as it was at that message, driven by a user-edit event log rather than a best-effort rebuild. Rebuilds after a rewind are bounded instead of cascading.",
+      },
+      {
+        type: "feature",
+        description:
+          "Desktop navigation is yours to arrange: six layouts (bottom bar, bottom bar with labels, dock, sidebar, floating sidebar, header), a configurable header, navigation on either side or edge, reorderable items, and a custom title bar.",
+      },
+      {
+        type: "feature",
+        description:
+          "NanoGPT subscription quota tracking, including usage reported during streamed completions, with quota meters colored by how close to the limit you are. Messages can be regenerated with a different model without changing the chat's model.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "Gemini in group chats works again: on installs where a database column was never created, every Gemini group reply failed outright. The schema is repaired on launch, and thought signatures are retained in group history the same way they are in 1-on-1 chats.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "More Gemini fixes: requested image aspect ratios are honored, v1beta base URLs are preserved, raw tool call names survive round-trips, tool declarations are cached with context, and unsupported image edit inputs are rejected with a clear error.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "Ollama models with strict templates no longer fail on stray system messages, lorebook triggers match keywords in languages without spaces, OpenRouter Gemini completion costs can no longer come out negative, and Android no longer uses an uninitialized platform TLS verifier.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "TTS on Windows no longer flashes espeak console windows and phonemizes in a single spawn, cancelled swipe replies stay after their prompt, Smart Creator preserves drafts when you open an editor, and sd.cpp shuts down with the app instead of surviving as an orphaned process.",
+      },
+    ],
+  },
+  {
     version: "2.1.1 / 2.1.1",
     date: "2026-07-04",
     title: "2.1.1 — Device Sync Rebuilt, Multi-GPU Clarity & Guided Tours",
