@@ -733,6 +733,26 @@ export const storageBridge = {
       id,
       chatAppearanceJson,
     }).then((s) => JSON.parse(s)),
+  groupUpdateCharacterModelOverride: (
+    id: string,
+    characterId: string,
+    modelId: string | null,
+  ) =>
+    invoke<string>("group_update_character_model_override", {
+      id,
+      characterId,
+      modelId,
+    }).then((s) => JSON.parse(s)),
+  groupUpdatePromptTemplate: (
+    id: string,
+    chatType: "conversation" | "roleplay",
+    promptTemplateId: string | null,
+  ) =>
+    invoke<string>("group_update_prompt_template", {
+      id,
+      chatType,
+      promptTemplateId,
+    }).then((s) => JSON.parse(s)),
   groupCreateSession: (groupId: string) =>
     invoke<string>("group_create_session", { groupId }).then((s) => JSON.parse(s)),
 
@@ -851,6 +871,26 @@ export const storageBridge = {
     invoke<string>("group_session_update_persona", {
       sessionId,
       personaId,
+    }).then((s) => JSON.parse(s)),
+  groupSessionUpdateCharacterModelOverride: (
+    sessionId: string,
+    characterId: string,
+    modelId: string | null,
+  ) =>
+    invoke<string>("group_session_update_character_model_override", {
+      sessionId,
+      characterId,
+      modelId,
+    }).then((s) => JSON.parse(s)),
+  groupSessionUpdatePromptTemplate: (
+    sessionId: string,
+    chatType: "conversation" | "roleplay",
+    promptTemplateId: string | null,
+  ) =>
+    invoke<string>("group_session_update_prompt_template", {
+      sessionId,
+      chatType,
+      promptTemplateId,
     }).then((s) => JSON.parse(s)),
   groupSessionClearOverride: (sessionId: string, key: string) =>
     invoke<string>("group_session_clear_config_override", {

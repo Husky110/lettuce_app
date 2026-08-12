@@ -30,7 +30,14 @@ import { BottomMenu, MenuSection } from "../../components";
 import { Routes, useNavigationManager } from "../../navigation";
 import { useGroupChatSettingsController } from "./hooks/useGroupChatSettingsController";
 import { useGroupChatLayoutContext } from "./GroupChatLayout";
-import { SectionHeader, CharacterAvatar, QuickChip, PersonaSelector } from "./components/settings";
+import {
+  SectionHeader,
+  CharacterAvatar,
+  QuickChip,
+  PersonaSelector,
+  GroupCharacterModelsSection,
+  GroupPromptTemplateSection,
+} from "./components/settings";
 import { OptionRow } from "./components/OptionRow";
 import { GroupAuthorNoteBottomMenu } from "./components";
 import { Switch } from "../../components/Switch";
@@ -139,6 +146,8 @@ export function GroupChatSettingsPage({
     handleAddCharacter,
     handleRemoveCharacter,
     handleChangeSpeakerSelectionMethod,
+    handleChangeCharacterModel,
+    handleChangePromptTemplate,
     handleSetCharacterMuted,
     handleUpdateBackgroundImage,
     handleSetDisableCharacterLorebooks,
@@ -1042,6 +1051,54 @@ export function GroupChatSettingsPage({
             <p className="mt-2 text-xs text-fg/40 text-center">
               {t("groupChats.sessionSettings.mutedCharactersNote")}
             </p>
+          </section>
+
+          <section className={spacing.item}>
+            <GroupCharacterModelsSection
+              characters={groupCharacters}
+              overrides={session.characterModelOverrides ?? {}}
+              onChange={(characterId, modelId) =>
+                void handleChangeCharacterModel(characterId, modelId)
+              }
+              disabled={saving}
+              footer={
+                <OverrideStatusRow
+                  show={isOverridden("characterModelOverrides")}
+                  onReset={() => void handleClearOverride("characterModelOverrides")}
+                  disabled={saving}
+                />
+              }
+            />
+          </section>
+
+          <section className={spacing.item}>
+            <GroupPromptTemplateSection
+              chatType={session.chatType}
+              templateId={
+                session.chatType === "roleplay"
+                  ? (session.groupChatRoleplayPromptTemplateId ?? null)
+                  : (session.groupChatPromptTemplateId ?? null)
+              }
+              onChange={(templateId) => void handleChangePromptTemplate(templateId)}
+              disabled={saving}
+              footer={
+                <OverrideStatusRow
+                  show={isOverridden(
+                    session.chatType === "roleplay"
+                      ? "groupChatRoleplayPromptTemplateId"
+                      : "groupChatPromptTemplateId",
+                  )}
+                  onReset={() =>
+                    void handleClearOverride(
+                      session.chatType === "roleplay"
+                        ? "groupChatRoleplayPromptTemplateId"
+                        : "groupChatPromptTemplateId",
+                    )
+                  }
+                  disabled={saving}
+                />
+              }
+            />
           </section>
 
           {/* Session Actions */}

@@ -242,6 +242,46 @@ export function useGroupSettingsController(groupId?: string) {
     [group, setUi],
   );
 
+  const handleChangeCharacterModel = useCallback(
+    async (characterId: string, modelId: string | null) => {
+      if (!group) return;
+      try {
+        setUi({ saving: true });
+        const updated = await storageBridge.groupUpdateCharacterModelOverride(
+          group.id,
+          characterId,
+          modelId,
+        );
+        setGroup(updated);
+      } catch (err) {
+        console.error("Failed to update character model override:", err);
+      } finally {
+        setUi({ saving: false });
+      }
+    },
+    [group, setUi],
+  );
+
+  const handleChangePromptTemplate = useCallback(
+    async (promptTemplateId: string | null) => {
+      if (!group) return;
+      try {
+        setUi({ saving: true });
+        const updated = await storageBridge.groupUpdatePromptTemplate(
+          group.id,
+          group.chatType,
+          promptTemplateId,
+        );
+        setGroup(updated);
+      } catch (err) {
+        console.error("Failed to update group prompt template:", err);
+      } finally {
+        setUi({ saving: false });
+      }
+    },
+    [group, setUi],
+  );
+
   const handleUpdateBackgroundImage = useCallback(
     async (nextPath: string | null) => {
       if (!group) return;
@@ -315,6 +355,8 @@ export function useGroupSettingsController(groupId?: string) {
     handleSetCharacterMuted,
     handleChangeSpeakerSelectionMethod,
     handleChangeMemoryType,
+    handleChangeCharacterModel,
+    handleChangePromptTemplate,
     handleUpdateBackgroundImage,
     handleSetDisableCharacterLorebooks,
   } as const;

@@ -878,7 +878,8 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
                     chat_type, starting_scene, background_image_path,
                     lorebook_ids, disable_character_lorebooks, author_note, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events,
                     memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides,
-                    parent_session_id, branched_from_message_id, root_session_id
+                    parent_session_id, branched_from_message_id, root_session_id,
+                    character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id
              FROM group_sessions",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -916,6 +917,9 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
                 "parent_session_id": r.get::<_, Option<String>>(26)?,
                 "branched_from_message_id": r.get::<_, Option<String>>(27)?,
                 "root_session_id": r.get::<_, Option<String>>(28)?,
+                "character_model_overrides": r.get::<_, Option<String>>(29)?.unwrap_or_else(|| "{}".to_string()),
+                "group_chat_prompt_template_id": r.get::<_, Option<String>>(30)?,
+                "group_chat_roleplay_prompt_template_id": r.get::<_, Option<String>>(31)?,
             });
             Ok((id, json))
         })
@@ -1283,7 +1287,8 @@ fn export_group_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Str
         .prepare(
             "SELECT id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at,
                     archived, chat_type, starting_scene, background_image_path, lorebook_ids,
-                    disable_character_lorebooks, chat_appearance, speaker_selection_method, memory_type
+                    disable_character_lorebooks, chat_appearance, speaker_selection_method, memory_type,
+                    character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id
              FROM group_characters
              ORDER BY updated_at DESC",
         )
@@ -1308,6 +1313,9 @@ fn export_group_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Str
                 "chat_appearance": r.get::<_, Option<String>>(13)?,
                 "speaker_selection_method": r.get::<_, Option<String>>(14)?,
                 "memory_type": r.get::<_, Option<String>>(15)?,
+                "character_model_overrides": r.get::<_, Option<String>>(16)?,
+                "group_chat_prompt_template_id": r.get::<_, Option<String>>(17)?,
+                "group_chat_roleplay_prompt_template_id": r.get::<_, Option<String>>(18)?,
             }))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -2893,8 +2901,9 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
                 "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
                  chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks,
                  author_note, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, memory_status, memory_error, memory_progress_step, speaker_selection_method, memory_type, config_overrides,
-                 parent_session_id, branched_from_message_id, root_session_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
+                 parent_session_id, branched_from_message_id, root_session_id,
+                 character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
                 params![
                     session_id,
                     group_character_id,
@@ -2937,6 +2946,12 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
                     item.get("root_session_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or(session_id),
+                    item.get("character_model_overrides")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("{}"),
+                    item.get("group_chat_prompt_template_id").and_then(|v| v.as_str()),
+                    item.get("group_chat_roleplay_prompt_template_id")
+                        .and_then(|v| v.as_str()),
                 ],
             )
             .map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Failed to insert group session {}: {}", session_id, e)))?;
@@ -3311,8 +3326,9 @@ fn import_group_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(
         for item in arr {
             conn.execute(
                 "INSERT INTO group_characters (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
-                 chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, chat_appearance, speaker_selection_method, memory_type)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, chat_appearance, speaker_selection_method, memory_type,
+                 character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     item.get("id").and_then(|v| v.as_str()),
                     item.get("name").and_then(|v| v.as_str()),
@@ -3340,6 +3356,12 @@ fn import_group_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(
                     item.get("memory_type")
                         .and_then(|v| v.as_str())
                         .unwrap_or("manual"),
+                    item.get("character_model_overrides")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("{}"),
+                    item.get("group_chat_prompt_template_id").and_then(|v| v.as_str()),
+                    item.get("group_chat_roleplay_prompt_template_id")
+                        .and_then(|v| v.as_str()),
                 ],
             )
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;

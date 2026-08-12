@@ -2595,6 +2595,8 @@ export const MessageSchema = z.object({
   reasoning: z.string().nullish(),
   /** Model actually used for this message generation */
   modelId: z.uuid().nullish(),
+  /** Exact Gemini model content retained for thought-signature replay */
+  geminiContent: z.unknown().nullish(),
 });
 export type StoredMessage = z.infer<typeof MessageSchema>;
 
@@ -2751,6 +2753,12 @@ export const GroupSessionSchema = z.object({
   memoryStatus: z.string().nullish().optional().default("idle"),
   memoryError: z.string().nullish().optional(),
   memoryProgressStep: z.number().int().nullish().optional(),
+  /** Per-character model overrides keyed by character id */
+  characterModelOverrides: z.record(z.string(), z.string()).default({}),
+  /** Group system prompt override used for conversation chats */
+  groupChatPromptTemplateId: z.string().nullish().optional(),
+  /** Group system prompt override used for roleplay chats */
+  groupChatRoleplayPromptTemplateId: z.string().nullish().optional(),
   configOverrides: z.record(z.string(), z.unknown()).default({ version: 1 }),
 });
 export type GroupSession = z.infer<typeof GroupSessionSchema>;
@@ -2766,6 +2774,9 @@ export const GROUP_SESSION_OVERRIDE_KEYS = [
   "disableCharacterLorebooks",
   "speakerSelectionMethod",
   "memoryType",
+  "characterModelOverrides",
+  "groupChatPromptTemplateId",
+  "groupChatRoleplayPromptTemplateId",
 ] as const;
 export type GroupSessionOverrideKey = (typeof GROUP_SESSION_OVERRIDE_KEYS)[number];
 
@@ -2793,6 +2804,12 @@ export const GroupSchema = z.object({
   speakerSelectionMethod: z.enum(["llm", "heuristic", "round_robin", "director", "director_action"]).default("llm"),
   memoryType: z.enum(["manual", "dynamic"]).default("manual"),
   chatAppearance: z.lazy(() => ChatAppearanceOverrideSchema).nullish(),
+  /** Per-character model overrides keyed by character id */
+  characterModelOverrides: z.record(z.string(), z.string()).default({}),
+  /** Group system prompt override used for conversation chats */
+  groupChatPromptTemplateId: z.string().nullish().optional(),
+  /** Group system prompt override used for roleplay chats */
+  groupChatRoleplayPromptTemplateId: z.string().nullish().optional(),
 });
 export type Group = z.infer<typeof GroupSchema>;
 

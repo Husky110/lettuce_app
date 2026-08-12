@@ -50,6 +50,9 @@ fn session(ids: &[&str], muted: &[&str]) -> GroupSession {
         memory_progress_step: None,
         speaker_selection_method: "llm".into(),
         memory_type: "manual".into(),
+        character_model_overrides: Default::default(),
+        group_chat_prompt_template_id: None,
+        group_chat_roleplay_prompt_template_id: None,
         config_overrides: serde_json::json!({ "version": 1 }),
     }
 }

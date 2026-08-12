@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
@@ -127,6 +128,15 @@ pub struct GroupSession {
     /// Private session-level author note injected into the prompt
     #[serde(default)]
     pub author_note: Option<String>,
+    /// Per-character model overrides keyed by character id
+    #[serde(default)]
+    pub character_model_overrides: BTreeMap<String, String>,
+    /// Group system prompt override used for conversation chats
+    #[serde(default)]
+    pub group_chat_prompt_template_id: Option<String>,
+    /// Group system prompt override used for roleplay chats
+    #[serde(default)]
+    pub group_chat_roleplay_prompt_template_id: Option<String>,
     #[serde(default = "default_group_config_overrides")]
     pub config_overrides: serde_json::Value,
 }
@@ -309,7 +319,8 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
             "SELECT id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at,
                     memories, memory_embeddings, memory_summary, memory_summary_token_count, archived, memory_tool_events,
                     chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks,
-                    speaker_selection_method, memory_type, memory_status, memory_error, memory_progress_step, author_note, config_overrides
+                    speaker_selection_method, memory_type, memory_status, memory_error, memory_progress_step, author_note, config_overrides,
+                    character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id
              FROM group_sessions WHERE id = ?1",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -438,6 +449,15 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
             .flatten()
             .and_then(|value| serde_json::from_str(&value).ok())
             .unwrap_or_else(default_group_config_overrides);
+        let mut character_model_overrides: BTreeMap<String, String> = row
+            .get::<_, Option<String>>(26)
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_str(&value).ok())
+            .unwrap_or_default();
+        character_model_overrides.retain(|cid, _| character_ids.contains(cid));
+        let group_chat_prompt_template_id: Option<String> = row.get(27).ok().flatten();
+        let group_chat_roleplay_prompt_template_id: Option<String> = row.get(28).ok().flatten();
         let session = GroupSession {
             id: row
                 .get(0)
@@ -476,6 +496,9 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
             speaker_selection_method,
             memory_type,
             author_note,
+            character_model_overrides,
+            group_chat_prompt_template_id,
+            group_chat_roleplay_prompt_template_id,
             config_overrides,
         };
         Ok(Some(resolve_group_session_config(conn, session)?.0))
@@ -493,7 +516,7 @@ fn resolve_group_session_config(
     };
     let profile = conn
         .query_row(
-            "SELECT character_ids, muted_character_ids, persona_id, COALESCE(chat_type, 'conversation'), starting_scene, background_image_path, COALESCE(lorebook_ids, '[]'), COALESCE(disable_character_lorebooks, 0), COALESCE(speaker_selection_method, 'llm'), COALESCE(memory_type, 'manual') FROM group_characters WHERE id = ?1",
+            "SELECT character_ids, muted_character_ids, persona_id, COALESCE(chat_type, 'conversation'), starting_scene, background_image_path, COALESCE(lorebook_ids, '[]'), COALESCE(disable_character_lorebooks, 0), COALESCE(speaker_selection_method, 'llm'), COALESCE(memory_type, 'manual'), COALESCE(character_model_overrides, '{}'), group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id FROM group_characters WHERE id = ?1",
             params![group_id],
             |row| {
                 Ok((
@@ -507,6 +530,9 @@ fn resolve_group_session_config(
                     row.get::<_, i64>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<String>>(12)?,
                 ))
             },
         )
@@ -563,6 +589,22 @@ fn resolve_group_session_config(
     session.memory_type = match value("memoryType") {
         Some(value) => value.as_str().unwrap_or("manual").to_string(),
         None => profile.9,
+    };
+    session.character_model_overrides = match value("characterModelOverrides") {
+        Some(value) => serde_json::from_value(value.clone()).unwrap_or_default(),
+        None => serde_json::from_str(&profile.10).unwrap_or_default(),
+    };
+    session
+        .character_model_overrides
+        .retain(|cid, _| session.character_ids.contains(cid));
+    session.group_chat_prompt_template_id = match value("groupChatPromptTemplateId") {
+        Some(value) => value.as_str().map(str::to_string),
+        None => profile.11,
+    };
+    session.group_chat_roleplay_prompt_template_id = match value("groupChatRoleplayPromptTemplateId")
+    {
+        Some(value) => value.as_str().map(str::to_string),
+        None => profile.12,
     };
     Ok(ResolvedGroupSession(session))
 }
@@ -1219,8 +1261,8 @@ pub fn group_session_duplicate(
         .ok();
 
     conn.execute(
-        "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, config_overrides)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 0, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, config_overrides, character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 0, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             new_id,
             source.group_character_id,
@@ -1235,7 +1277,11 @@ pub fn group_session_duplicate(
             serde_json::to_string(&source.lorebook_ids)
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
             source.disable_character_lorebooks as i64,
-            source.config_overrides.to_string()
+            source.config_overrides.to_string(),
+            serde_json::to_string(&source.character_model_overrides)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
+            source.group_chat_prompt_template_id,
+            source.group_chat_roleplay_prompt_template_id
         ],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1358,10 +1404,12 @@ pub fn group_session_duplicate_with_messages(
 
     let lorebook_ids_json = serde_json::to_string(&source.lorebook_ids)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let character_model_overrides_json = serde_json::to_string(&source.character_model_overrides)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let insert_result = conn.execute(
-        "INSERT INTO group_sessions (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, group_character_id, config_overrides)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+        "INSERT INTO group_sessions (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, group_character_id, config_overrides, character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             new_id,
             name,
@@ -1380,14 +1428,17 @@ pub fn group_session_duplicate_with_messages(
             memory_summary_token_count,
             memory_tool_events_json,
             source.group_character_id,
-            source.config_overrides.to_string()
+            source.config_overrides.to_string(),
+            character_model_overrides_json,
+            source.group_chat_prompt_template_id,
+            source.group_chat_roleplay_prompt_template_id
         ],
     );
 
     if insert_result.is_err() {
         conn.execute(
-            "INSERT INTO group_sessions (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, lorebook_ids, disable_character_lorebooks, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, group_character_id, config_overrides)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            "INSERT INTO group_sessions (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, lorebook_ids, disable_character_lorebooks, memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, group_character_id, config_overrides, character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 new_id,
                 name,
@@ -1405,7 +1456,10 @@ pub fn group_session_duplicate_with_messages(
                 memory_summary_token_count,
                 memory_tool_events_json,
                 source.group_character_id,
-                source.config_overrides.to_string()
+                source.config_overrides.to_string(),
+                character_model_overrides_json,
+                source.group_chat_prompt_template_id,
+                source.group_chat_roleplay_prompt_template_id
             ],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1748,6 +1802,9 @@ pub fn group_session_create(
         speaker_selection_method: selection_method,
         memory_type: "manual".to_string(),
         author_note: None,
+        character_model_overrides: BTreeMap::new(),
+        group_chat_prompt_template_id: None,
+        group_chat_roleplay_prompt_template_id: None,
         config_overrides: default_group_config_overrides(),
     };
 
@@ -2286,7 +2343,7 @@ pub fn group_session_update_muted_character_ids(
     }
 }
 
-const GROUP_SESSION_OVERRIDE_KEYS: [&str; 10] = [
+const GROUP_SESSION_OVERRIDE_KEYS: [&str; 13] = [
     "characterIds",
     "mutedCharacterIds",
     "personaId",
@@ -2297,6 +2354,9 @@ const GROUP_SESSION_OVERRIDE_KEYS: [&str; 10] = [
     "disableCharacterLorebooks",
     "speakerSelectionMethod",
     "memoryType",
+    "characterModelOverrides",
+    "groupChatPromptTemplateId",
+    "groupChatRoleplayPromptTemplateId",
 ];
 
 #[tauri::command]
@@ -2317,6 +2377,108 @@ pub fn group_session_update_persona(
         &conn,
         &session_id,
         &[("personaId", serde_json::json!(persona_id))],
+    )?;
+
+    match read_group_session(&conn, &session_id)? {
+        Some(session) => serde_json::to_string(&session)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e)),
+        None => Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Session not found",
+        )),
+    }
+}
+
+#[tauri::command]
+pub fn group_session_update_character_model_override(
+    session_id: String,
+    character_id: String,
+    model_id: Option<String>,
+    pool: State<'_, SwappablePool>,
+) -> Result<String, String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms() as i64;
+
+    let session =
+        read_group_session(&conn, &session_id)?.ok_or_else(|| "Session not found".to_string())?;
+    if !session.character_ids.contains(&character_id) {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Character is not a participant of this session",
+        ));
+    }
+
+    let mut overrides = session.character_model_overrides.clone();
+    match model_id.filter(|id| !id.trim().is_empty()) {
+        Some(id) => {
+            overrides.insert(character_id, id);
+        }
+        None => {
+            overrides.remove(&character_id);
+        }
+    }
+    let overrides_json = serde_json::to_string(&overrides)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    conn.execute(
+        "UPDATE group_sessions SET character_model_overrides = ?1, updated_at = ?2 WHERE id = ?3",
+        params![overrides_json, now, session_id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    write_group_config_overrides(
+        &conn,
+        &session_id,
+        &[("characterModelOverrides", serde_json::json!(overrides))],
+    )?;
+
+    match read_group_session(&conn, &session_id)? {
+        Some(session) => serde_json::to_string(&session)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e)),
+        None => Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Session not found",
+        )),
+    }
+}
+
+#[tauri::command]
+pub fn group_session_update_prompt_template(
+    session_id: String,
+    chat_type: String,
+    prompt_template_id: Option<String>,
+    pool: State<'_, SwappablePool>,
+) -> Result<String, String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms() as i64;
+
+    let (column, override_key) = match chat_type.as_str() {
+        "roleplay" => (
+            "group_chat_roleplay_prompt_template_id",
+            "groupChatRoleplayPromptTemplateId",
+        ),
+        "conversation" => ("group_chat_prompt_template_id", "groupChatPromptTemplateId"),
+        _ => {
+            return Err(crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                "Invalid chat_type. Must be 'conversation' or 'roleplay'",
+            ))
+        }
+    };
+    let prompt_template_id = prompt_template_id.filter(|id| !id.trim().is_empty());
+
+    conn.execute(
+        &format!("UPDATE group_sessions SET {column} = ?1, updated_at = ?2 WHERE id = ?3"),
+        params![prompt_template_id, now, session_id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    write_group_config_overrides(
+        &conn,
+        &session_id,
+        &[(override_key, serde_json::json!(prompt_template_id))],
     )?;
 
     match read_group_session(&conn, &session_id)? {
@@ -2473,6 +2635,31 @@ pub fn group_session_clear_config_override(
                 tx.execute(
                     "UPDATE group_sessions SET memory_type = ?1 WHERE id = ?2",
                     params![resolved.memory_type, session_id],
+                )
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            }
+            "characterModelOverrides" => {
+                tx.execute(
+                    "UPDATE group_sessions SET character_model_overrides = ?1 WHERE id = ?2",
+                    params![
+                        serde_json::to_string(&resolved.character_model_overrides)
+                            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
+                        session_id
+                    ],
+                )
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            }
+            "groupChatPromptTemplateId" => {
+                tx.execute(
+                    "UPDATE group_sessions SET group_chat_prompt_template_id = ?1 WHERE id = ?2",
+                    params![resolved.group_chat_prompt_template_id, session_id],
+                )
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            }
+            "groupChatRoleplayPromptTemplateId" => {
+                tx.execute(
+                    "UPDATE group_sessions SET group_chat_roleplay_prompt_template_id = ?1 WHERE id = ?2",
+                    params![resolved.group_chat_roleplay_prompt_template_id, session_id],
                 )
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
             }
@@ -3681,6 +3868,9 @@ mod group_config_tests {
             speaker_selection_method: "llm".to_string(),
             memory_type: "manual".to_string(),
             author_note: None,
+            character_model_overrides: BTreeMap::new(),
+            group_chat_prompt_template_id: None,
+            group_chat_roleplay_prompt_template_id: None,
             config_overrides,
         }
     }
@@ -3699,12 +3889,17 @@ mod group_config_tests {
                 lorebook_ids TEXT,
                 disable_character_lorebooks INTEGER,
                 speaker_selection_method TEXT,
-                memory_type TEXT
+                memory_type TEXT,
+                character_model_overrides TEXT,
+                group_chat_prompt_template_id TEXT,
+                group_chat_roleplay_prompt_template_id TEXT
             );
             INSERT INTO group_characters VALUES (
                 'profile', '[\"profile-character\"]', '[]', 'profile-persona',
                 'roleplay', '{\"content\":\"scene\"}', 'profile.png', '[\"lore\"]',
-                1, 'round_robin', 'dynamic'
+                1, 'round_robin', 'dynamic',
+                '{\"profile-character\":\"profile-model\"}', 'profile-conversation-template',
+                'profile-roleplay-template'
             );",
         )
         .unwrap();
@@ -3727,6 +3922,18 @@ mod group_config_tests {
             resolved.background_image_path.as_deref(),
             Some("profile.png")
         );
+        assert_eq!(
+            resolved.character_model_overrides.get("profile-character"),
+            Some(&"profile-model".to_string())
+        );
+        assert_eq!(
+            resolved.group_chat_prompt_template_id.as_deref(),
+            Some("profile-conversation-template")
+        );
+        assert_eq!(
+            resolved.group_chat_roleplay_prompt_template_id.as_deref(),
+            Some("profile-roleplay-template")
+        );
     }
 
     #[test]
@@ -3738,7 +3945,9 @@ mod group_config_tests {
                 "characterIds": ["override-character"],
                 "personaId": null,
                 "backgroundImagePath": null,
-                "memoryType": "manual"
+                "memoryType": "manual",
+                "characterModelOverrides": { "override-character": "session-model" },
+                "groupChatRoleplayPromptTemplateId": null
             })),
         )
         .unwrap()
@@ -3747,5 +3956,10 @@ mod group_config_tests {
         assert_eq!(resolved.persona_id, None);
         assert_eq!(resolved.background_image_path, None);
         assert_eq!(resolved.memory_type, "manual");
+        assert_eq!(
+            resolved.character_model_overrides.get("override-character"),
+            Some(&"session-model".to_string())
+        );
+        assert_eq!(resolved.group_chat_roleplay_prompt_template_id, None);
     }
 }

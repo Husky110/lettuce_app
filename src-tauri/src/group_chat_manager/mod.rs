@@ -5186,11 +5186,16 @@ fn build_group_system_prompt(
     } else {
         prompts::APP_GROUP_CHAT_TEMPLATE_ID
     };
-    let group_template_id = if is_roleplay {
+    let session_template_id = if is_roleplay {
+        session.group_chat_roleplay_prompt_template_id.as_deref()
+    } else {
+        session.group_chat_prompt_template_id.as_deref()
+    };
+    let group_template_id = session_template_id.or(if is_roleplay {
         character.group_chat_roleplay_prompt_template_id.as_deref()
     } else {
         character.group_chat_prompt_template_id.as_deref()
-    };
+    });
     let group_prompt_type = if is_roleplay {
         PromptTemplateType::GroupChatRoleplay
     } else {
@@ -5840,7 +5845,29 @@ async fn generate_character_response(
     };
 
     // Get model and credentials
-    let (model, credential) = select_model_with_credential(settings, &character, model_override)?;
+    let session_model_override = context
+        .session
+        .character_model_overrides
+        .get(selected_character_id)
+        .map(String::as_str)
+        .filter(|id| {
+            let found = settings.models.iter().any(|model| model.id == *id);
+            if !found {
+                log_warn(
+                    app,
+                    "group_chat",
+                    format!(
+                        "character model override {id} for {selected_character_id} not found; falling back"
+                    ),
+                );
+            }
+            found
+        });
+    let (model, credential) = select_model_with_credential(
+        settings,
+        &character,
+        model_override.or(session_model_override),
+    )?;
 
     let dynamic_settings = effective_group_dynamic_memory_settings(settings);
 

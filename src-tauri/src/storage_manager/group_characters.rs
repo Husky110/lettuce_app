@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tauri::State;
 use uuid::Uuid;
 
@@ -36,6 +37,15 @@ pub struct Group {
     pub memory_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_appearance: Option<serde_json::Value>,
+    /// Per-character model overrides keyed by character id
+    #[serde(default)]
+    pub character_model_overrides: BTreeMap<String, String>,
+    /// Group system prompt override used for conversation chats
+    #[serde(default)]
+    pub group_chat_prompt_template_id: Option<String>,
+    /// Group system prompt override used for roleplay chats
+    #[serde(default)]
+    pub group_chat_roleplay_prompt_template_id: Option<String>,
 }
 
 fn default_memory_type() -> String {
@@ -133,7 +143,7 @@ fn reconcile_inheriting_session_participation(
 fn mirror_profile_defaults_to_sessions(conn: &Connection, group_id: &str) -> Result<(), String> {
     let profile = conn
         .query_row(
-            "SELECT character_ids, muted_character_ids, persona_id, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, speaker_selection_method, memory_type FROM group_characters WHERE id = ?1",
+            "SELECT character_ids, muted_character_ids, persona_id, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, speaker_selection_method, memory_type, COALESCE(character_model_overrides, '{}'), group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id FROM group_characters WHERE id = ?1",
             params![group_id],
             |row| {
                 Ok((
@@ -147,6 +157,9 @@ fn mirror_profile_defaults_to_sessions(conn: &Connection, group_id: &str) -> Res
                     row.get::<_, i64>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<String>>(12)?,
                 ))
             },
         )
@@ -188,7 +201,10 @@ fn mirror_profile_defaults_to_sessions(conn: &Connection, group_id: &str) -> Res
                 lorebook_ids = CASE WHEN ?13 THEN lorebook_ids ELSE ?14 END,
                 disable_character_lorebooks = CASE WHEN ?15 THEN disable_character_lorebooks ELSE ?16 END,
                 speaker_selection_method = CASE WHEN ?17 THEN speaker_selection_method ELSE ?18 END,
-                memory_type = CASE WHEN ?19 THEN memory_type ELSE ?20 END
+                memory_type = CASE WHEN ?19 THEN memory_type ELSE ?20 END,
+                character_model_overrides = CASE WHEN ?22 THEN character_model_overrides ELSE ?23 END,
+                group_chat_prompt_template_id = CASE WHEN ?24 THEN group_chat_prompt_template_id ELSE ?25 END,
+                group_chat_roleplay_prompt_template_id = CASE WHEN ?26 THEN group_chat_roleplay_prompt_template_id ELSE ?27 END
              WHERE id = ?21",
             params![
                 has("characterIds") as i64,
@@ -212,6 +228,12 @@ fn mirror_profile_defaults_to_sessions(conn: &Connection, group_id: &str) -> Res
                 has("memoryType") as i64,
                 profile.9,
                 session_id,
+                has("characterModelOverrides") as i64,
+                profile.10,
+                has("groupChatPromptTemplateId") as i64,
+                profile.11,
+                has("groupChatRoleplayPromptTemplateId") as i64,
+                profile.12,
             ],
         )
         .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;
@@ -235,7 +257,10 @@ fn read_group(conn: &Connection, id: &str) -> Result<Option<Group>, String> {
                     COALESCE(disable_character_lorebooks, 0),
                     COALESCE(speaker_selection_method, 'llm'),
                     COALESCE(memory_type, 'manual'),
-                    chat_appearance
+                    chat_appearance,
+                    COALESCE(character_model_overrides, '{}'),
+                    group_chat_prompt_template_id,
+                    group_chat_roleplay_prompt_template_id
              FROM group_characters
              WHERE id = ?1",
         )
@@ -282,6 +307,13 @@ fn read_group(conn: &Connection, id: &str) -> Result<Option<Group>, String> {
             .and_then(|s| serde_json::from_str(&s).ok())
             .filter(|v: &serde_json::Value| v.is_object());
 
+        let mut character_model_overrides: BTreeMap<String, String> = row
+            .get::<_, Option<String>>(16)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+        character_model_overrides.retain(|cid, _| character_ids.contains(cid));
+
         Ok(Some(Group {
             id: row
                 .get(0)
@@ -323,6 +355,13 @@ fn read_group(conn: &Connection, id: &str) -> Result<Option<Group>, String> {
                 .get(14)
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
             chat_appearance,
+            character_model_overrides,
+            group_chat_prompt_template_id: row
+                .get(17)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
+            group_chat_roleplay_prompt_template_id: row
+                .get(18)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
         }))
     } else {
         Ok(None)
@@ -522,6 +561,9 @@ pub fn group_create(
         speaker_selection_method: selection_method,
         memory_type: "manual".to_string(),
         chat_appearance: None,
+        character_model_overrides: BTreeMap::new(),
+        group_chat_prompt_template_id: None,
+        group_chat_roleplay_prompt_template_id: None,
     };
 
     serde_json::to_string(&item)
@@ -679,6 +721,9 @@ pub fn group_update(
         speaker_selection_method: next_speaker_selection_method,
         memory_type: existing.memory_type,
         chat_appearance: existing.chat_appearance,
+        character_model_overrides: existing.character_model_overrides,
+        group_chat_prompt_template_id: existing.group_chat_prompt_template_id,
+        group_chat_roleplay_prompt_template_id: existing.group_chat_roleplay_prompt_template_id,
     };
 
     serde_json::to_string(&updated)
@@ -750,6 +795,87 @@ pub fn group_update_memory_type(
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     mirror_profile_defaults_to_sessions(&conn, &id)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn group_update_character_model_override(
+    id: String,
+    character_id: String,
+    model_id: Option<String>,
+    pool: State<'_, SwappablePool>,
+) -> Result<String, String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms() as i64;
+
+    let group = read_group(&conn, &id)?
+        .ok_or_else(|| crate::utils::err_msg(module_path!(), line!(), "Group not found"))?;
+    if !group.character_ids.contains(&character_id) {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Character is not a participant of this group",
+        ));
+    }
+
+    let mut overrides = group.character_model_overrides;
+    match model_id.filter(|value| !value.trim().is_empty()) {
+        Some(model_id) => {
+            overrides.insert(character_id, model_id);
+        }
+        None => {
+            overrides.remove(&character_id);
+        }
+    }
+    let overrides_json = serde_json::to_string(&overrides)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    conn.execute(
+        "UPDATE group_characters SET character_model_overrides = ?1, updated_at = ?2 WHERE id = ?3",
+        params![overrides_json, now, id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    mirror_profile_defaults_to_sessions(&conn, &id)?;
+
+    let refreshed = read_group(&conn, &id)?
+        .ok_or_else(|| crate::utils::err_msg(module_path!(), line!(), "Group not found"))?;
+    serde_json::to_string(&refreshed)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub fn group_update_prompt_template(
+    id: String,
+    chat_type: String,
+    prompt_template_id: Option<String>,
+    pool: State<'_, SwappablePool>,
+) -> Result<String, String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms() as i64;
+
+    let column = match chat_type.as_str() {
+        "roleplay" => "group_chat_roleplay_prompt_template_id",
+        "conversation" => "group_chat_prompt_template_id",
+        _ => {
+            return Err(crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                "Invalid chat_type. Must be 'conversation' or 'roleplay'",
+            ))
+        }
+    };
+    let prompt_template_id = prompt_template_id.filter(|value| !value.trim().is_empty());
+
+    conn.execute(
+        &format!("UPDATE group_characters SET {column} = ?1, updated_at = ?2 WHERE id = ?3"),
+        params![prompt_template_id, now, id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    mirror_profile_defaults_to_sessions(&conn, &id)?;
+
+    let refreshed = read_group(&conn, &id)?
+        .ok_or_else(|| crate::utils::err_msg(module_path!(), line!(), "Group not found"))?;
+    serde_json::to_string(&refreshed)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
 #[tauri::command]
@@ -944,8 +1070,8 @@ pub fn group_create_session(
         .and_then(|s| serde_json::to_string(s).ok());
 
     conn.execute(
-        "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, speaker_selection_method, memory_type)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 0, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived, chat_type, starting_scene, background_image_path, lorebook_ids, disable_character_lorebooks, speaker_selection_method, memory_type, character_model_overrides, group_chat_prompt_template_id, group_chat_roleplay_prompt_template_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 0, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             session_id,
             group_id,
@@ -962,6 +1088,10 @@ pub fn group_create_session(
             config.disable_character_lorebooks as i64,
             &config.speaker_selection_method,
             &config.memory_type,
+            serde_json::to_string(&config.character_model_overrides)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
+            &config.group_chat_prompt_template_id,
+            &config.group_chat_roleplay_prompt_template_id,
         ],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -999,14 +1129,19 @@ mod profile_mirroring_tests {
                 persona_id TEXT, chat_type TEXT, starting_scene TEXT,
                 background_image_path TEXT, lorebook_ids TEXT,
                 disable_character_lorebooks INTEGER, speaker_selection_method TEXT,
-                memory_type TEXT
+                memory_type TEXT, character_model_overrides TEXT,
+                group_chat_prompt_template_id TEXT,
+                group_chat_roleplay_prompt_template_id TEXT
             );
             CREATE TABLE group_sessions (
                 id TEXT PRIMARY KEY, group_character_id TEXT, config_overrides TEXT,
                 character_ids TEXT, muted_character_ids TEXT, persona_id TEXT,
                 chat_type TEXT, starting_scene TEXT, background_image_path TEXT,
                 lorebook_ids TEXT, disable_character_lorebooks INTEGER,
-                speaker_selection_method TEXT, memory_type TEXT
+                speaker_selection_method TEXT, memory_type TEXT,
+                character_model_overrides TEXT,
+                group_chat_prompt_template_id TEXT,
+                group_chat_roleplay_prompt_template_id TEXT
             );
             CREATE TABLE group_participation (
                 id TEXT PRIMARY KEY, session_id TEXT, character_id TEXT,
@@ -1014,15 +1149,17 @@ mod profile_mirroring_tests {
             );
             INSERT INTO group_characters VALUES (
                 'profile', '[\"one\",\"two\"]', '[]', 'persona', 'roleplay', NULL,
-                'background.png', '[\"lore\"]', 1, 'round_robin', 'dynamic'
+                'background.png', '[\"lore\"]', 1, 'round_robin', 'dynamic',
+                '{\"one\":\"profile-model\"}', 'profile-conversation', 'profile-roleplay'
             );
             INSERT INTO group_sessions VALUES (
                 'inherited', 'profile', '{\"version\":1}', '[\"old\"]', '[]', NULL,
-                'conversation', NULL, NULL, '[]', 0, 'llm', 'manual'
+                'conversation', NULL, NULL, '[]', 0, 'llm', 'manual', '{}', NULL, NULL
             );
             INSERT INTO group_sessions VALUES (
-                'overridden', 'profile', '{\"version\":1,\"characterIds\":[\"custom\"],\"memoryType\":\"manual\"}',
-                '[\"custom\"]', '[]', NULL, 'conversation', NULL, NULL, '[]', 0, 'llm', 'manual'
+                'overridden', 'profile', '{\"version\":1,\"characterIds\":[\"custom\"],\"memoryType\":\"manual\",\"characterModelOverrides\":{\"custom\":\"session-model\"}}',
+                '[\"custom\"]', '[]', NULL, 'conversation', NULL, NULL, '[]', 0, 'llm', 'manual',
+                '{\"custom\":\"session-model\"}', NULL, NULL
             );",
         )
         .unwrap();
@@ -1045,6 +1182,35 @@ mod profile_mirroring_tests {
             .unwrap();
         assert_eq!(inherited, ("[\"one\",\"two\"]".to_string(), "dynamic".to_string()));
         assert_eq!(overridden, ("[\"custom\"]".to_string(), "manual".to_string()));
+
+        let mirrored_models: (String, Option<String>) = conn
+            .query_row(
+                "SELECT character_model_overrides, group_chat_roleplay_prompt_template_id FROM group_sessions WHERE id = 'inherited'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let kept_models: (String, Option<String>) = conn
+            .query_row(
+                "SELECT character_model_overrides, group_chat_roleplay_prompt_template_id FROM group_sessions WHERE id = 'overridden'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            mirrored_models,
+            (
+                "{\"one\":\"profile-model\"}".to_string(),
+                Some("profile-roleplay".to_string())
+            )
+        );
+        assert_eq!(
+            kept_models,
+            (
+                "{\"custom\":\"session-model\"}".to_string(),
+                Some("profile-roleplay".to_string())
+            )
+        );
 
         let inherited_participants: i64 = conn
             .query_row(

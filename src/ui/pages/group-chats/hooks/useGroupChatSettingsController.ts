@@ -215,6 +215,46 @@ export function useGroupChatSettingsController(
     [session, setUi, updateSession],
   );
 
+  const handleChangeCharacterModel = useCallback(
+    async (characterId: string, modelId: string | null) => {
+      if (!session) return;
+      try {
+        setUi({ saving: true });
+        const updated = await storageBridge.groupSessionUpdateCharacterModelOverride(
+          session.id,
+          characterId,
+          modelId,
+        );
+        updateSession?.(updated);
+      } catch (err) {
+        console.error("Failed to update character model override:", err);
+      } finally {
+        setUi({ saving: false });
+      }
+    },
+    [session, setUi, updateSession],
+  );
+
+  const handleChangePromptTemplate = useCallback(
+    async (promptTemplateId: string | null) => {
+      if (!session) return;
+      try {
+        setUi({ saving: true });
+        const updated = await storageBridge.groupSessionUpdatePromptTemplate(
+          session.id,
+          session.chatType,
+          promptTemplateId,
+        );
+        updateSession?.(updated);
+      } catch (err) {
+        console.error("Failed to update group prompt template:", err);
+      } finally {
+        setUi({ saving: false });
+      }
+    },
+    [session, setUi, updateSession],
+  );
+
   const handleSetCharacterMuted = useCallback(
     async (characterId: string, muted: boolean) => {
       if (!session) return;
@@ -334,6 +374,8 @@ export function useGroupChatSettingsController(
     handleAddCharacter,
     handleRemoveCharacter,
     handleChangeSpeakerSelectionMethod,
+    handleChangeCharacterModel,
+    handleChangePromptTemplate,
     handleSetCharacterMuted,
     handleUpdateBackgroundImage,
     handleSetDisableCharacterLorebooks,

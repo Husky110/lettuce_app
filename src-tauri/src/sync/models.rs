@@ -262,14 +262,30 @@ pub struct GroupCharacter {
     pub chat_type: String,
     pub starting_scene: Option<String>,
     pub background_image_path: Option<String>,
+    #[serde(default)]
+    pub lorebook_ids: String,
+    #[serde(default)]
+    pub disable_character_lorebooks: i64,
+    #[serde(default)]
+    pub chat_appearance: Option<String>,
     #[serde(default = "default_speaker_selection_method")]
     pub speaker_selection_method: String,
     #[serde(default = "default_memory_type")]
     pub memory_type: String,
+    #[serde(default = "default_character_model_overrides_json")]
+    pub character_model_overrides: String,
+    #[serde(default)]
+    pub group_chat_prompt_template_id: Option<String>,
+    #[serde(default)]
+    pub group_chat_roleplay_prompt_template_id: Option<String>,
 }
 
 fn default_group_config_overrides_json() -> String {
     "{\"version\":1}".to_string()
+}
+
+fn default_character_model_overrides_json() -> String {
+    "{}".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -707,6 +723,8 @@ pub struct GroupSession {
     pub starting_scene: Option<String>,
     pub background_image_path: Option<String>,
     #[serde(default)]
+    pub author_note: Option<String>,
+    #[serde(default)]
     pub lorebook_ids: String,
     #[serde(default)]
     pub disable_character_lorebooks: i64,
@@ -727,6 +745,12 @@ pub struct GroupSession {
     pub memory_type: String,
     #[serde(default = "default_group_config_overrides_json")]
     pub config_overrides: String,
+    #[serde(default = "default_character_model_overrides_json")]
+    pub character_model_overrides: String,
+    #[serde(default)]
+    pub group_chat_prompt_template_id: Option<String>,
+    #[serde(default)]
+    pub group_chat_roleplay_prompt_template_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

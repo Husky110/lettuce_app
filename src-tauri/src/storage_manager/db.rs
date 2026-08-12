@@ -1000,6 +1000,9 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           lorebook_ids TEXT NOT NULL DEFAULT '[]',
           disable_character_lorebooks INTEGER NOT NULL DEFAULT 0,
           speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
+          character_model_overrides TEXT NOT NULL DEFAULT '{}',
+          group_chat_prompt_template_id TEXT,
+          group_chat_roleplay_prompt_template_id TEXT,
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL
         );
 
@@ -1033,6 +1036,9 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           parent_session_id TEXT,
           branched_from_message_id TEXT,
           root_session_id TEXT,
+          character_model_overrides TEXT NOT NULL DEFAULT '{}',
+          group_chat_prompt_template_id TEXT,
+          group_chat_roleplay_prompt_template_id TEXT,
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
           FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
         );
