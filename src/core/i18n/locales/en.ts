@@ -2184,7 +2184,7 @@ export const enMessages = {
       overrideBadge: "Override",
       selectFor: "Model for {name}",
       useCharacterDefault: "Use the character's model",
-      inheritedValue: "{model} (character default)",
+      inheritedValue: "{{model}} (character default)",
       missingModel: "Selected model is missing",
       noModel: "No model configured",
     },

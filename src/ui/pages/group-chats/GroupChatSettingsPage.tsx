@@ -1043,14 +1043,16 @@ export function GroupChatSettingsPage({
               onReset={() => void handleClearOverride("mutedCharacterIds")}
               disabled={saving}
             />
-            {groupCharacters.length <= 2 && (
-              <p className="mt-2 text-xs text-fg/40 text-center">
-                {t("groupChats.sessionSettings.groupMinCharacters")}
+            <div className="mt-3 space-y-1.5 px-1">
+              {groupCharacters.length <= 2 && (
+                <p className={cn(typography.caption.size, "text-fg/45")}>
+                  {t("groupChats.sessionSettings.groupMinCharacters")}
+                </p>
+              )}
+              <p className={cn(typography.caption.size, "text-fg/45")}>
+                {t("groupChats.sessionSettings.mutedCharactersNote")}
               </p>
-            )}
-            <p className="mt-2 text-xs text-fg/40 text-center">
-              {t("groupChats.sessionSettings.mutedCharactersNote")}
-            </p>
+            </div>
           </section>
 
           <section className={spacing.item}>
