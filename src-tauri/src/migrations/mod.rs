@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use crate::chat_manager::prompts;
 use crate::storage_manager::settings::{read_settings_typed, write_settings_typed};
-use crate::utils::log_info;
+use crate::utils::{log_info, log_warn};
 
 /// Current migration version
 pub const CURRENT_MIGRATION_VERSION: u32 = 95;
@@ -977,6 +977,17 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v94_to_v95(app)?;
         version = 95;
+    }
+
+    if version != CURRENT_MIGRATION_VERSION {
+        log_warn(
+            app,
+            "migrations",
+            format!(
+                "Migration chain stopped at {} but the current version is {}; later migrations will be skipped",
+                version, CURRENT_MIGRATION_VERSION
+            ),
+        );
     }
 
     // Update the stored version
