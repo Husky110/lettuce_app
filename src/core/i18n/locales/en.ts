@@ -2404,7 +2404,7 @@ export const enMessages = {
       removeCharacter: "Remove character",
       groupMinCharacters: "A group requires at least 2 characters",
       mutedCharactersNote:
-        "Muted characters are skipped by auto speaker selection, but can still respond via explicit `@mention`.",
+        "Muted characters are skipped by auto speaker selection, but can still respond via explicit @mention.",
       addCharacterTitle: "Add Character",
       allCharactersInGroup: "All characters are already in this group.",
       removeCharacterTitle: "Remove Character?",
@@ -2477,7 +2477,7 @@ export const enMessages = {
       removeCharacter: "Remove character",
       groupMinCharacters: "A group chat requires at least 2 characters",
       mutedCharactersNote:
-        "Muted characters are skipped by auto speaker selection, but can still respond via explicit `@mention`.",
+        "Muted characters are skipped by auto speaker selection, but can still respond via explicit @mention.",
       data: "Data",
       dataSubtitle: "Export or import conversations",
       export: "Export",

@@ -1031,25 +1031,29 @@ export function GroupChatSettingsPage({
               </AnimatePresence>
             </div>
 
-            <OverrideStatusRow
-              show={isOverridden("characterIds")}
-              label={t("groupChats.overrides.participantsOverridden")}
-              onReset={() => void handleClearOverride("characterIds")}
-              disabled={saving}
-            />
-            <OverrideStatusRow
-              show={isOverridden("mutedCharacterIds")}
-              label={t("groupChats.overrides.mutedOverridden")}
-              onReset={() => void handleClearOverride("mutedCharacterIds")}
-              disabled={saving}
-            />
-            <div className="mt-3 space-y-1.5 px-1">
+            {(isOverridden("characterIds") || isOverridden("mutedCharacterIds")) && (
+              <div className="mt-3 border-t border-fg/8 pt-1.5">
+                <OverrideStatusRow
+                  show={isOverridden("characterIds")}
+                  label={t("groupChats.overrides.participantsOverridden")}
+                  onReset={() => void handleClearOverride("characterIds")}
+                  disabled={saving}
+                />
+                <OverrideStatusRow
+                  show={isOverridden("mutedCharacterIds")}
+                  label={t("groupChats.overrides.mutedOverridden")}
+                  onReset={() => void handleClearOverride("mutedCharacterIds")}
+                  disabled={saving}
+                />
+              </div>
+            )}
+            <div className="mt-4 space-y-1 px-1">
               {groupCharacters.length <= 2 && (
-                <p className={cn(typography.caption.size, "text-fg/45")}>
+                <p className={cn(typography.caption.size, "leading-snug text-fg/35")}>
                   {t("groupChats.sessionSettings.groupMinCharacters")}
                 </p>
               )}
-              <p className={cn(typography.caption.size, "text-fg/45")}>
+              <p className={cn(typography.caption.size, "leading-snug text-fg/35")}>
                 {t("groupChats.sessionSettings.mutedCharactersNote")}
               </p>
             </div>
