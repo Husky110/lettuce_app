@@ -91,6 +91,14 @@ impl SwappablePool {
     }
 }
 
+fn truncate_statement(statement: &str, max_chars: usize) -> String {
+    let mut truncated: String = statement.chars().take(max_chars).collect();
+    if truncated.len() < statement.len() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
 fn attach_db_logging(c: &mut Connection) {
     c.trace(Some(|stmt: &str| {
         let trimmed = stmt.trim();
@@ -104,22 +112,12 @@ fn attach_db_logging(c: &mut Connection) {
             || trimmed.starts_with("DROP")
             || trimmed.starts_with("ALTER");
         let label = if is_write { "db_write" } else { "db_read" };
-        let display = if trimmed.len() > 1024 {
-            format!("{}...", &trimmed[..1024])
-        } else {
-            trimmed.to_string()
-        };
-        log_info_global(label, &display);
+        log_info_global(label, truncate_statement(trimmed, 1024));
     }));
     c.profile(Some(|stmt: &str, dur: Duration| {
         let ms = dur.as_millis();
         if ms >= 50 {
-            let trimmed = stmt.trim();
-            let display = if trimmed.len() > 768 {
-                format!("{}...", &trimmed[..768])
-            } else {
-                trimmed.to_string()
-            };
+            let display = truncate_statement(stmt.trim(), 768);
             log_warn_global("db_slow", format!("{}ms | {}", ms, display));
         }
     }));
