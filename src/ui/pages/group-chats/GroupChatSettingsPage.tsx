@@ -253,6 +253,20 @@ export function GroupChatSettingsPage({
   const isOverridden = (key: GroupSessionOverrideKey) =>
     Boolean(session?.groupCharacterId) && !!session && hasGroupSessionOverride(session, key);
 
+  const participantsOverridden = isOverridden("characterIds");
+  const mutedOverridden = isOverridden("mutedCharacterIds");
+  const participantOverrideLabel =
+    participantsOverridden && mutedOverridden
+      ? t("groupChats.overrides.participantsAndMutedOverridden")
+      : participantsOverridden
+        ? t("groupChats.overrides.participantsOverridden")
+        : t("groupChats.overrides.mutedOverridden");
+
+  const resetParticipantOverrides = async () => {
+    if (participantsOverridden) await handleClearOverride("characterIds");
+    if (mutedOverridden) await handleClearOverride("mutedCharacterIds");
+  };
+
   const goToFromSettings = (path: string) => {
     if (isDrawer) onClose?.();
     navigate(path);
@@ -1031,18 +1045,12 @@ export function GroupChatSettingsPage({
               </AnimatePresence>
             </div>
 
-            {(isOverridden("characterIds") || isOverridden("mutedCharacterIds")) && (
+            {(participantsOverridden || mutedOverridden) && (
               <div className="mt-3 border-t border-fg/8 pt-1.5">
                 <OverrideStatusRow
-                  show={isOverridden("characterIds")}
-                  label={t("groupChats.overrides.participantsOverridden")}
-                  onReset={() => void handleClearOverride("characterIds")}
-                  disabled={saving}
-                />
-                <OverrideStatusRow
-                  show={isOverridden("mutedCharacterIds")}
-                  label={t("groupChats.overrides.mutedOverridden")}
-                  onReset={() => void handleClearOverride("mutedCharacterIds")}
+                  show
+                  label={participantOverrideLabel}
+                  onReset={() => void resetParticipantOverrides()}
                   disabled={saving}
                 />
               </div>

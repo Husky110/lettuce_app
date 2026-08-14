@@ -2176,6 +2176,7 @@ export const enMessages = {
       useGroupDefault: "Use group default",
       participantsOverridden: "Participants changed for this chat",
       mutedOverridden: "Muted participants changed for this chat",
+      participantsAndMutedOverridden: "Participants and mutes changed for this chat",
     },
     modelOverrides: {
       title: "Character models",
