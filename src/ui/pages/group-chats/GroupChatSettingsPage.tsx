@@ -378,7 +378,7 @@ export function GroupChatSettingsPage({
   };
 
   // Loading state
-  if (sessionLoading || loading) {
+  if ((sessionLoading || loading) && !session) {
     return (
       <div className="flex h-full flex-col text-fg">
         <header className="shrink-0 border-b border-fg/10 px-4 pb-3 pt-10">

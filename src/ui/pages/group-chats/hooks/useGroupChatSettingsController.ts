@@ -48,8 +48,11 @@ export function useGroupChatSettingsController(
   }, []);
 
   // Only fetch stats + message count (session, characters, personas come from layout)
+  const layoutSessionId = layoutSession?.id ?? null;
+  const layoutSessionName = layoutSession?.name ?? null;
+
   const loadData = useCallback(async () => {
-    if (!groupSessionId || !layoutSession) return;
+    if (!groupSessionId || !layoutSessionId) return;
 
     try {
       setUi({ loading: true, error: null });
@@ -61,20 +64,22 @@ export function useGroupChatSettingsController(
 
       setParticipationStats(stats);
       setMessageCount(msgCount);
-      if (!uiRef.current.editingName) {
-        setUi({ nameDraft: layoutSession.name });
-      }
     } catch (err) {
       console.error("Failed to load group chat settings:", err);
       setUi({ error: t("groupChats.sessionSettingsController.failedToLoad") });
     } finally {
       setUi({ loading: false });
     }
-  }, [groupSessionId, layoutSession, setUi, t]);
+  }, [groupSessionId, layoutSessionId, setUi, t]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (layoutSessionName === null || uiRef.current.editingName) return;
+    setUi({ nameDraft: layoutSessionName });
+  }, [layoutSessionName, setUi]);
 
   const groupCharacters = useMemo(() => {
     if (!session) return [];
