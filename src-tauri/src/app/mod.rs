@@ -2,6 +2,29 @@ mod bootstrap;
 mod commands;
 mod runtime;
 
+fn guarded_invoke_handler<F>(
+    handler: F,
+) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
+where
+    F: Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static,
+{
+    move |invoke| {
+        let command = invoke.message.command().to_string();
+        let resolver = invoke.resolver.clone();
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler(invoke))) {
+            Ok(handled) => handled,
+            Err(_) => {
+                crate::utils::log_error_global(
+                    "ipc",
+                    format!("Command {} panicked; rejecting the invoke", command),
+                );
+                resolver.reject(format!("The {} command failed unexpectedly", command));
+                true
+            }
+        }
+    }
+}
+
 pub(crate) fn run() {
     let aptabase_key = std::env::var("APTABASE_KEY")
         .ok()
@@ -37,7 +60,7 @@ pub(crate) fn run() {
 
     builder
         .setup(move |app| bootstrap::setup_app(app, aptabase_plugin_enabled))
-        .invoke_handler(commands::invoke_handler!())
+        .invoke_handler(guarded_invoke_handler(commands::invoke_handler!()))
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(runtime::handle_run_event);
