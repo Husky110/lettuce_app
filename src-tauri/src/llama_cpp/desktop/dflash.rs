@@ -36,7 +36,7 @@ pub(super) struct DflashRuntime<'m> {
     pub(super) accepted: u64,
 }
 
-pub(super) fn model_is_dflash(model_path: &str) -> bool {
+pub(crate) fn model_is_dflash(model_path: &str) -> bool {
     let Some(gguf) = GgufContext::from_file(Path::new(model_path)) else {
         return false;
     };

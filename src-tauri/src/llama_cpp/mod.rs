@@ -35,7 +35,7 @@ const TOKENIZER_ADD_BOS_METADATA_KEY: &str = "tokenizer.ggml.add_bos_token";
 mod desktop {
     use super::*;
     pub(super) mod context;
-    mod dflash;
+    pub(super) mod dflash;
     pub(super) mod engine;
     mod mtp;
     pub(super) mod offload;
@@ -5206,6 +5206,11 @@ pub(crate) fn supports_gpu_offload() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(not(mobile))]
+pub(crate) fn is_dflash_drafter(model_path: &str) -> bool {
+    desktop::dflash::model_is_dflash(model_path)
+}
+
 #[cfg(mobile)]
 pub(crate) fn is_unified_memory() -> bool {
     false
@@ -5213,6 +5218,11 @@ pub(crate) fn is_unified_memory() -> bool {
 
 #[cfg(mobile)]
 pub(crate) fn supports_gpu_offload() -> bool {
+    false
+}
+
+#[cfg(mobile)]
+pub(crate) fn is_dflash_drafter(_model_path: &str) -> bool {
     false
 }
 

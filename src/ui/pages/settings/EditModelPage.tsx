@@ -130,6 +130,7 @@ type DownloadedGgufModel = {
   quantization: string;
   isMmproj?: boolean;
   isMtp?: boolean;
+  isDflash?: boolean;
 };
 
 type SdcppComponentLibraryEntry = {
@@ -1623,7 +1624,10 @@ export function EditModelPage() {
   );
   const dflashLibraryModels = useMemo(
     () =>
-      downloadedModels.filter((model) => model.filename.toLowerCase().includes("dflash")),
+      downloadedModels.filter((model) => {
+        if (model.isDflash !== undefined) return model.isDflash;
+        return model.filename.toLowerCase().includes("dflash");
+      }),
     [downloadedModels],
   );
   const localLibraryModels =
