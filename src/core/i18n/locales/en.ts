@@ -5004,6 +5004,10 @@ export const enMessages = {
       visionWarningTitle: "DFlash is unavailable for vision",
       visionWarningDescription:
         "Image requests will continue without DFlash while an MMProj vision file is configured.",
+      placement: "Draft Model Placement",
+      placementDescription: "Auto keeps the draft model on the fastest GPU that has room",
+      placementGpu: "GPU",
+      placementCpu: "CPU",
       draftTokens: "Draft Tokens",
       draftTokensDescription:
         "Tokens drafted per block, capped by the draft file's trained block size (1 to 15)",

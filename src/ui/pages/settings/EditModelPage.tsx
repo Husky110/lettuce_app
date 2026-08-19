@@ -7177,6 +7177,42 @@ export function EditModelPage() {
                                           </div>
                                         )}
 
+                                        <div className="flex items-center justify-between gap-4">
+                                          <div className="space-y-0.5">
+                                            <span className="block text-[13px] font-medium text-fg/70">
+                                              {t("editModel.dflash.placement")}
+                                            </span>
+                                            <span className="block text-[13px] text-fg/40">
+                                              {t("editModel.dflash.placementDescription")}
+                                            </span>
+                                          </div>
+                                          <div className="w-36 shrink-0">
+                                            <select
+                                              value={modelAdvancedDraft.llamaMtpPlacement ?? "auto"}
+                                              onChange={(event) => {
+                                                const value = event.target.value;
+                                                handleLlamaMtpPlacementChange(
+                                                  value === "auto"
+                                                    ? null
+                                                    : (value as "gpu" | "cpu"),
+                                                );
+                                              }}
+                                              className={selectInputClassName}
+                                              aria-label={t("editModel.dflash.placement")}
+                                            >
+                                              <option value="auto" className="bg-[#16171d]">
+                                                {t("common.labels.auto")}
+                                              </option>
+                                              <option value="gpu" className="bg-[#16171d]">
+                                                {t("editModel.dflash.placementGpu")}
+                                              </option>
+                                              <option value="cpu" className="bg-[#16171d]">
+                                                {t("editModel.dflash.placementCpu")}
+                                              </option>
+                                            </select>
+                                          </div>
+                                        </div>
+
                                         <div className="flex items-center justify-between">
                                           <div className="space-y-0.5">
                                             <span className="block text-[13px] font-medium text-fg/70">
