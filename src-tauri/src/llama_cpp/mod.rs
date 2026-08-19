@@ -35,6 +35,7 @@ const TOKENIZER_ADD_BOS_METADATA_KEY: &str = "tokenizer.ggml.add_bos_token";
 mod desktop {
     use super::*;
     pub(super) mod context;
+    mod dflash;
     pub(super) mod engine;
     mod mtp;
     pub(super) mod offload;
@@ -89,6 +90,7 @@ mod desktop {
 
     struct HotTextContext {
         mtp_runtime: Option<mtp::MtpRuntime<'static>>,
+        dflash_runtime: Option<dflash::DflashRuntime<'static>>,
         context: Option<LlamaContext<'static>>,
         model: Arc<LlamaModel>,
         draft_model: Arc<LlamaModel>,
@@ -283,6 +285,7 @@ mod desktop {
     ) -> Option<(
         LlamaContext<'static>,
         Option<mtp::MtpRuntime<'static>>,
+        Option<dflash::DflashRuntime<'static>>,
         Vec<LlamaToken>,
     )> {
         HOT_TEXT_CONTEXTS.with(|slot| {
@@ -297,13 +300,15 @@ mod desktop {
             cache.allocated_bytes = cache.allocated_bytes.saturating_sub(cached.allocated_bytes);
             let context = cached.context.take()?;
             let mtp_runtime = cached.mtp_runtime.take();
-            Some((context, mtp_runtime, cached.tokens))
+            let dflash_runtime = cached.dflash_runtime.take();
+            Some((context, mtp_runtime, dflash_runtime, cached.tokens))
         })
     }
 
     fn store_hot_context(
         context: LlamaContext<'_>,
         mtp_runtime: Option<mtp::MtpRuntime<'_>>,
+        dflash_runtime: Option<dflash::DflashRuntime<'_>>,
         model: Arc<LlamaModel>,
         draft_model: Arc<LlamaModel>,
         model_path: &str,
@@ -319,6 +324,11 @@ mod desktop {
                 .saturating_add(runtime.h_last.capacity() * std::mem::size_of::<f32>())
                 .saturating_add(runtime.pending.capacity() * std::mem::size_of::<LlamaToken>());
         }
+        if let Some(runtime) = dflash_runtime.as_ref() {
+            allocated_bytes = allocated_bytes
+                .saturating_add(runtime.draft.allocated_memory_size())
+                .saturating_add(runtime.pending.capacity() * std::mem::size_of::<LlamaToken>());
+        }
         allocated_bytes =
             allocated_bytes.saturating_add(tokens.capacity() * std::mem::size_of::<LlamaToken>());
         if allocated_bytes == 0 || allocated_bytes > HOT_CONTEXT_CACHE_MAX_BYTES {
@@ -330,6 +340,9 @@ mod desktop {
             unsafe { std::mem::transmute::<LlamaContext<'_>, LlamaContext<'static>>(context) };
         let mtp_runtime = mtp_runtime.map(|runtime| unsafe {
             std::mem::transmute::<mtp::MtpRuntime<'_>, mtp::MtpRuntime<'static>>(runtime)
+        });
+        let dflash_runtime = dflash_runtime.map(|runtime| unsafe {
+            std::mem::transmute::<dflash::DflashRuntime<'_>, dflash::DflashRuntime<'static>>(runtime)
         });
         HOT_TEXT_CONTEXTS.with(|slot| {
             let mut cache = slot.borrow_mut();
@@ -362,6 +375,7 @@ mod desktop {
             cache.allocated_bytes = cache.allocated_bytes.saturating_add(allocated_bytes);
             cache.entries.push_back(HotTextContext {
                 mtp_runtime,
+                dflash_runtime,
                 context: Some(context),
                 model,
                 draft_model,
@@ -1422,6 +1436,32 @@ mod desktop {
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+        let llama_dflash_enabled = body
+            .get("llamaDflashEnabled")
+            .or_else(|| body.get("llama_dflash_enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let llama_dflash_draft_tokens = body
+            .get("llamaDflashDraftTokens")
+            .or_else(|| body.get("llama_dflash_draft_tokens"))
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u32::try_from(v).ok())
+            .filter(|v| *v > 0)
+            .unwrap_or(dflash::DFLASH_DRAFT_DEFAULT)
+            .min(dflash::DFLASH_DRAFT_MAX);
+        let llama_dflash_min_probability = body
+            .get("llamaDflashMinProbability")
+            .or_else(|| body.get("llama_dflash_min_probability"))
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .filter(|v| (0.0..=1.0).contains(v))
+            .unwrap_or(dflash::DFLASH_P_MIN_DEFAULT);
+        let llama_dflash_model_path = body
+            .get("llamaDflashModelPath")
+            .or_else(|| body.get("llama_dflash_model_path"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let llama_mtp_placement = body
             .get("llamaMtpPlacement")
             .or_else(|| body.get("llama_mtp_placement"))
@@ -1763,21 +1803,37 @@ mod desktop {
                 }
             }
             let active_mmproj_path = llama_mmproj_path.as_deref().filter(|_| media_requested);
-            let llama_mtp_bundled =
-                llama_mtp_enabled && !media_requested && mtp::model_has_mtp(model_path);
-            let llama_mtp_external_path =
-                if llama_mtp_enabled && !media_requested && !llama_mtp_bundled {
-                    llama_mtp_model_path
-                        .clone()
-                        .or_else(|| mtp::discover_external_mtp(model_path))
-                } else {
-                    None
-                };
+            let llama_dflash_external_path = if llama_dflash_enabled && !media_requested {
+                llama_dflash_model_path
+                    .clone()
+                    .filter(|path| dflash::model_is_dflash(path))
+                    .or_else(|| dflash::discover_external_dflash(model_path))
+            } else {
+                None
+            };
+            let dflash_active = llama_dflash_external_path.is_some();
+            let llama_mtp_bundled = !dflash_active
+                && llama_mtp_enabled
+                && !media_requested
+                && mtp::model_has_mtp(model_path);
+            let llama_mtp_external_path = if dflash_active {
+                llama_dflash_external_path.clone()
+            } else if llama_mtp_enabled && !media_requested && !llama_mtp_bundled {
+                llama_mtp_model_path
+                    .clone()
+                    .or_else(|| mtp::discover_external_mtp(model_path))
+            } else {
+                None
+            };
             if let Some(ref external) = llama_mtp_external_path {
                 log_info(
                     &app,
                     "llama_cpp",
-                    format!("MTP external draft model resolved: {}", external),
+                    format!(
+                        "{} external draft model resolved: {}",
+                        if dflash_active { "DFlash" } else { "MTP" },
+                        external
+                    ),
                 );
             }
             let planned_mtp_context = requested_context.unwrap_or(16_384).max(1);
@@ -2464,7 +2520,10 @@ mod desktop {
                 }
             }
             let use_vision = media_requested && mtmd_ctx.is_some();
+            let llama_dflash_active =
+                dflash_active && !use_vision && llama_mtp_draft_model.is_some();
             let llama_mtp_active = llama_mtp_enabled
+                && !llama_dflash_active
                 && !use_vision
                 && {
                     let capable = llama_mtp_bundled || llama_mtp_draft_model.is_some();
@@ -3002,6 +3061,7 @@ mod desktop {
             }
             let mut ctx: Option<_> = None;
             let mut reused_mtp_runtime = None;
+            let mut reused_dflash_runtime = None;
             let mut cached_context_tokens = None;
             let mut active_context_key = None;
             failure_stage = "create_context";
@@ -3106,17 +3166,20 @@ mod desktop {
                     );
                     if !use_vision {
                         if let Some(cache_key) = prompt_cache_key.as_deref() {
-                            if let Some((cached_ctx, cached_mtp, cached_tokens)) = take_hot_context(
-                                &engine.model,
-                                &hot_draft_model,
-                                cache_key,
-                                &attempt_context_key,
-                            ) {
+                            if let Some((cached_ctx, cached_mtp, cached_dflash, cached_tokens)) =
+                                take_hot_context(
+                                    &engine.model,
+                                    &hot_draft_model,
+                                    cache_key,
+                                    &attempt_context_key,
+                                )
+                            {
                                 prompt_cache_hit = true;
                                 resolved_ctx_size = attempt_ctx;
                                 resolved_n_batch = attempt_batch;
                                 resolved_offload_kqv = attempt_offload_kqv;
                                 reused_mtp_runtime = cached_mtp;
+                                reused_dflash_runtime = cached_dflash;
                                 cached_context_tokens = Some(cached_tokens);
                                 active_context_key = Some(attempt_context_key);
                                 ctx = Some(cached_ctx);
@@ -3328,6 +3391,90 @@ mod desktop {
             } else {
                 None
             };
+
+            let mut dflash_runtime = if let Some(runtime) = reused_dflash_runtime {
+                Some(runtime)
+            } else if llama_dflash_active {
+                let mut draft_params = LlamaContextParams::default()
+                    .with_n_ctx(NonZeroU32::new(resolved_ctx_size))
+                    .with_n_batch(resolved_n_batch)
+                    .with_n_rs_seq(llama_dflash_draft_tokens)
+                    .with_flash_attention_policy(resolved_flash_attention_policy);
+                if let Some(n_threads) = llama_threads {
+                    draft_params = draft_params.with_n_threads(n_threads as i32);
+                }
+                if let Some(n_threads_batch) = llama_threads_batch {
+                    draft_params = draft_params.with_n_threads_batch(n_threads_batch as i32);
+                }
+                if let Some(offload) = resolved_offload_kqv {
+                    draft_params = draft_params.with_offload_kqv(offload);
+                }
+                if resolved_offload_kqv == Some(false) {
+                    draft_params = draft_params.with_op_offload(false);
+                }
+                if let Some(swa_full) = llama_swa_full {
+                    draft_params = draft_params.with_swa_full(swa_full);
+                }
+                if let Some(kv_type) = llama_kv_type {
+                    draft_params = draft_params.with_type_k(kv_type).with_type_v(kv_type);
+                }
+                if let Some(base) = llama_rope_freq_base {
+                    draft_params = draft_params.with_rope_freq_base(base as f32);
+                }
+                if let Some(scale) = llama_rope_freq_scale {
+                    draft_params = draft_params.with_rope_freq_scale(scale as f32);
+                }
+
+                match dflash::create_runtime(
+                    model,
+                    llama_mtp_draft_model.as_deref().unwrap_or(model),
+                    &ctx,
+                    backend,
+                    draft_params,
+                    llama_dflash_draft_tokens as usize,
+                    llama_dflash_min_probability,
+                ) {
+                    Ok(mut runtime) => {
+                        match dflash::enable_feature_extraction(&mut ctx, &mut runtime) {
+                            Ok(()) => {
+                                log_info(
+                                    &app,
+                                    "llama_cpp",
+                                    format!(
+                                        "DFlash active: draft_tokens={} block_size={} p_min={:.2} target_layers={:?} ctx={}",
+                                        runtime.draft_n,
+                                        runtime.block_size,
+                                        runtime.p_min,
+                                        runtime.target_layers,
+                                        resolved_ctx_size
+                                    ),
+                                );
+                                Some(runtime)
+                            }
+                            Err(err) => {
+                                log_warn(
+                                    &app,
+                                    "llama_cpp",
+                                    format!("DFlash setup failed, continuing without DFlash: {err}"),
+                                );
+                                None
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log_warn(
+                            &app,
+                            "llama_cpp",
+                            format!(
+                                "DFlash draft context creation failed, continuing without DFlash: {err}"
+                            ),
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             if kqv_fallback_activated {
                 match consume_kqv_fallback_toast(&app, model_path) {
                     Ok(true) => {
@@ -3495,6 +3642,9 @@ mod desktop {
             if let Some(runtime) = mtp_runtime.as_mut() {
                 runtime.draft.reset_timings();
             }
+            if let Some(runtime) = dflash_runtime.as_mut() {
+                runtime.draft.reset_timings();
+            }
             let batch_size = n_batch as usize;
             let mut batch = LlamaBatch::new(batch_size, 1);
             let mut global_pos: i32 = 0;
@@ -3586,6 +3736,12 @@ mod desktop {
                                     )
                                 })?;
                             if rewind_succeeded {
+                                if let Some(runtime) = dflash_runtime.as_mut() {
+                                    dflash::reset_for_prompt_reuse(runtime, rewind_from as u32)
+                                        .map_err(|e| {
+                                            crate::utils::err_msg(module_path!(), line!(), e)
+                                        })?;
+                                }
                                 cached_prompt_tokens = rewind_from as u64;
                             }
                         }
@@ -3597,6 +3753,11 @@ mod desktop {
                             ctx.clear_kv_cache();
                             if let Some(runtime) = mtp_runtime.as_mut() {
                                 mtp::reset_for_prompt_reuse(runtime, 0).map_err(|e| {
+                                    crate::utils::err_msg(module_path!(), line!(), e)
+                                })?;
+                            }
+                            if let Some(runtime) = dflash_runtime.as_mut() {
+                                dflash::reset_for_prompt_reuse(runtime, 0).map_err(|e| {
                                     crate::utils::err_msg(module_path!(), line!(), e)
                                 })?;
                             }
@@ -3642,6 +3803,15 @@ mod desktop {
                                 &tokens[chunk_start..chunk_end],
                                 global_pos,
                                 chunk_end == tokens_len,
+                            )
+                            .map_err(|e| crate::utils::err_msg(module_path!(), line!(), e))?;
+                        }
+                        if let Some(runtime) = dflash_runtime.as_mut() {
+                            dflash::prefill_draft_chunk(
+                                runtime,
+                                &ctx,
+                                &tokens[chunk_start..chunk_end],
+                                global_pos,
                             )
                             .map_err(|e| crate::utils::err_msg(module_path!(), line!(), e))?;
                         }
@@ -3706,12 +3876,23 @@ mod desktop {
             } else {
                 None
             };
-            native_draft_prompt_eval_ms = mtp_runtime.as_mut().map(|runtime| {
-                let timings = runtime.draft.timings();
-                (timings.t_p_eval_ms() + timings.t_eval_ms()).max(0.0)
-            });
+            native_draft_prompt_eval_ms = mtp_runtime
+                .as_mut()
+                .map(|runtime| {
+                    let timings = runtime.draft.timings();
+                    (timings.t_p_eval_ms() + timings.t_eval_ms()).max(0.0)
+                })
+                .or_else(|| {
+                    dflash_runtime.as_mut().map(|runtime| {
+                        let timings = runtime.draft.timings();
+                        (timings.t_p_eval_ms() + timings.t_eval_ms()).max(0.0)
+                    })
+                });
             ctx.reset_timings();
             if let Some(runtime) = mtp_runtime.as_mut() {
+                runtime.draft.reset_timings();
+            }
+            if let Some(runtime) = dflash_runtime.as_mut() {
                 runtime.draft.reset_timings();
             }
 
@@ -3824,6 +4005,23 @@ mod desktop {
                 let token = if let Some(runtime) = mtp_runtime.as_mut() {
                     if runtime.pending.is_empty() {
                         let accepted = mtp::mtp_round(
+                            &mut ctx,
+                            runtime,
+                            &mut sampler,
+                            model,
+                            n_cur,
+                            target_len,
+                        )
+                        .map_err(|e| crate::utils::err_msg(module_path!(), line!(), e))?;
+                        runtime.pending.extend(accepted);
+                    }
+                    match runtime.pending.pop_front() {
+                        Some(token) => token,
+                        None => break,
+                    }
+                } else if let Some(runtime) = dflash_runtime.as_mut() {
+                    if runtime.pending.is_empty() {
+                        let accepted = dflash::dflash_round(
                             &mut ctx,
                             runtime,
                             &mut sampler,
@@ -4040,7 +4238,7 @@ mod desktop {
                     }
                 }
 
-                if mtp_runtime.is_some() {
+                if mtp_runtime.is_some() || dflash_runtime.is_some() {
                     if let Some(tokens) = context_tokens.as_mut() {
                         tokens.push(token);
                     }
@@ -4122,6 +4320,12 @@ mod desktop {
                     let timings = runtime.draft.timings();
                     timings.t_p_eval_ms() + timings.t_eval_ms()
                 })
+                .or_else(|| {
+                    dflash_runtime.as_mut().map(|runtime| {
+                        let timings = runtime.draft.timings();
+                        timings.t_p_eval_ms() + timings.t_eval_ms()
+                    })
+                })
                 .unwrap_or(0.0);
             let compute_ms = (target_compute_ms + draft_compute_ms).max(0.0);
             native_generation_compute_ms = Some(compute_ms);
@@ -4171,6 +4375,48 @@ mod desktop {
                 };
                 if let Ok(value) = serde_json::to_value(&stats) {
                     update_runtime_report_field(&mut runtime_report, "mtpStats", value);
+                }
+                mtp_stats = Some(stats);
+            }
+
+            if let Some(runtime) = dflash_runtime.as_ref() {
+                let tokens_per_round = if runtime.rounds > 0 {
+                    runtime.accepted as f64 / runtime.rounds as f64
+                } else {
+                    0.0
+                };
+                let draft_acceptance = if runtime.drafted > 0 {
+                    runtime.accepted.saturating_sub(runtime.rounds) as f64 / runtime.drafted as f64
+                } else {
+                    0.0
+                };
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!(
+                        "DFlash stats: rounds={} drafted={} accepted={} tokens_per_round={:.2} draft_acceptance={:.2} configured_draft_n={} final_draft_n={} adaptations={}",
+                        runtime.rounds,
+                        runtime.drafted,
+                        runtime.accepted,
+                        tokens_per_round,
+                        draft_acceptance,
+                        runtime.draft_n_max,
+                        runtime.draft_n,
+                        runtime.adaptation_count,
+                    ),
+                );
+                let stats = MtpStats {
+                    draft_tokens: llama_dflash_draft_tokens,
+                    final_draft_tokens: u32::try_from(runtime.draft_n).ok(),
+                    adaptation_count: Some(runtime.adaptation_count),
+                    rounds: runtime.rounds,
+                    drafted: runtime.drafted,
+                    accepted: runtime.accepted,
+                    tokens_per_round,
+                    draft_acceptance,
+                };
+                if let Ok(value) = serde_json::to_value(&stats) {
+                    update_runtime_report_field(&mut runtime_report, "dflashStats", value);
                 }
                 mtp_stats = Some(stats);
             }
@@ -4361,10 +4607,29 @@ mod desktop {
             {
                 let cache_ready = if llama_mtp_active && mtp_runtime.is_none() {
                     false
+                } else if llama_dflash_active && dflash_runtime.is_none() {
+                    false
                 } else if let Some(runtime) = mtp_runtime.as_mut() {
                     match u32::try_from(tokens.len()) {
                         Ok(token_count) => {
                             match mtp::truncate_for_prompt_cache(&mut ctx, runtime, token_count) {
+                                Ok(()) => true,
+                                Err(err) => {
+                                    log_warn(
+                                        &app,
+                                        "llama_cpp",
+                                        format!("discarding unusable prompt cache: {err}"),
+                                    );
+                                    false
+                                }
+                            }
+                        }
+                        Err(_) => false,
+                    }
+                } else if let Some(runtime) = dflash_runtime.as_mut() {
+                    match u32::try_from(tokens.len()) {
+                        Ok(token_count) => {
+                            match dflash::truncate_for_prompt_cache(&mut ctx, runtime, token_count) {
                                 Ok(()) => true,
                                 Err(err) => {
                                     log_warn(
@@ -4387,6 +4652,7 @@ mod desktop {
                             prompt_cache_evictions.saturating_add(store_hot_context(
                                 ctx,
                                 mtp_runtime.take(),
+                                dflash_runtime.take(),
                                 engine.model.clone(),
                                 hot_draft_model.clone(),
                                 model_path,

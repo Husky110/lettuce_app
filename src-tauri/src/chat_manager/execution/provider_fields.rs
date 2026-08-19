@@ -9,6 +9,8 @@ use super::{
     resolve_llama_chat_template_override, resolve_llama_chat_template_preset,
     resolve_llama_dry_allowed_length, resolve_llama_dry_base, resolve_llama_dry_multiplier,
     resolve_llama_dry_penalty_last_n, resolve_llama_dry_sequence_breakers,
+    resolve_llama_dflash_draft_tokens, resolve_llama_dflash_enabled,
+    resolve_llama_dflash_min_probability, resolve_llama_dflash_model_path,
     resolve_llama_flash_attention, resolve_llama_gpu_device_ids,
     resolve_llama_gpu_distribution_mode, resolve_llama_gpu_layers, resolve_llama_gpu_manual_layers,
     resolve_llama_kv_placement, resolve_llama_kv_type, resolve_llama_main_gpu,
@@ -136,6 +138,18 @@ fn build_llama_extra_fields(
     }
     if let Some(v) = resolve_llama_mtp_model_path(session, model, settings) {
         extra.insert("llamaMtpModelPath".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_dflash_enabled(session, model, settings) {
+        extra.insert("llamaDflashEnabled".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_dflash_draft_tokens(session, model, settings) {
+        extra.insert("llamaDflashDraftTokens".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_dflash_min_probability(session, model, settings) {
+        extra.insert("llamaDflashMinProbability".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_dflash_model_path(session, model, settings) {
+        extra.insert("llamaDflashModelPath".to_string(), json!(v));
     }
     if let Some(v) = sampler_profile {
         extra.insert("llamaSamplerProfile".to_string(), json!(v));
