@@ -4782,6 +4782,14 @@ export const enMessages = {
     },
     moveModel: {
       title: "Move Model File",
+      moveAllTitle: "Store Files in Library",
+      moveAllDescription:
+        "Move this model and its draft and vision files into the LettuceAI GGUF library folder.",
+      moveAllAction: "Move to library",
+      moveAllMoving: "Moving files...",
+      moveAllDone: "All files are in the library",
+      movedAllTitle: "Files moved",
+      movedAllBody: "This model and its sidecar files now live in the GGUF library.",
     },
     parameterSupport: {
       title: "Parameter Support",

@@ -180,6 +180,11 @@ type SdcppDownloadedFile = {
 
 
 import { SDCPP_SAMPLERS, SDCPP_SCHEDULERS } from "../../../core/image-generation/sdcpp-options";
+import {
+  clearMovePromptDismissal,
+  dismissMovePrompt,
+  isMovePromptDismissed,
+} from "../../../core/models/moveModelPrompt";
 
 const SDCPP_HIRES_UPSCALERS = [
   "Lanczos",
@@ -603,7 +608,7 @@ export function EditModelPage() {
   const [movingModel, setMovingModel] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [movePromptPath, setMovePromptPath] = useState<string | null>(null);
-  const [skippedMovePromptPath, setSkippedMovePromptPath] = useState<string | null>(null);
+  const [movingAllModelFiles, setMovingAllModelFiles] = useState(false);
   const [pendingReturnAfterMovePrompt, setPendingReturnAfterMovePrompt] = useState<string | null>(
     null,
   );
@@ -1074,7 +1079,7 @@ export function EditModelPage() {
       if (!editorModel?.displayName?.trim()) {
         handleDisplayNameChange(deriveDisplayNameFromPath(selected));
       }
-      if (isPathOutsideGgufDir(selected) && skippedMovePromptPath !== selected) {
+      if (isPathOutsideGgufDir(selected) && !isMovePromptDismissed(selected)) {
         setMovePromptSource("browse");
         setMovePromptPath(selected);
         setPendingReturnAfterMovePrompt(null);
@@ -1296,7 +1301,7 @@ export function EditModelPage() {
     }
 
     const modelPath = editorModel.name.trim();
-    if (!isPathOutsideGgufDir(modelPath) || skippedMovePromptPath === modelPath) {
+    if (!isPathOutsideGgufDir(modelPath) || isMovePromptDismissed(modelPath)) {
       const success = await saveModel();
       if (success && shouldNavigateAfterSave) {
         editNavigate(returnTo!);
@@ -1310,7 +1315,6 @@ export function EditModelPage() {
       setMovePromptSource("save");
       setMovePromptPath(modelPath);
       setPendingReturnAfterMovePrompt(shouldNavigateAfterSave ? returnTo! : null);
-      setSkippedMovePromptPath(null);
       setMoveError(null);
       setShowMovePrompt(true);
     }
@@ -1342,7 +1346,7 @@ export function EditModelPage() {
         updateEditorModel({ name: newPath });
       }
 
-      setSkippedMovePromptPath(null);
+      clearMovePromptDismissal(editorModel.name.trim());
       const nextReturnTo = pendingReturnAfterMovePrompt;
       setPendingReturnAfterMovePrompt(null);
       setShowMovePrompt(false);
@@ -1360,9 +1364,86 @@ export function EditModelPage() {
     }
   };
 
+  const modelSidecarPaths = useMemo(
+    () =>
+      [
+        modelAdvancedDraft.llamaMmprojPath,
+        modelAdvancedDraft.llamaMtpModelPath,
+        modelAdvancedDraft.llamaDflashModelPath,
+      ]
+        .map((path) => path?.trim() || null)
+        .filter((path): path is string => !!path),
+    [
+      modelAdvancedDraft.llamaMmprojPath,
+      modelAdvancedDraft.llamaMtpModelPath,
+      modelAdvancedDraft.llamaDflashModelPath,
+    ],
+  );
+
+  const modelFilesOutsideLibrary = useMemo(
+    () =>
+      [editorModel?.name?.trim() || null, ...modelSidecarPaths]
+        .filter((path): path is string => !!path)
+        .filter((path) => isPathOutsideGgufDir(path)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editorModel?.name, modelSidecarPaths, ggufModelsDir],
+  );
+
+  const handleMoveAllModelFilesToLibrary = async () => {
+    if (!editorModel || modelFilesOutsideLibrary.length === 0) return;
+    setMovingAllModelFiles(true);
+    try {
+      try {
+        await invoke("llamacpp_unload");
+      } catch {
+        // May not be loaded, that's fine
+      }
+
+      const folderName = editorModel.displayName?.trim() || null;
+      const movePath = async (path: string | null | undefined): Promise<string | null> => {
+        const trimmed = path?.trim();
+        if (!trimmed) return null;
+        if (!isPathOutsideGgufDir(trimmed)) return trimmed;
+        return await invoke<string>("hf_move_model_to_gguf_dir", {
+          sourcePath: trimmed,
+          modelName: folderName,
+        });
+      };
+
+      const movedModelPath = await movePath(editorModel.name);
+      const movedMmproj = await movePath(modelAdvancedDraft.llamaMmprojPath);
+      const movedMtp = await movePath(modelAdvancedDraft.llamaMtpModelPath);
+      const movedDflash = await movePath(modelAdvancedDraft.llamaDflashModelPath);
+
+      if (movedMmproj !== (modelAdvancedDraft.llamaMmprojPath?.trim() || null)) {
+        handleLlamaMmprojPathChange(movedMmproj);
+      }
+      if (movedMtp !== (modelAdvancedDraft.llamaMtpModelPath?.trim() || null)) {
+        handleLlamaMtpModelPathChange(movedMtp);
+      }
+      if (movedDflash !== (modelAdvancedDraft.llamaDflashModelPath?.trim() || null)) {
+        handleLlamaDflashModelPathChange(movedDflash);
+      }
+      if (movedModelPath) {
+        clearMovePromptDismissal(editorModel.name.trim());
+        updateEditorModel({ name: movedModelPath });
+      }
+
+      toast.success(t("editModel.moveModel.movedAllTitle"), t("editModel.moveModel.movedAllBody"));
+    } catch (err: any) {
+      console.error("Failed to move model files", err);
+      toast.error(
+        t("hfBrowser.moveToLibraryFailed"),
+        typeof err === "string" ? err : err?.message || "",
+      );
+    } finally {
+      setMovingAllModelFiles(false);
+    }
+  };
+
   const handleSkipMove = () => {
     if (movePromptPath) {
-      setSkippedMovePromptPath(movePromptPath);
+      dismissMovePrompt(movePromptPath);
     }
     const nextReturnTo = pendingReturnAfterMovePrompt;
     setPendingReturnAfterMovePrompt(null);
@@ -5430,6 +5511,34 @@ export function EditModelPage() {
                             <p className="text-[12px] text-fg/45">
                               {runtimePanelTitle} · {runtimeSummary}
                             </p>
+
+                            <div className="flex items-start justify-between gap-3 rounded-lg border border-fg/8 bg-fg/[0.02] px-3 py-3">
+                              <div className="space-y-0.5">
+                                <span className="block text-[13px] font-medium text-fg/70">
+                                  {t("editModel.moveModel.moveAllTitle")}
+                                </span>
+                                <span className="block text-[13px] text-fg/40">
+                                  {t("editModel.moveModel.moveAllDescription")}
+                                </span>
+                              </div>
+                              {modelFilesOutsideLibrary.length === 0 ? (
+                                <span className="shrink-0 text-[12px] text-fg/40">
+                                  {t("editModel.moveModel.moveAllDone")}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleMoveAllModelFilesToLibrary}
+                                  disabled={movingAllModelFiles}
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg disabled:opacity-50"
+                                >
+                                  <FolderOpen className="h-3.5 w-3.5 text-accent/70" />
+                                  {movingAllModelFiles
+                                    ? t("editModel.moveModel.moveAllMoving")
+                                    : `${t("editModel.moveModel.moveAllAction")} (${modelFilesOutsideLibrary.length})`}
+                                </button>
+                              )}
+                            </div>
 
                             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-start">
                               {/* 1. Memory & Context */}
