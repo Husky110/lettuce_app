@@ -5242,6 +5242,8 @@ pub async fn llamacpp_context_info(
     llama_mtp_enabled: Option<bool>,
     llama_mtp_placement: Option<String>,
     llama_mtp_model_path: Option<String>,
+    llama_dflash_enabled: Option<bool>,
+    llama_dflash_model_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
     #[cfg(not(mobile))]
     {
@@ -5263,6 +5265,8 @@ pub async fn llamacpp_context_info(
             llama_mtp_enabled,
             llama_mtp_placement,
             llama_mtp_model_path,
+            llama_dflash_enabled,
+            llama_dflash_model_path,
         )
         .await?;
         serde_json::to_value(info).map_err(|e| {
@@ -5292,6 +5296,8 @@ pub async fn llamacpp_context_info(
         let _ = llama_mtp_enabled;
         let _ = llama_mtp_placement;
         let _ = llama_mtp_model_path;
+        let _ = llama_dflash_enabled;
+        let _ = llama_dflash_model_path;
         Err(crate::utils::err_msg(
             module_path!(),
             line!(),

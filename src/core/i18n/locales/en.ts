@@ -4996,6 +4996,24 @@ export const enMessages = {
         "Optional external draft GGUF. Auto-discovered from a sibling mtp-*.gguf when empty.",
       draftFilePlaceholder: "Auto-discover",
     },
+    dflash: {
+      title: "DFlash Speculative Decoding",
+      description:
+        "Drafts a whole block of tokens per step using a DFlash draft file. Takes priority over MTP when a draft file is available.",
+      toggle: "Toggle DFlash speculative decoding",
+      visionWarningTitle: "DFlash is unavailable for vision",
+      visionWarningDescription:
+        "Image requests will continue without DFlash while an MMProj vision file is configured.",
+      draftTokens: "Draft Tokens",
+      draftTokensDescription:
+        "Tokens drafted per block, capped by the draft file's trained block size (1 to 15)",
+      minProbability: "Minimum Confidence",
+      minProbabilityDescription: "Drafting stops at the first token below this confidence (0 to 1)",
+      draftFile: "DFlash Draft File",
+      draftFileDescription:
+        "DFlash draft GGUF trained for this model. Auto-discovered from a sibling *dflash*.gguf when empty.",
+      draftFilePlaceholder: "Auto-discover",
+    },
     templates: {
       templateOverride: "Template Override",
       templateOverrideDescription: "Jinja template or internal name",

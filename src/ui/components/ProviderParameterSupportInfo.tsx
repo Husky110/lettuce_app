@@ -86,6 +86,10 @@ const PARAMETER_LABELS: Record<StaticParameter, string> = {
   llamaMtpPlacement: "llama.cpp MTP Placement",
   llamaMtpDraftTokens: "llama.cpp MTP Draft Tokens",
   llamaMtpModelPath: "llama.cpp MTP Model Path",
+  llamaDflashEnabled: "llama.cpp DFlash Speculative Decoding",
+  llamaDflashDraftTokens: "llama.cpp DFlash Draft Tokens",
+  llamaDflashMinProbability: "llama.cpp DFlash Minimum Confidence",
+  llamaDflashModelPath: "llama.cpp DFlash Model Path",
   llamaStreamingEnabled: "llama.cpp Streaming",
   llamaSamplerProfile: "llama.cpp Sampler Profile",
   llamaSamplerOrder: "llama.cpp Sampler Order",
@@ -200,6 +204,14 @@ const PARAMETER_DESCRIPTIONS: Record<StaticParameter, string> = {
   llamaMtpPlacement: "Automatic, GPU, or CPU placement for the external MTP draft model",
   llamaMtpDraftTokens: "Speculative tokens drafted per MTP step (1 to 8)",
   llamaMtpModelPath: "External MTP draft GGUF path (auto-discovered from sibling mtp-*.gguf when empty)",
+  llamaDflashEnabled:
+    "Block speculative decoding with a DFlash draft file, used instead of MTP when available",
+  llamaDflashDraftTokens:
+    "Tokens drafted per DFlash block, capped by the draft file's trained block size (1 to 15)",
+  llamaDflashMinProbability:
+    "Stop drafting at the first DFlash token below this confidence (0 to 1)",
+  llamaDflashModelPath:
+    "DFlash draft GGUF path (auto-discovered from a sibling *dflash*.gguf when empty)",
   llamaStreamingEnabled: "Disable incremental token streaming for llama.cpp models",
   llamaSamplerProfile:
     "Preset local sampler defaults for chat, creativity, stability, or reasoning",

@@ -3730,6 +3730,8 @@ pub async fn hf_compute_local_runability(
     llama_mtp_enabled: Option<bool>,
     llama_mtp_placement: Option<String>,
     llama_mtp_model_path: Option<String>,
+    llama_dflash_enabled: Option<bool>,
+    llama_dflash_model_path: Option<String>,
 ) -> Result<LocalRunabilityResult, String> {
     let path = PathBuf::from(&file_path);
     if !path.exists() {
@@ -3757,11 +3759,17 @@ pub async fn hf_compute_local_runability(
             .and_then(|path| std::fs::metadata(path).ok())
             .map(|meta| meta.len())
             .unwrap_or(0);
-        let mtp_reserve = if llama_mtp_enabled == Some(true)
-            && llama_mtp_placement.as_deref() != Some("cpu")
-        {
-            llama_mtp_model_path
+        let drafter_path = if llama_dflash_enabled == Some(true) {
+            llama_dflash_model_path
                 .as_deref()
+                .or(llama_mtp_model_path.as_deref())
+        } else if llama_mtp_enabled == Some(true) {
+            llama_mtp_model_path.as_deref()
+        } else {
+            None
+        };
+        let mtp_reserve = if llama_mtp_placement.as_deref() != Some("cpu") {
+            drafter_path
                 .filter(|path| !path.trim().is_empty())
                 .and_then(|path| std::fs::metadata(path).ok())
                 .map(|meta| meta.len())

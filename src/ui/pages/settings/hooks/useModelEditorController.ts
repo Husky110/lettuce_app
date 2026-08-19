@@ -84,6 +84,10 @@ type ControllerReturn = {
   handleLlamaMtpPlacementChange: (value: AdvancedModelSettings["llamaMtpPlacement"]) => void;
   handleLlamaMtpDraftTokensChange: (value: number | null) => void;
   handleLlamaMtpModelPathChange: (value: string | null) => void;
+  handleLlamaDflashEnabledChange: (value: boolean | null) => void;
+  handleLlamaDflashDraftTokensChange: (value: number | null) => void;
+  handleLlamaDflashMinProbabilityChange: (value: number | null) => void;
+  handleLlamaDflashModelPathChange: (value: string | null) => void;
   handleLlamaStreamingEnabledChange: (value: boolean | null) => void;
   handleOllamaNumCtxChange: (value: number | null) => void;
   handleOllamaNumPredictChange: (value: number | null) => void;
@@ -1078,6 +1082,58 @@ export function useModelEditorController(): ControllerReturn {
     [dispatch, state.modelAdvancedDraft],
   );
 
+  const handleLlamaDflashEnabledChange = useCallback(
+    (value: boolean | null) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaDflashEnabled: value,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
+  const handleLlamaDflashDraftTokensChange = useCallback(
+    (value: number | null) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaDflashDraftTokens: value,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
+  const handleLlamaDflashMinProbabilityChange = useCallback(
+    (value: number | null) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaDflashMinProbability: value,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
+  const handleLlamaDflashModelPathChange = useCallback(
+    (value: string | null) => {
+      dispatch({
+        type: "set_model_advanced_draft",
+        payload: {
+          ...state.modelAdvancedDraft,
+          llamaDflashModelPath: value,
+        },
+      });
+    },
+    [dispatch, state.modelAdvancedDraft],
+  );
+
   const handleLlamaStreamingEnabledChange = useCallback(
     (value: boolean | null) => {
       dispatch({
@@ -1756,6 +1812,10 @@ export function useModelEditorController(): ControllerReturn {
     handleLlamaMtpPlacementChange,
     handleLlamaMtpDraftTokensChange,
     handleLlamaMtpModelPathChange,
+    handleLlamaDflashEnabledChange,
+    handleLlamaDflashDraftTokensChange,
+    handleLlamaDflashMinProbabilityChange,
+    handleLlamaDflashModelPathChange,
     handleLlamaStreamingEnabledChange,
     handleOllamaNumCtxChange,
     handleOllamaNumPredictChange,

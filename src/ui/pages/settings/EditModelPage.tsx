@@ -695,6 +695,10 @@ export function EditModelPage() {
     handleLlamaMtpPlacementChange,
     handleLlamaMtpDraftTokensChange,
     handleLlamaMtpModelPathChange,
+    handleLlamaDflashEnabledChange,
+    handleLlamaDflashDraftTokensChange,
+    handleLlamaDflashMinProbabilityChange,
+    handleLlamaDflashModelPathChange,
     handleLlamaStreamingEnabledChange,
     handleOllamaNumCtxChange,
     handleOllamaNumPredictChange,
@@ -2640,6 +2644,8 @@ export function EditModelPage() {
     modelAdvancedDraft.llamaMtpEnabled,
     modelAdvancedDraft.llamaMtpPlacement,
     modelAdvancedDraft.llamaMtpModelPath,
+    modelAdvancedDraft.llamaDflashEnabled,
+    modelAdvancedDraft.llamaDflashModelPath,
   ]);
 
   useEffect(() => {
@@ -2687,6 +2693,8 @@ export function EditModelPage() {
             llamaMtpEnabled: modelAdvancedDraft.llamaMtpEnabled ?? null,
             llamaMtpPlacement: modelAdvancedDraft.llamaMtpPlacement ?? null,
             llamaMtpModelPath: modelAdvancedDraft.llamaMtpModelPath ?? null,
+            llamaDflashEnabled: modelAdvancedDraft.llamaDflashEnabled ?? null,
+            llamaDflashModelPath: modelAdvancedDraft.llamaDflashModelPath ?? null,
           },
         );
         if (!cancelled) {
@@ -2714,6 +2722,8 @@ export function EditModelPage() {
     modelAdvancedDraft.llamaMtpEnabled,
     modelAdvancedDraft.llamaMtpPlacement,
     modelAdvancedDraft.llamaMtpModelPath,
+    modelAdvancedDraft.llamaDflashEnabled,
+    modelAdvancedDraft.llamaDflashModelPath,
   ]);
 
   const scopeOrder = ["text", "image", "audio"] as const;
@@ -7081,6 +7091,147 @@ export function EditModelPage() {
                                             )
                                           }
                                           placeholder={t("editModel.mtp.draftFilePlaceholder")}
+                                          className={selectInputClassName}
+                                          spellCheck={false}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-4 border-t border-fg/8 pt-4">
+                                    <div className="flex items-center justify-between gap-4">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          {t("editModel.dflash.title")}
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          {t("editModel.dflash.description")}
+                                        </span>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-3">
+                                        <span
+                                          className={cn(
+                                            "text-[12px] font-medium transition",
+                                            modelAdvancedDraft.llamaDflashEnabled === true
+                                              ? "text-accent/80"
+                                              : "text-fg/42",
+                                          )}
+                                        >
+                                          {modelAdvancedDraft.llamaDflashEnabled === true
+                                            ? t("common.labels.on")
+                                            : t("common.labels.off")}
+                                        </span>
+                                        <Switch
+                                          id="llama-dflash-enabled"
+                                          checked={modelAdvancedDraft.llamaDflashEnabled === true}
+                                          onChange={(next) =>
+                                            handleLlamaDflashEnabledChange(next ? true : null)
+                                          }
+                                          aria-label={t("editModel.dflash.toggle")}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {modelAdvancedDraft.llamaDflashEnabled === true && (
+                                      <div className="space-y-4">
+                                        {modelAdvancedDraft.llamaMmprojPath?.trim() && (
+                                          <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
+                                            <div className="flex items-start gap-2">
+                                              <AlertTriangle
+                                                size={14}
+                                                className="mt-0.5 shrink-0 text-warning"
+                                              />
+                                              <div className="space-y-0.5">
+                                                <p className="text-[12px] font-medium text-warning">
+                                                  {t("editModel.dflash.visionWarningTitle")}
+                                                </p>
+                                                <p className="text-[12px] leading-relaxed text-warning/80">
+                                                  {t("editModel.dflash.visionWarningDescription")}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="flex items-center justify-between">
+                                          <div className="space-y-0.5">
+                                            <span className="block text-[13px] font-medium text-fg/70">
+                                              {t("editModel.dflash.draftTokens")}
+                                            </span>
+                                            <span className="block text-[13px] text-fg/40">
+                                              {t("editModel.dflash.draftTokensDescription")}
+                                            </span>
+                                          </div>
+                                          <span className="font-mono text-[13px] text-fg/55">
+                                            {modelAdvancedDraft.llamaDflashDraftTokens ??
+                                              t("common.labels.auto")}
+                                          </span>
+                                        </div>
+                                        <NumberInput
+                                          min={1}
+                                          max={15}
+                                          step={1}
+                                          value={modelAdvancedDraft.llamaDflashDraftTokens ?? null}
+                                          onChange={(next) =>
+                                            handleLlamaDflashDraftTokensChange(
+                                              next === null || next <= 0
+                                                ? null
+                                                : Math.min(15, Math.trunc(next)),
+                                            )
+                                          }
+                                          placeholder={t("common.labels.auto")}
+                                          className={numberInputClassName}
+                                        />
+
+                                        <div className="flex items-center justify-between">
+                                          <div className="space-y-0.5">
+                                            <span className="block text-[13px] font-medium text-fg/70">
+                                              {t("editModel.dflash.minProbability")}
+                                            </span>
+                                            <span className="block text-[13px] text-fg/40">
+                                              {t("editModel.dflash.minProbabilityDescription")}
+                                            </span>
+                                          </div>
+                                          <span className="font-mono text-[13px] text-fg/55">
+                                            {modelAdvancedDraft.llamaDflashMinProbability ??
+                                              t("common.labels.auto")}
+                                          </span>
+                                        </div>
+                                        <NumberInput
+                                          min={0}
+                                          max={1}
+                                          step={0.05}
+                                          value={
+                                            modelAdvancedDraft.llamaDflashMinProbability ?? null
+                                          }
+                                          onChange={(next) =>
+                                            handleLlamaDflashMinProbabilityChange(
+                                              next === null ? null : Math.min(1, Math.max(0, next)),
+                                            )
+                                          }
+                                          placeholder={t("common.labels.auto")}
+                                          className={numberInputClassName}
+                                        />
+
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="space-y-0.5">
+                                            <span className="block text-[13px] font-medium text-fg/70">
+                                              {t("editModel.dflash.draftFile")}
+                                            </span>
+                                            <span className="block text-[13px] text-fg/40">
+                                              {t("editModel.dflash.draftFileDescription")}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={modelAdvancedDraft.llamaDflashModelPath ?? ""}
+                                          onChange={(e) =>
+                                            handleLlamaDflashModelPathChange(
+                                              e.target.value === "" ? null : e.target.value,
+                                            )
+                                          }
+                                          placeholder={t("editModel.dflash.draftFilePlaceholder")}
                                           className={selectInputClassName}
                                           spellCheck={false}
                                         />
