@@ -191,7 +191,7 @@ const SDCPP_HIRES_UPSCALERS = [
   "Latent (bicubic antialiased)",
 ] as const;
 
-type LocalLibraryPickerMode = "model" | "mmproj" | "mtp";
+type LocalLibraryPickerMode = "model" | "mmproj" | "mtp" | "dflash";
 
 type OpenRouterEndpoint = {
   id: string;
@@ -1011,6 +1011,8 @@ export function EditModelPage() {
 
   const openLocalMtpPicker = async () => openDownloadedLibraryPicker("mtp");
 
+  const openLocalDflashPicker = async () => openDownloadedLibraryPicker("dflash");
+
   const syncImageInputScope = (mmprojPath: string | null) => {
     if (!editorModel) return;
     const currentScopes = (editorModel.inputScopes ?? ["text"]) as Array<
@@ -1046,6 +1048,8 @@ export function EditModelPage() {
       syncImageInputScope(model.path);
     } else if (localLibraryPickerMode === "mtp") {
       handleLlamaMtpModelPathChange(model.path);
+    } else if (localLibraryPickerMode === "dflash") {
+      handleLlamaDflashModelPathChange(model.path);
     } else {
       handleModelNameChange(model.path);
       if (!editorModel?.displayName?.trim()) {
@@ -1617,30 +1621,43 @@ export function EditModelPage() {
       }),
     [downloadedModels],
   );
+  const dflashLibraryModels = useMemo(
+    () =>
+      downloadedModels.filter((model) => model.filename.toLowerCase().includes("dflash")),
+    [downloadedModels],
+  );
   const localLibraryModels =
     localLibraryPickerMode === "mmproj"
       ? mmprojLibraryModels
       : localLibraryPickerMode === "mtp"
         ? mtpLibraryModels
-        : downloadedModels;
+        : localLibraryPickerMode === "dflash"
+          ? dflashLibraryModels
+          : downloadedModels;
   const localLibraryTitle =
     localLibraryPickerMode === "mmproj"
       ? t("editModel.localLibrary.mmprojTitle")
       : localLibraryPickerMode === "mtp"
         ? "Select MTP Draft File"
-        : t("hfBrowser.libraryTitle");
+        : localLibraryPickerMode === "dflash"
+          ? "Select DFlash Draft File"
+          : t("hfBrowser.libraryTitle");
   const localLibraryEmptyLabel =
     localLibraryPickerMode === "mmproj"
       ? t("editModel.localLibrary.mmprojEmpty")
       : localLibraryPickerMode === "mtp"
         ? "No MTP files downloaded"
-        : t("hfBrowser.libraryEmpty");
+        : localLibraryPickerMode === "dflash"
+          ? "No DFlash files downloaded"
+          : t("hfBrowser.libraryEmpty");
   const localLibraryEmptyHint =
     localLibraryPickerMode === "mmproj"
       ? t("editModel.localLibrary.mmprojEmptyHint")
       : localLibraryPickerMode === "mtp"
         ? "Download the mtp-*.gguf sidecar from the model's repository in the model browser."
-        : t("hfBrowser.libraryEmptyHint");
+        : localLibraryPickerMode === "dflash"
+          ? "Download the *dflash*.gguf drafter for this model in the model browser."
+          : t("hfBrowser.libraryEmptyHint");
   const isAutomatic1111Provider = editorModel?.providerId === "automatic1111";
   const isSdcppModel = editorModel?.providerId === "sdcpp";
   const isFixedImageProvider = isAutomatic1111Provider || isSdcppModel;
@@ -3044,7 +3061,10 @@ export function EditModelPage() {
                                           ? modelAdvancedDraft.llamaMmprojPath === model.path
                                           : localLibraryPickerMode === "mtp"
                                             ? modelAdvancedDraft.llamaMtpModelPath === model.path
-                                            : editorModel.name === model.path
+                                            : localLibraryPickerMode === "dflash"
+                                              ? modelAdvancedDraft.llamaDflashModelPath ===
+                                                model.path
+                                              : editorModel.name === model.path
                                       ) ? (
                                         <Check className="h-4 w-4 text-accent" />
                                       ) : (
@@ -7222,6 +7242,14 @@ export function EditModelPage() {
                                               {t("editModel.dflash.draftFileDescription")}
                                             </span>
                                           </div>
+                                          <button
+                                            type="button"
+                                            onClick={openLocalDflashPicker}
+                                            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
+                                          >
+                                            <FolderOpen className="h-3.5 w-3.5 text-accent/70" />
+                                            {t("hfBrowser.selectFromLibrary")}
+                                          </button>
                                         </div>
                                         <input
                                           type="text"

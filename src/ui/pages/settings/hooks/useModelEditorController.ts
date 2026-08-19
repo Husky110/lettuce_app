@@ -1037,6 +1037,7 @@ export function useModelEditorController(): ControllerReturn {
         payload: {
           ...state.modelAdvancedDraft,
           llamaMtpEnabled: value,
+          ...(value === true ? { llamaDflashEnabled: null } : {}),
         },
       });
     },
@@ -1089,6 +1090,7 @@ export function useModelEditorController(): ControllerReturn {
         payload: {
           ...state.modelAdvancedDraft,
           llamaDflashEnabled: value,
+          ...(value === true ? { llamaMtpEnabled: null } : {}),
         },
       });
     },

@@ -2522,6 +2522,13 @@ mod desktop {
             let use_vision = media_requested && mtmd_ctx.is_some();
             let llama_dflash_active =
                 dflash_active && !use_vision && llama_mtp_draft_model.is_some();
+            if llama_dflash_active && llama_mtp_enabled {
+                log_warn(
+                    &app,
+                    "llama_cpp",
+                    "DFlash and MTP are both enabled but they share one draft slot; continuing with DFlash only",
+                );
+            }
             let llama_mtp_active = llama_mtp_enabled
                 && !llama_dflash_active
                 && !use_vision
