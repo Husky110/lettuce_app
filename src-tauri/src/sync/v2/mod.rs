@@ -29,8 +29,8 @@ pub use capture::{
     CapturedTransaction,
 };
 pub use catalog::{
-    audit_sync_catalog, cached_schema_fingerprint, schema_fingerprint,
-    syncable_tables, CatalogError, TableInfo,
+    audit_sync_catalog, cached_schema_fingerprint, is_syncable_table,
+    schema_fingerprint, syncable_tables, CatalogError, TableInfo,
 };
 pub use model::{ApplyOutcome, ApplyResult, ChangeRevision, Frontier, HybridTimestamp};
 pub use identity::get_or_create_device_id;

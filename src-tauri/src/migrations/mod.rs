@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::{log_info, log_warn};
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 95;
+pub const CURRENT_MIGRATION_VERSION: u32 = 96;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -977,6 +977,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v94_to_v95(app)?;
         version = 95;
+    }
+
+    if version < 96 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v95 -> v96: Canonicalize table layouts so sync schema fingerprints match across devices",
+        );
+        migrate_v95_to_v96(app)?;
+        version = 96;
     }
 
     if version != CURRENT_MIGRATION_VERSION {
@@ -4568,6 +4578,32 @@ fn migrate_v93_to_v94_conn(conn: &rusqlite::Connection) -> Result<(), String> {
 fn migrate_v94_to_v95(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     migrate_v94_to_v95_conn(&conn)
+}
+
+fn migrate_v95_to_v96(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    let report = crate::storage_manager::schema_canonicalizer::canonicalize_schema(&conn)?;
+    if !report.rebuilt.is_empty() {
+        log_info(
+            app,
+            "migrations",
+            format!("Canonicalized tables: {}", report.rebuilt.join(", ")),
+        );
+    }
+    if !report.renamed_legacy.is_empty() {
+        log_info(
+            app,
+            "migrations",
+            format!(
+                "Renamed leftover tables out of the sync catalog: {}",
+                report.renamed_legacy.join(", ")
+            ),
+        );
+    }
+    for warning in &report.warnings {
+        log_warn(app, "migrations", format!("Canonicalization warning: {warning}"));
+    }
+    migrate_sync_v2_schema(&conn)
 }
 
 fn migrate_v94_to_v95_conn(conn: &rusqlite::Connection) -> Result<(), String> {

@@ -301,7 +301,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     init_db_connection(conn)
 }
 
-fn init_db_connection(conn: &Connection) -> Result<(), String> {
+pub(crate) fn init_db_connection(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS meta (
@@ -331,7 +331,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           api_key TEXT,
           base_url TEXT,
           default_model TEXT,
-          headers TEXT
+          headers TEXT,
+          config TEXT
         );
 
         CREATE TABLE IF NOT EXISTS models (
@@ -575,6 +576,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           disable_avatar_gradient INTEGER NOT NULL DEFAULT 0,
           avatar_gradient_source TEXT NOT NULL DEFAULT 'base',
           default_chat_template_id TEXT,
+          lora_name TEXT,
+          lora_strength REAL,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
@@ -636,6 +639,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           id TEXT PRIMARY KEY,
           character_id TEXT NOT NULL,
           content TEXT NOT NULL,
+          direction TEXT,
+          background_image_path TEXT,
           created_at INTEGER NOT NULL,
           selected_variant_id TEXT,
           FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
@@ -645,6 +650,7 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           id TEXT PRIMARY KEY,
           scene_id TEXT NOT NULL,
           content TEXT NOT NULL,
+          direction TEXT,
           created_at INTEGER NOT NULL,
           FOREIGN KEY(scene_id) REFERENCES scenes(id) ON DELETE CASCADE
         );
@@ -684,6 +690,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           design_reference_image_ids TEXT,
           active_lorebook_ids TEXT NOT NULL DEFAULT '[]',
           is_default INTEGER NOT NULL DEFAULT 0,
+          lora_name TEXT,
+          lora_strength REAL,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
@@ -906,7 +914,8 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           completion_cost REAL,
           total_cost REAL,
           success INTEGER NOT NULL,
-          error_message TEXT
+          error_message TEXT,
+          finish_reason TEXT
         );
 
         CREATE TABLE IF NOT EXISTS usage_metadata (
@@ -1001,6 +1010,7 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           character_model_overrides TEXT NOT NULL DEFAULT '{}',
           group_chat_prompt_template_id TEXT,
           group_chat_roleplay_prompt_template_id TEXT,
+          memory_type TEXT NOT NULL DEFAULT 'manual',
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL
         );
 
@@ -1037,6 +1047,7 @@ fn init_db_connection(conn: &Connection) -> Result<(), String> {
           character_model_overrides TEXT NOT NULL DEFAULT '{}',
           group_chat_prompt_template_id TEXT,
           group_chat_roleplay_prompt_template_id TEXT,
+          memory_type TEXT NOT NULL DEFAULT 'manual',
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
           FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
         );
