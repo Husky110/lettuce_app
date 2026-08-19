@@ -9,6 +9,7 @@ use super::{
     resolve_llama_chat_template_override, resolve_llama_chat_template_preset,
     resolve_llama_dry_allowed_length, resolve_llama_dry_base, resolve_llama_dry_multiplier,
     resolve_llama_dry_penalty_last_n, resolve_llama_dry_sequence_breakers,
+    resolve_llama_adaptive_decay, resolve_llama_adaptive_target,
     resolve_llama_dflash_draft_tokens, resolve_llama_dflash_enabled,
     resolve_llama_dflash_min_probability, resolve_llama_dflash_model_path,
     resolve_llama_flash_attention, resolve_llama_gpu_device_ids,
@@ -189,6 +190,12 @@ fn build_llama_extra_fields(
     }
     if let Some(v) = resolve_llama_xtc_threshold(session, model, settings) {
         extra.insert("llamaXtcThreshold".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_adaptive_target(session, model, settings) {
+        extra.insert("llamaAdaptiveTarget".to_string(), json!(v));
+    }
+    if let Some(v) = resolve_llama_adaptive_decay(session, model, settings) {
+        extra.insert("llamaAdaptiveDecay".to_string(), json!(v));
     }
 
     if extra.is_empty() {

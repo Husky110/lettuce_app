@@ -1265,6 +1265,18 @@ mod desktop {
             .or_else(|| body.get("llamaXtcThreshold"))
             .or_else(|| body.get("llama_xtc_threshold"))
             .and_then(|v| v.as_f64());
+        let adaptive_target = body
+            .get("adaptive_target")
+            .or_else(|| body.get("adaptiveTarget"))
+            .or_else(|| body.get("llamaAdaptiveTarget"))
+            .or_else(|| body.get("llama_adaptive_target"))
+            .and_then(|v| v.as_f64());
+        let adaptive_decay = body
+            .get("adaptive_decay")
+            .or_else(|| body.get("adaptiveDecay"))
+            .or_else(|| body.get("llamaAdaptiveDecay"))
+            .or_else(|| body.get("llama_adaptive_decay"))
+            .and_then(|v| v.as_f64());
         let max_tokens = body
             .get("max_tokens")
             .or_else(|| body.get("max_completion_tokens"))
@@ -3927,6 +3939,8 @@ mod desktop {
                 xtc_threshold,
                 frequency_penalty,
                 presence_penalty,
+                adaptive_target,
+                adaptive_decay,
                 seed: llama_seed,
             };
             check_abort_signal(abort_rx.as_mut())?;

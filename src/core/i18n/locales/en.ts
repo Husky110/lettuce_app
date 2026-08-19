@@ -4971,6 +4971,11 @@ export const enMessages = {
         "Recent tokens used by repeat, frequency, and presence penalties; `-1` uses the full context",
       xtcProbability: "XTC Probability",
       xtcThreshold: "XTC Threshold",
+      adaptiveTarget: "Adaptive-P Target",
+      adaptiveTargetDescription:
+        "Target probability for Adaptive-P; leave empty to keep the standard final sampling step",
+      adaptiveDecay: "Adaptive-P Target Decay",
+      adaptiveDecayDescription: "Lower reacts faster to recent tokens, higher stays steadier",
       localOverride: "Local override",
       dryMultiplier: "DRY Multiplier",
       dryMultiplierDescription: "`0` disables sequence repetition control",
@@ -9458,6 +9463,10 @@ export const enMessages = {
       xtcProbabilityDesc: "Chance of excluding top tokens (0 = off). Boosts variety.",
       xtcThreshold: "XTC Threshold",
       xtcThresholdDesc: "Min probability a token needs to be eligible for XTC removal.",
+      adaptiveTarget: "Adaptive-P Target",
+      adaptiveTargetDesc: "Aim for tokens near this probability. Empty keeps normal sampling.",
+      adaptiveDecay: "Adaptive-P Target Decay",
+      adaptiveDecayDesc: "How steady the target adaptation is. Lower reacts faster.",
       seed: "Seed",
       seedDesc: "Random seed. Leave blank for random.",
       ropeBase: "RoPE Base",
@@ -9615,6 +9624,8 @@ export const enMessages = {
     penaltyRange: "Penalty Range",
     xtcProbability: "XTC Probability",
     xtcThreshold: "XTC Threshold",
+    adaptiveTarget: "Adaptive-P Target",
+    adaptiveDecay: "Adaptive-P Target Decay",
     dryMultiplier: "DRY Multiplier",
     dryBase: "DRY Base",
     dryAllowedLength: "DRY Allowed Length",
@@ -9698,6 +9709,10 @@ export const enMessages = {
       temp: {
         label: "Temperature",
         desc: "Flatten or sharpen the final distribution before selection.",
+      },
+      adaptiveP: {
+        label: "Adaptive-P",
+        desc: "Picks tokens near a target probability and adapts over time. Always runs last, and only when its target is set.",
       },
       dry: {
         label: "DRY",

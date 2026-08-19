@@ -687,6 +687,8 @@ export function EditModelPage() {
     handleLlamaNPenRangeChange,
     handleLlamaXtcProbabilityChange,
     handleLlamaXtcThresholdChange,
+    handleLlamaAdaptiveTargetChange,
+    handleLlamaAdaptiveDecayChange,
     handleLlamaDryMultiplierChange,
     handleLlamaDryBaseChange,
     handleLlamaDryAllowedLengthChange,
@@ -4675,6 +4677,48 @@ export function EditModelPage() {
                                       value={modelAdvancedDraft.llamaXtcThreshold ?? null}
                                       onChange={(next) => handleLlamaXtcThresholdChange(next)}
                                       placeholder={t("editModel.placeholders.default")}
+                                      className={numberInputClassName}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-6">
+                                  <div className="space-y-4">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-medium text-fg/70">
+                                        {t("editModel.llamaSampler.adaptiveTarget")}
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        {t("editModel.llamaSampler.adaptiveTargetDescription")}
+                                      </span>
+                                    </div>
+                                    <NumberInput
+                                      min={0}
+                                      max={1}
+                                      step={0.01}
+                                      value={modelAdvancedDraft.llamaAdaptiveTarget ?? null}
+                                      onChange={(next) => handleLlamaAdaptiveTargetChange(next)}
+                                      placeholder={t("editModel.placeholders.default")}
+                                      className={numberInputClassName}
+                                    />
+                                  </div>
+
+                                  <div className="space-y-4">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-medium text-fg/70">
+                                        {t("editModel.llamaSampler.adaptiveDecay")}
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        {t("editModel.llamaSampler.adaptiveDecayDescription")}
+                                      </span>
+                                    </div>
+                                    <NumberInput
+                                      min={0}
+                                      max={0.99}
+                                      step={0.01}
+                                      value={modelAdvancedDraft.llamaAdaptiveDecay ?? null}
+                                      onChange={(next) => handleLlamaAdaptiveDecayChange(next)}
+                                      placeholder="0.90"
                                       className={numberInputClassName}
                                     />
                                   </div>

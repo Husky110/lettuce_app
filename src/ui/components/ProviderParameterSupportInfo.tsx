@@ -103,6 +103,8 @@ const PARAMETER_LABELS: Record<StaticParameter, string> = {
   llamaDrySequenceBreakers: "llama.cpp DRY Sequence Breakers",
   llamaXtcProbability: "llama.cpp XTC Probability",
   llamaXtcThreshold: "llama.cpp XTC Threshold",
+  llamaAdaptiveTarget: "llama.cpp Adaptive-P Target",
+  llamaAdaptiveDecay: "llama.cpp Adaptive-P Target Decay",
   llamaLastRuntimeReport: "llama.cpp Runtime Report",
   ollamaNumCtx: "Ollama Num Ctx",
   ollamaNumPredict: "Ollama Num Predict",
@@ -226,6 +228,10 @@ const PARAMETER_DESCRIPTIONS: Record<StaticParameter, string> = {
   llamaDrySequenceBreakers: "Sequence boundaries that reset DRY matching",
   llamaXtcProbability: "Chance of excluding top tokens for more variety (0 = off)",
   llamaXtcThreshold: "Minimum probability for a token to be eligible for XTC removal",
+  llamaAdaptiveTarget:
+    "Adaptive-P picks tokens near this probability and replaces the final sampling step (0 to 1)",
+  llamaAdaptiveDecay:
+    "How fast Adaptive-P adapts its target; lower reacts quicker, higher is steadier (0 to 0.99)",
   llamaLastRuntimeReport: "Persisted diagnostics from the last local llama.cpp run",
   ollamaNumCtx: "Ollama context window size",
   ollamaNumPredict: "Max tokens to generate",

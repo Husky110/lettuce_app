@@ -519,6 +519,10 @@ pub struct FeatureGenerationSettings {
     #[serde(default)]
     pub llama_xtc_threshold: Option<f64>,
     #[serde(default)]
+    pub llama_adaptive_target: Option<f64>,
+    #[serde(default)]
+    pub llama_adaptive_decay: Option<f64>,
+    #[serde(default)]
     pub llama_dry_multiplier: Option<f64>,
     #[serde(default)]
     pub llama_dry_base: Option<f64>,
@@ -874,6 +878,10 @@ pub struct AdvancedModelSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_xtc_threshold: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llama_adaptive_target: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llama_adaptive_decay: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_last_runtime_report: Option<serde_json::Value>,
     pub ollama_num_ctx: Option<u32>,
     pub ollama_num_predict: Option<u32>,
@@ -1022,6 +1030,8 @@ impl Default for AdvancedModelSettings {
             llama_dry_sequence_breakers: None,
             llama_xtc_probability: None,
             llama_xtc_threshold: None,
+            llama_adaptive_target: None,
+            llama_adaptive_decay: None,
             llama_last_runtime_report: None,
             ollama_num_ctx: None,
             ollama_num_predict: None,

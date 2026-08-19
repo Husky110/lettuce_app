@@ -1197,6 +1197,44 @@ pub(super) fn resolve_llama_xtc_threshold(
         .or(settings.advanced_model_settings.llama_xtc_threshold)
 }
 
+pub(super) fn resolve_llama_adaptive_target(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<f64> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_adaptive_target)
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_adaptive_target)
+        })
+        .or(settings.advanced_model_settings.llama_adaptive_target)
+        .filter(|value| *value > 0.0 && *value <= 1.0)
+}
+
+pub(super) fn resolve_llama_adaptive_decay(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<f64> {
+    session
+        .advanced_model_settings
+        .as_ref()
+        .and_then(|cfg| cfg.llama_adaptive_decay)
+        .or_else(|| {
+            model
+                .advanced_model_settings
+                .as_ref()
+                .and_then(|cfg| cfg.llama_adaptive_decay)
+        })
+        .or(settings.advanced_model_settings.llama_adaptive_decay)
+        .filter(|value| (0.0..=0.99).contains(value))
+}
+
 pub(super) fn resolve_llama_dry_allowed_length(
     session: &Session,
     model: &Model,
