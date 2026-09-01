@@ -3397,7 +3397,29 @@ pub fn build_system_prompt_entries(
         base_template_source,
         base_template_id,
         condense_prompt_entries,
-    ) = if let Some(session_template_id) = &session.prompt_template_id {
+    ) = if companion_mode {
+        if let Some(companion_template_id) = companion::companion_prompt_template_id(character)
+            .filter(|template_id| !template_id.trim().is_empty())
+        {
+            if let Ok(Some(template)) = prompts::get_template(app, &companion_template_id) {
+                debug_parts.push(json!({
+                    "source": "character_companion_template",
+                    "template_id": companion_template_id
+                }));
+                (
+                    template.content,
+                    template.entries,
+                    "character_companion_template",
+                    Some(companion_template_id),
+                    template.condense_prompt_entries,
+                )
+            } else {
+                get_app_default_template_content(app, settings, true, &mut debug_parts)
+            }
+        } else {
+            get_app_default_template_content(app, settings, true, &mut debug_parts)
+        }
+    } else if let Some(session_template_id) = &session.prompt_template_id {
         if let Ok(Some(template)) = prompts::get_template(app, session_template_id) {
             debug_parts.push(json!({
                 "source": "session_template",
@@ -3439,28 +3461,6 @@ pub fn build_system_prompt_entries(
                 "fallback": "app_default"
             }));
             get_app_default_template_content(app, settings, companion_mode, &mut debug_parts)
-        }
-    } else if companion_mode {
-        if let Some(companion_template_id) = companion::companion_prompt_template_id(character)
-            .filter(|template_id| !template_id.trim().is_empty())
-        {
-            if let Ok(Some(template)) = prompts::get_template(app, &companion_template_id) {
-                debug_parts.push(json!({
-                    "source": "character_companion_template",
-                    "template_id": companion_template_id
-                }));
-                (
-                    template.content,
-                    template.entries,
-                    "character_companion_template",
-                    Some(companion_template_id),
-                    template.condense_prompt_entries,
-                )
-            } else {
-                get_app_default_template_content(app, settings, true, &mut debug_parts)
-            }
-        } else {
-            get_app_default_template_content(app, settings, true, &mut debug_parts)
         }
     } else if let Some(char_template_id) = &character.prompt_template_id {
         if let Ok(Some(template)) = prompts::get_template(app, char_template_id) {

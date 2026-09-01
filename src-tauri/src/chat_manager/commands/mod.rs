@@ -128,7 +128,21 @@ fn resolve_debug_prompt_template(
     character: &super::types::Character,
     settings: &Settings,
 ) -> (String, Option<String>, Option<String>) {
-    if let Some(session_template_id) = &session.prompt_template_id {
+    if super::companion::is_companion_mode(session, character) {
+        if let Some(companion_template_id) =
+            super::companion::companion_prompt_template_id(character)
+        {
+            if let Ok(Some(template)) = prompts::get_template(app, &companion_template_id) {
+                return (
+                    "character_companion_template".to_string(),
+                    Some(template.id),
+                    Some(template.name),
+                );
+            }
+        }
+        // Companion mode without a resolvable companion template falls through to the
+        // app-wide / app-default template below, mirroring build_system_prompt_entries.
+    } else if let Some(session_template_id) = &session.prompt_template_id {
         if let Ok(Some(template)) = prompts::get_template(app, session_template_id) {
             return (
                 "session_template".to_string(),
