@@ -437,15 +437,7 @@ fn build_initial_messages(
         ));
     }
 
-    // Merge every system section into a single leading system message *only*
-    // for llama.cpp. The entries are authored as separate blocks for
-    // readability, but several llama.cpp chat templates (e.g. Gemma) reject a
-    // conversation that contains more than one system message, or a system
-    // message that is not the very first message. Emitting one message per
-    // entry triggers a "System message must be at the beginning" template
-    // error on those models, so we concatenate them for llama.cpp. Remote
-    // providers handle multiple system messages fine, so we leave the entries
-    // distributed there to preserve their structure.
+    // llama.cpp expects a single system message at the start for some templates (e.g. Gemma), so merge system sections here. Remote providers can keep them separate.
     let prompt_entries = if crate::llama_cpp::is_llama_cpp(Some(provider_id)) {
         let merged_system = prompt_entries
             .iter()
