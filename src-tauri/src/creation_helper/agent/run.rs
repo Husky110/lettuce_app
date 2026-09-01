@@ -55,7 +55,13 @@ pub async fn run_agent_turn(
     emit_creation_helper_turn_start(app, &session_id, stream_request_id);
 
     let system_role = system_role_for(&ctx.cred);
-    let mut api_messages = build_initial_messages(session, target, fallback_format, &system_role);
+    let mut api_messages = build_initial_messages(
+        session,
+        target,
+        fallback_format,
+        &system_role,
+        &ctx.provider_id,
+    );
 
     let tool_config = if fallback_format.is_native() {
         Some(ToolConfig {
@@ -408,6 +414,7 @@ fn build_initial_messages(
     target: TargetKind,
     fallback: CreationHelperFallbackFormat,
     system_role: &str,
+    provider_id: &str,
 ) -> Vec<Value> {
     let mut conversation_messages = Vec::new();
     let view = build_draft_view(session);
@@ -430,24 +437,30 @@ fn build_initial_messages(
         ));
     }
 
-    // Merge every system section into a single leading system message. The
-    // entries are authored as separate blocks for readability, but several
-    // llama.cpp chat templates (e.g. Gemma) reject a conversation that contains
-    // more than one system message, or a system message that is not the very
-    // first message. Emitting one message per entry triggers a
-    // "System message must be at the beginning" template error, so we
-    // concatenate them here instead.
-    let merged_system = prompt_entries
-        .iter()
-        .map(|entry| entry.content.trim())
-        .filter(|content| !content.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let merged_entries = vec![relative_system_entry(
-        "creation_helper_system",
-        "Creation Helper System",
-        merged_system,
-    )];
+    // Merge every system section into a single leading system message *only*
+    // for llama.cpp. The entries are authored as separate blocks for
+    // readability, but several llama.cpp chat templates (e.g. Gemma) reject a
+    // conversation that contains more than one system message, or a system
+    // message that is not the very first message. Emitting one message per
+    // entry triggers a "System message must be at the beginning" template
+    // error on those models, so we concatenate them for llama.cpp. Remote
+    // providers handle multiple system messages fine, so we leave the entries
+    // distributed there to preserve their structure.
+    let prompt_entries = if crate::llama_cpp::is_llama_cpp(Some(provider_id)) {
+        let merged_system = prompt_entries
+            .iter()
+            .map(|entry| entry.content.trim())
+            .filter(|content| !content.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        vec![relative_system_entry(
+            "creation_helper_system",
+            "Creation Helper System",
+            merged_system,
+        )]
+    } else {
+        prompt_entries
+    };
 
     for msg in &session.messages {
         let role = match msg.role {
@@ -461,7 +474,7 @@ fn build_initial_messages(
         conversation_messages.push(json!({ "role": role, "content": msg.content }));
     }
 
-    assemble_prompt_messages(merged_entries, conversation_messages, system_role)
+    assemble_prompt_messages(prompt_entries, conversation_messages, system_role)
 }
 
 #[allow(dead_code)]
