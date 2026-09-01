@@ -430,6 +430,25 @@ fn build_initial_messages(
         ));
     }
 
+    // Merge every system section into a single leading system message. The
+    // entries are authored as separate blocks for readability, but several
+    // llama.cpp chat templates (e.g. Gemma) reject a conversation that contains
+    // more than one system message, or a system message that is not the very
+    // first message. Emitting one message per entry triggers a
+    // "System message must be at the beginning" template error, so we
+    // concatenate them here instead.
+    let merged_system = prompt_entries
+        .iter()
+        .map(|entry| entry.content.trim())
+        .filter(|content| !content.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let merged_entries = vec![relative_system_entry(
+        "creation_helper_system",
+        "Creation Helper System",
+        merged_system,
+    )];
+
     for msg in &session.messages {
         let role = match msg.role {
             CreationMessageRole::User => "user",
@@ -442,7 +461,7 @@ fn build_initial_messages(
         conversation_messages.push(json!({ "role": role, "content": msg.content }));
     }
 
-    assemble_prompt_messages(prompt_entries, conversation_messages, system_role)
+    assemble_prompt_messages(merged_entries, conversation_messages, system_role)
 }
 
 #[allow(dead_code)]
