@@ -81,8 +81,8 @@ mod desktop {
     };
     use prompt::{
         add_bos_label, build_prompt, inject_media_markers, model_tokenizer_add_bos_label,
-        model_tokenizer_adds_bos, prompt_add_bos_reason, prompt_mode_label, resolve_prompt_add_bos,
-        token_piece_bytes, OpenAICompatPromptOptions,
+        model_tokenizer_adds_bos, prepend_reasoning_system_prefix, prompt_add_bos_reason,
+        prompt_mode_label, resolve_prompt_add_bos, token_piece_bytes, OpenAICompatPromptOptions,
     };
     use sampler::{
         build_sampler, flash_attention_policy_label, kv_type_label, normalize_sampler_profile,
@@ -1150,11 +1150,18 @@ mod desktop {
                 "llama.cpp multimodal requests require `llamaMmprojPath` (or `llama_mmproj_path`) to load the multimodal projector",
             ));
         }
-        let prompt_messages_owned = if media_requested {
+        let mut prompt_messages_owned = if media_requested {
             Some(inject_media_markers(messages))
         } else {
             None
         };
+        // When forced Gemma4 reasoning is on, prepend the "<|think|>" opener to
+        // the start of the system prompt so the model begins inside a thinking
+        // block without the user having to edit the system prompt by hand.
+        if force_gemma4_reasoning {
+            let base = prompt_messages_owned.as_deref().unwrap_or(messages);
+            prompt_messages_owned = Some(prepend_reasoning_system_prefix(base));
+        }
         let prompt_messages = prompt_messages_owned.as_deref().unwrap_or(messages);
 
         let sampler_profile = body
