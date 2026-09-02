@@ -30,6 +30,10 @@ use crate::utils::{log_error, log_info, log_warn};
 const LOCAL_PROVIDER_ID: &str = "llamacpp";
 #[cfg(not(mobile))]
 const TOKENIZER_ADD_BOS_METADATA_KEY: &str = "tokenizer.ggml.add_bos_token";
+/// Prefill appended to the assistant turn to force Gemma4-series models to open
+/// a reasoning channel before answering (toggled per model in the settings).
+#[cfg(not(mobile))]
+const GEMMA4_REASONING_PREFILL: &str = "<|channel>thought";
 
 #[cfg(not(mobile))]
 mod desktop {
@@ -1099,11 +1103,20 @@ mod desktop {
         let thinking_directive = message_thinking_directive(messages);
         let (enable_thinking, chat_template_kwargs) =
             parse_local_thinking_options(body, messages, reasoning_format.as_deref());
+        let force_gemma4_reasoning = body
+            .get("forceGemma4Reasoning")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let openai_compat_options = OpenAICompatPromptOptions {
             enable_thinking,
             chat_template_kwargs,
             parallel_tool_calls: parse_local_parallel_tool_calls(body),
             reasoning_format,
+            forced_reasoning_prefill: if force_gemma4_reasoning {
+                Some(GEMMA4_REASONING_PREFILL.to_string())
+            } else {
+                None
+            },
         };
         if let Some(enabled) = thinking_directive {
             log_info(
@@ -2930,7 +2943,15 @@ mod desktop {
                     prompt_add_bos_reason(built_prompt.prompt_mode, model_default_add_bos),
                 ),
             );
-            let prompt = built_prompt.prompt.clone();
+            let mut prompt = built_prompt.prompt.clone();
+            if let Some(prefill) = openai_compat_options.forced_reasoning_prefill.as_deref() {
+                prompt.push_str(prefill);
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!("forced reasoning prefill appended to prompt: {prefill:?}"),
+                );
+            }
             let prepared_prompt = if use_vision {
                 let mtmd_ctx = mtmd_ctx.ok_or_else(|| {
                     crate::utils::err_msg(

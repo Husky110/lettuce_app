@@ -35,6 +35,9 @@ pub(super) struct OpenAICompatPromptOptions {
     pub(super) chat_template_kwargs: Option<String>,
     pub(super) parallel_tool_calls: bool,
     pub(super) enable_thinking: bool,
+    /// When set, this text is appended to the built prompt so the model's reply
+    /// starts prefilled with it (e.g. an opening thought channel for Gemma4).
+    pub(super) forced_reasoning_prefill: Option<String>,
 }
 
 fn normalize_role(role: &str) -> &'static str {

@@ -708,6 +708,27 @@ pub(crate) fn build_provider_extra_fields(
         );
     }
 
+    // Force reasoning on Gemma4-series models by prefilling the assistant reply
+    // with an opening thought channel. Only meaningful for the local llama.cpp
+    // engine, which builds the prompt itself and can carry the prefill.
+    if provider_id == "llamacpp" {
+        let force_gemma4_reasoning = model
+            .advanced_model_settings
+            .as_ref()
+            .and_then(|cfg| cfg.force_gemma4_reasoning)
+            .or_else(|| {
+                session
+                    .advanced_model_settings
+                    .as_ref()
+                    .and_then(|cfg| cfg.force_gemma4_reasoning)
+            })
+            .unwrap_or(false);
+
+        if force_gemma4_reasoning {
+            extra.insert("forceGemma4Reasoning".to_string(), json!(true));
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────
     // NEW: Prompt caching TTL (used by Claude, Bedrock, Vertex, Gemini, etc.)
     // ─────────────────────────────────────────────────────────────
