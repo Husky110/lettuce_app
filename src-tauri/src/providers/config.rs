@@ -81,6 +81,7 @@ fn supported_extra_body_keys(provider_id: &str) -> &'static [&'static str] {
             "presence_penalty",
             "enable_thinking",
             "chat_template_kwargs",
+            "forceGemma4Reasoning",
         ],
         "ollama" => &["options"],
         // express omitted on purpose — it uses Gemini's implicit caching, no explicit toggle

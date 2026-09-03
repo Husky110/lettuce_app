@@ -15,7 +15,10 @@ use crate::api::{ApiRequest, ApiResponse};
 #[cfg(not(mobile))]
 use crate::chat_manager::provider_adapter::{extract_text_content, parse_data_url};
 #[cfg(not(mobile))]
-use crate::chat_manager::thinking::{normalize_thinking_content, ThinkingTagStreamParser};
+use crate::chat_manager::thinking::{
+    normalize_thinking_content, normalize_thinking_content_starting_in_reasoning,
+    ThinkingTagStreamParser,
+};
 #[cfg(not(mobile))]
 use crate::chat_manager::tooling::{
     parse_tool_calls, parse_tool_calls_from_text, strip_tool_call_blocks, ToolCall,
@@ -31,9 +34,19 @@ const LOCAL_PROVIDER_ID: &str = "llamacpp";
 #[cfg(not(mobile))]
 const TOKENIZER_ADD_BOS_METADATA_KEY: &str = "tokenizer.ggml.add_bos_token";
 /// Prefill appended to the assistant turn to force Gemma4-series models to open
-/// a reasoning channel before answering (toggled per model in the settings).
+/// a reasoning channel before answering (toggled per model in the settings). The
+/// trailing newline matches the model's own output format ("<|channel>thought\n"
+/// followed by the reasoning): it places generation at the content position
+/// right after the opener, instead of leaving the model at the opener/newline
+/// boundary where it sometimes closes the channel immediately with an empty
+/// thought.
 #[cfg(not(mobile))]
-const GEMMA4_REASONING_PREFILL: &str = "<|channel>thought";
+const GEMMA4_REASONING_PREFILL: &str = "<|channel>thought\n";
+/// Close marker that ends the forced-reasoning channel. Because the opener is
+/// prefilled into the prompt, the model's output starts mid-thought, so the
+/// thinking parser is started already inside a reasoning block that ends here.
+#[cfg(not(mobile))]
+const GEMMA4_REASONING_CLOSE: &str = "<channel|>";
 
 #[cfg(not(mobile))]
 mod desktop {
@@ -2859,7 +2872,7 @@ mod desktop {
                 json!(ctx_size.min(llama_batch_size).max(1)),
             );
             failure_stage = "build_prompt";
-            let built_prompt = build_prompt(
+            let mut built_prompt = build_prompt(
                 model,
                 prompt_messages,
                 llama_chat_template_override.as_deref(),
@@ -2869,6 +2882,19 @@ mod desktop {
                 tool_choice,
                 &openai_compat_options,
             )?;
+            // Apply the forced-reasoning reply prefill to the built prompt itself,
+            // before it is logged, tokenized, or emitted to the debug view, so the
+            // model starts its turn inside the thought channel and the appended
+            // text is actually visible in the prompt dump instead of being added
+            // silently further downstream.
+            if let Some(prefill) = openai_compat_options.forced_reasoning_prefill.as_deref() {
+                built_prompt.prompt.push_str(prefill);
+                log_info(
+                    &app,
+                    "llama_cpp",
+                    format!("forced reasoning prefill appended to prompt: {prefill:?}"),
+                );
+            }
             if built_prompt.chat_template_result.is_some() {
                 crate::utils::emit_debug(
                     &app,
@@ -2950,15 +2976,7 @@ mod desktop {
                     prompt_add_bos_reason(built_prompt.prompt_mode, model_default_add_bos),
                 ),
             );
-            let mut prompt = built_prompt.prompt.clone();
-            if let Some(prefill) = openai_compat_options.forced_reasoning_prefill.as_deref() {
-                prompt.push_str(prefill);
-                log_info(
-                    &app,
-                    "llama_cpp",
-                    format!("forced reasoning prefill appended to prompt: {prefill:?}"),
-                );
-            }
+            let prompt = built_prompt.prompt.clone();
             let prepared_prompt = if use_vision {
                 let mtmd_ctx = mtmd_ctx.ok_or_else(|| {
                     crate::utils::err_msg(
@@ -3561,6 +3579,7 @@ mod desktop {
                 "modelPath": model_path,
                 "prompt": {
                     "mode": prompt_mode_label(built_prompt.prompt_mode),
+                    "finalPrompt": built_prompt.prompt.clone(),
                     "templateSource": applied_template_source,
                     "templateUsed": applied_template_text,
                     "attemptedTemplateSource": attempted_template_source,
@@ -4012,7 +4031,15 @@ mod desktop {
                 }),
             );
             let mut sampler = built_sampler.sampler;
-            let mut streamed_thinking_parser = ThinkingTagStreamParser::default();
+            // When we prefilled the assistant reply with the reasoning opener, the
+            // model's output begins mid-thought and never emits the open tag, so
+            // start the parser already inside the reasoning block. Otherwise the
+            // whole thought would leak into the visible response.
+            let mut streamed_thinking_parser = if force_gemma4_reasoning {
+                ThinkingTagStreamParser::starting_in_reasoning(GEMMA4_REASONING_CLOSE)
+            } else {
+                ThinkingTagStreamParser::default()
+            };
             let mut structured_parser = if stream && built_prompt.native_tool_parse_supported {
                 built_prompt
                     .chat_template_result
@@ -4611,10 +4638,22 @@ mod desktop {
                 .or_else(|| final_message.get("thinking"))
                 .and_then(|value| value.as_str());
             let raw_content = extract_text_content(final_message.get("content"));
-            let normalized = normalize_thinking_content(
-                raw_content.as_deref().filter(|value| !value.is_empty()),
-                explicit_reasoning,
-            );
+            // When we prefilled the reasoning opener, the raw output begins
+            // mid-thought (no open tag), so the final split has to start already
+            // inside the reasoning block — otherwise the whole thought leaks into
+            // the saved/visible message even though streaming split it correctly.
+            let normalized = if force_gemma4_reasoning {
+                normalize_thinking_content_starting_in_reasoning(
+                    raw_content.as_deref().filter(|value| !value.is_empty()),
+                    explicit_reasoning,
+                    GEMMA4_REASONING_CLOSE,
+                )
+            } else {
+                normalize_thinking_content(
+                    raw_content.as_deref().filter(|value| !value.is_empty()),
+                    explicit_reasoning,
+                )
+            };
             if let Some(message) = final_message.as_object_mut() {
                 message.insert("content".to_string(), json!(normalized.content));
                 if normalized.reasoning.is_empty() {
