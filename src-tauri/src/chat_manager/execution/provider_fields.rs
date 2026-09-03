@@ -261,6 +261,8 @@ mod tests {
             llama_dry_sequence_breakers: Some(vec![":".to_string()]),
             llama_xtc_probability: Some(0.5),
             llama_xtc_threshold: Some(0.1),
+            llama_adaptive_target: Some(0.3),
+            llama_adaptive_decay: Some(0.95),
             ..Default::default()
         };
         let model = Model {
@@ -305,7 +307,7 @@ mod tests {
         assert_eq!(extra.get("llamaNPenRange"), Some(&json!(64)));
         assert_eq!(
             extra.len(),
-            42,
+            44,
             "unexpected llama extra-body key count; a resolver stopped emitting or a new field was added without updating this fixture: {:?}",
             extra.keys().collect::<Vec<_>>()
         );

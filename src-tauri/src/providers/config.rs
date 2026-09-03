@@ -72,6 +72,8 @@ fn supported_extra_body_keys(provider_id: &str) -> &'static [&'static str] {
             "llamaDrySequenceBreakers",
             "llamaXtcProbability",
             "llamaXtcThreshold",
+            "llamaAdaptiveTarget",
+            "llamaAdaptiveDecay",
             "llamaDisableSamplerProfileDefaults",
             "min_p",
             "typical_p",
