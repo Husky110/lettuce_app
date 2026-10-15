@@ -19,11 +19,14 @@ pub struct CompanionScheduledNote {
     pub character_id: String,
     pub label: String,
     pub content: String,
-    pub available_at: u64,
-    pub expires_at: Option<u64>,
+    // Effective-timeline timestamps (signed so a pre-1970 companion clock is preserved).
+    pub available_at: i64,
+    pub expires_at: Option<i64>,
     pub recurrence: String,
+    // A duration, never a timestamp — stays unsigned.
     pub recurrence_window_ms: Option<u64>,
     pub enabled: bool,
+    // Wall-clock bookkeeping, set from the real system clock.
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -39,16 +42,16 @@ fn normalize_recurrence(value: &str) -> Result<&str, String> {
     }
 }
 
-fn timestamp_ms_to_local(ts_ms: u64) -> Result<DateTime<Local>, String> {
-    match Local.timestamp_millis_opt(ts_ms as i64) {
+fn timestamp_ms_to_local(ts_ms: i64) -> Result<DateTime<Local>, String> {
+    match Local.timestamp_millis_opt(ts_ms) {
         LocalResult::Single(value) => Ok(value),
         LocalResult::Ambiguous(earliest, _) => Ok(earliest),
         LocalResult::None => Err(format!("Invalid timestamp {}", ts_ms)),
     }
 }
 
-pub fn local_datetime_to_ms(dt: DateTime<Local>) -> u64 {
-    dt.timestamp_millis().max(0) as u64
+pub fn local_datetime_to_ms(dt: DateTime<Local>) -> i64 {
+    dt.timestamp_millis()
 }
 
 pub fn resolve_local_datetime(
@@ -126,10 +129,10 @@ fn monthly_occurrence(
 }
 
 pub fn next_occurrence_after_ms(
-    available_at: u64,
+    available_at: i64,
     recurrence: &str,
-    occurrence_ms: u64,
-) -> Result<Option<u64>, String> {
+    occurrence_ms: i64,
+) -> Result<Option<i64>, String> {
     if recurrence == "none" {
         return Ok(None);
     }
@@ -154,10 +157,10 @@ pub fn next_occurrence_after_ms(
 }
 
 pub fn most_recent_occurrence_on_or_before(
-    available_at: u64,
+    available_at: i64,
     recurrence: &str,
-    now_ms: u64,
-) -> Result<u64, String> {
+    now_ms: i64,
+) -> Result<i64, String> {
     if now_ms < available_at {
         return Ok(available_at);
     }
@@ -215,7 +218,7 @@ pub fn most_recent_occurrence_on_or_before(
     Ok(local_datetime_to_ms(occurrence))
 }
 
-pub fn is_note_active(note: &CompanionScheduledNote, now_ms: u64) -> Result<bool, String> {
+pub fn is_note_active(note: &CompanionScheduledNote, now_ms: i64) -> Result<bool, String> {
     if !note.enabled {
         return Ok(false);
     }
@@ -235,7 +238,7 @@ pub fn is_note_active(note: &CompanionScheduledNote, now_ms: u64) -> Result<bool
 
     let occurrence = most_recent_occurrence_on_or_before(note.available_at, recurrence, now_ms)?;
     if let Some(window_ms) = note.recurrence_window_ms {
-        return Ok(now_ms < occurrence.saturating_add(window_ms));
+        return Ok(now_ms < occurrence.saturating_add(window_ms as i64));
     }
     Ok(true)
 }
@@ -246,10 +249,8 @@ fn note_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CompanionScheduled
         character_id: row.get(1)?,
         label: row.get(2)?,
         content: row.get(3)?,
-        available_at: row.get::<_, i64>(4)?.max(0) as u64,
-        expires_at: row
-            .get::<_, Option<i64>>(5)?
-            .map(|value| value.max(0) as u64),
+        available_at: row.get::<_, i64>(4)?,
+        expires_at: row.get::<_, Option<i64>>(5)?,
         recurrence: row.get(6)?,
         recurrence_window_ms: row
             .get::<_, Option<i64>>(7)?
@@ -317,7 +318,7 @@ pub fn list_notes(
 pub fn active_notes_for_character(
     app: &AppHandle,
     character_id: &str,
-    now_ms: u64,
+    now_ms: i64,
 ) -> Result<Vec<CompanionScheduledNote>, String> {
     let notes = list_notes(app, character_id)?;
     let mut active = Vec::new();
@@ -332,7 +333,7 @@ pub fn active_notes_for_character(
 pub fn render_scheduled_notes_block(
     app: &AppHandle,
     character_id: &str,
-    now_ms: u64,
+    now_ms: i64,
 ) -> Result<Option<String>, String> {
     let active_notes = active_notes_for_character(app, character_id, now_ms)?;
     if active_notes.is_empty() {
@@ -382,7 +383,7 @@ pub fn companion_scheduled_notes_list(
 pub fn companion_scheduled_notes_preview_active(
     app: AppHandle,
     character_id: String,
-    as_of_ms: u64,
+    as_of_ms: i64,
 ) -> Result<String, String> {
     serde_json::to_string(&active_notes_for_character(&app, &character_id, as_of_ms)?)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
@@ -441,8 +442,8 @@ pub fn companion_scheduled_notes_upsert(
             note.character_id,
             note.label,
             note.content,
-            note.available_at as i64,
-            note.expires_at.map(|value| value as i64),
+            note.available_at,
+            note.expires_at,
             note.recurrence,
             note.recurrence_window_ms.map(|value| value as i64),
             if note.enabled { 1 } else { 0 },

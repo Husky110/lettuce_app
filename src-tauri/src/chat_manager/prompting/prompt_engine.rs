@@ -10,7 +10,7 @@ use crate::chat_manager::execution::RequestSettings;
 use crate::chat_manager::memory::manual::{has_manual_memories, render_manual_memory_lines};
 use crate::chat_manager::temporal::{
     companion_effective_now, companion_time_awareness_enabled, format_memory_for_prompt,
-    time_placeholder_values,
+    memories_in_chronological_order, time_placeholder_values,
 };
 use crate::chat_manager::types::{
     Character, MemoryEmbedding, Model, Persona, PromptEntryChatMode, PromptEntryCondition,
@@ -3449,8 +3449,8 @@ pub(crate) fn debug_prompt_source_contents(
     };
 
     let key_memories = if dynamic_memory_active {
-        retrieved_memories
-            .iter()
+        memories_in_chronological_order(retrieved_memories)
+            .into_iter()
             .map(|mem| format_memory_for_prompt(mem, companion_now))
             .collect::<Vec<_>>()
             .join("\n")
@@ -3468,9 +3468,10 @@ pub(crate) fn debug_prompt_source_contents(
     // companion state — so we drop it here and only attribute the real state to
     // the companion bucket. The preamble stays folded into the system bucket
     // (it is inline in the template and not reattributed).
-    let companion_state = companion::render_prompt_state(session, character, persona, companion_now)
-        .map(|full| full.splitn(5, '\n').nth(4).unwrap_or("").trim().to_string())
-        .unwrap_or_default();
+    let companion_state =
+        companion::render_prompt_state(session, character, persona, companion_now)
+            .map(|full| full.splitn(5, '\n').nth(4).unwrap_or("").trim().to_string())
+            .unwrap_or_default();
 
     let memory_entry_count = if dynamic_memory_active {
         retrieved_memories.len() as u32
@@ -3677,8 +3678,8 @@ pub fn build_system_prompt_entries(
     // into template entries before render_with_context runs.
     let dynamic_key_memories_text = if dynamic_memory_active {
         let memory_now = companion_effective_now(session);
-        retrieved_memories
-            .iter()
+        memories_in_chronological_order(retrieved_memories)
+            .into_iter()
             .map(|memory| format_memory_for_prompt(memory, memory_now))
             .collect::<Vec<_>>()
             .join("\n")
@@ -3812,8 +3813,8 @@ pub fn build_system_prompt_entries(
 
     let rendered_key_memories = if dynamic_memory_active {
         let memory_now = companion_effective_now(session);
-        retrieved_memories
-            .iter()
+        memories_in_chronological_order(retrieved_memories)
+            .into_iter()
             .map(|mem| format_memory_for_prompt(mem, memory_now))
             .collect::<Vec<_>>()
     } else if has_manual_memories(&session.memories) {

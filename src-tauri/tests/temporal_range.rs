@@ -11,14 +11,14 @@ use lettuceai_lib::chat_manager::temporal::detect_temporal_query_range;
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 const WEEK_MS: i64 = 7 * DAY_MS;
 
-fn local_midnight_ms(year: i32, month: u32, day: u32) -> u64 {
-    // Build "midnight local" as a u64 reference. We accept whichever DST
+fn local_midnight_ms(year: i32, month: u32, day: u32) -> i64 {
+    // Build "midnight local" as an i64 reference. We accept whichever DST
     // variant the local zone picks (LocalResult::Single or earliest).
     Local
         .with_ymd_and_hms(year, month, day, 12, 0, 0)
         .single()
         .expect("non-ambiguous noon")
-        .timestamp_millis() as u64
+        .timestamp_millis()
 }
 
 #[test]

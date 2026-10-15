@@ -152,7 +152,7 @@ impl CompletionFlow {
             {
                 Some(companion_effective_now(&session))
             } else {
-                Some(now)
+                Some(now as i64)
             },
             visible_in_chat: false,
             scene_edited: false,
@@ -170,7 +170,7 @@ impl CompletionFlow {
         session.messages.push(user_msg.clone());
         session.updated_at = now;
 
-        let companion_effective_at = user_msg.effective_at.unwrap_or(now);
+        let companion_effective_at = user_msg.effective_at.unwrap_or(now as i64);
         let companion_effect_seed = companion::update_state_for_user_message(
             &app,
             &mut session,
@@ -824,7 +824,7 @@ impl CompletionFlow {
             effective_at: if time_stamp_enabled {
                 Some(companion_effective_now(&session))
             } else {
-                Some(assistant_created_at)
+                Some(assistant_created_at as i64)
             },
             visible_in_chat: false,
             scene_edited: false,

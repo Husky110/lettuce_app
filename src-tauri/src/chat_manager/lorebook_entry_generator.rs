@@ -645,7 +645,7 @@ fn format_selected_memories(
     memory_ids: &[String],
     embeddings: &[crate::chat_manager::types::MemoryEmbedding],
     legacy: &[String],
-    effective_now: u64,
+    effective_now: i64,
     time_awareness_enabled: bool,
 ) -> String {
     if memory_ids.is_empty() {
@@ -1533,9 +1533,7 @@ fn load_selected_messages(
                 role: row.get::<_, String>(1)?,
                 content: row.get::<_, String>(2)?,
                 created_at: row.get::<_, i64>(3)? as u64,
-                effective_at: row
-                    .get::<_, Option<i64>>(14)?
-                    .map(|value| value.max(0) as u64),
+                effective_at: row.get::<_, Option<i64>>(14)?,
                 visible_in_chat: false,
                 scene_edited: row.get::<_, i64>(4)? != 0,
                 usage: None,

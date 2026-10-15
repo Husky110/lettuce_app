@@ -703,7 +703,7 @@ impl ContinueFlow {
             {
                 Some(crate::chat_manager::temporal::companion_effective_now(&session))
             } else {
-                Some(assistant_created_at)
+                Some(assistant_created_at as i64)
             },
             visible_in_chat: false,
             scene_edited: false,

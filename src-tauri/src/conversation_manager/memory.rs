@@ -273,7 +273,7 @@ fn undo_action(action: &Value, active: &mut Vec<MemoryEmbedding>) {
             let Some(index) = find_active_index(active, &id) else {
                 return;
             };
-            active[index].observed_at = action.get("previousObservedAt").and_then(Value::as_u64);
+            active[index].observed_at = action.get("previousObservedAt").and_then(Value::as_i64);
             active[index].observed_time_precision = action
                 .get("previousObservedTimePrecision")
                 .and_then(Value::as_str)

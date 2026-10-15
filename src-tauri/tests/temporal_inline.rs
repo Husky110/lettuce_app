@@ -7,12 +7,12 @@ use lettuceai_lib::chat_manager::temporal::{
 };
 use lettuceai_lib::chat_manager::types::StoredMessage;
 
-fn local_ms(year: i32, month: u32, day: u32, hour: u32) -> u64 {
+fn local_ms(year: i32, month: u32, day: u32, hour: u32) -> i64 {
     Local
         .with_ymd_and_hms(year, month, day, hour, 0, 0)
         .earliest()
         .expect("valid local datetime")
-        .timestamp_millis() as u64
+        .timestamp_millis()
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn stored_effective_time_wins_over_real_creation_time_for_either_role() {
             id: format!("{role}-message"),
             role: role.to_string(),
             content: "Hello".to_string(),
-            created_at: local_ms(2026, 8, 7, 9),
+            created_at: local_ms(2026, 8, 7, 9) as u64,
             effective_at: Some(local_ms(2034, 1, 2, 21)),
             visible_in_chat: false,
             scene_edited: false,

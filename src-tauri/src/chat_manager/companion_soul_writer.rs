@@ -606,7 +606,7 @@ fn apply_set_authored_facts(working: &mut Value, args: &Value) -> usize {
         }
         _ => return 0,
     };
-    let now = now_millis().unwrap_or(0);
+    let now = now_millis().unwrap_or(0) as i64;
     let mut extracted = Vec::new();
     for fact in facts {
         let category = fact
@@ -662,7 +662,8 @@ fn apply_set_authored_facts(working: &mut Value, args: &Value) -> usize {
             locked: policy == "historical"
                 || fact.get("locked").and_then(Value::as_bool).unwrap_or(false),
             created_at: now,
-            valid_from: now,
+            // Authored facts are timeless so a past-set companion keeps them.
+            valid_from: crate::chat_manager::companion::ALWAYS_EFFECTIVE_FROM,
             ..SoulGrowthEntry::default()
         };
         entry.normalize_for_storage(now);
