@@ -663,7 +663,7 @@ export const AdvancedModelSettingsSchema = z.object({
   ollamaStop: z.array(z.string().min(1)).nullable().optional(),
   // Reasoning/thinking settings
   reasoningEnabled: z.boolean().nullable().optional(),
-  reasoningEffort: z.enum(["low", "medium", "high"]).nullable().optional(),
+  reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"]).nullable().optional(),
   reasoningBudgetTokens: z.number().int().min(1024).nullable().optional(),
   forceSendThinkingState: z.boolean().nullable().optional(),
   forceGemma4Reasoning: z.boolean().nullable().optional(),

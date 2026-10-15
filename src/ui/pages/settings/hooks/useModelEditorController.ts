@@ -107,7 +107,7 @@ type ControllerReturn = {
   handleOllamaSeedChange: (value: number | null) => void;
   handleOllamaStopChange: (value: string[] | null) => void;
   handleReasoningEnabledChange: (value: boolean) => void;
-  handleReasoningEffortChange: (value: "low" | "medium" | "high" | null) => void;
+  handleReasoningEffortChange: (value: "low" | "medium" | "high" | "xhigh" | "max" | null) => void;
   handleReasoningBudgetChange: (value: number | null) => void;
   handleForceSendThinkingStateChange: (value: boolean) => void;
   handleForceGemma4ReasoningChange: (value: boolean) => void;
@@ -1419,11 +1419,13 @@ export function useModelEditorController(): ControllerReturn {
   );
 
   const handleReasoningEffortChange = useCallback(
-    (value: "low" | "medium" | "high" | null) => {
+    (value: "low" | "medium" | "high" | "xhigh" | "max" | null) => {
       const effortBudgets: Record<string, number> = {
         low: 2048,
         medium: 8192,
         high: 16384,
+        xhigh: 32768,
+        max: 65536,
       };
 
       let newBudget = state.modelAdvancedDraft.reasoningBudgetTokens;

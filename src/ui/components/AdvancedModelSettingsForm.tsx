@@ -909,7 +909,7 @@ export function AdvancedModelSettingsForm({
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-6 gap-2">
                             {[
                               {
                                 value: null,
@@ -926,6 +926,14 @@ export function AdvancedModelSettingsForm({
                               {
                                 value: "high" as const,
                                 label: t("components.advancedModelSettings.reasoningEffortHigh"),
+                              },
+                              {
+                                value: "xhigh" as const,
+                                label: t("components.advancedModelSettings.reasoningEffortXHigh"),
+                              },
+                              {
+                                value: "max" as const,
+                                label: t("components.advancedModelSettings.reasoningEffortMax"),
                               },
                             ].map(({ value, label }) => (
                               <button
@@ -985,7 +993,7 @@ export function AdvancedModelSettingsForm({
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-6 gap-2">
                     <button
                       type="button"
                       onClick={() => onChange({ ...settings, reasoningEffort: null })}
@@ -999,11 +1007,13 @@ export function AdvancedModelSettingsForm({
                     >
                       {t("components.advancedModelSettings.reasoningEffortAuto")}
                     </button>
-                    {(["low", "medium", "high"] as const).map((effort) => {
+                    {(["low", "medium", "high", "xhigh", "max"] as const).map((effort) => {
                       const effortLabels = {
                         low: t("components.advancedModelSettings.reasoningEffortLow"),
                         medium: t("components.advancedModelSettings.reasoningEffortMed"),
                         high: t("components.advancedModelSettings.reasoningEffortHigh"),
+                        xhigh: t("components.advancedModelSettings.reasoningEffortXHigh"),
+                        max: t("components.advancedModelSettings.reasoningEffortMax"),
                       } as const;
                       return (
                         <button
@@ -1034,6 +1044,10 @@ export function AdvancedModelSettingsForm({
                           t("components.advancedModelSettings.reasoningEffortMediumDesc")}
                         {settings.reasoningEffort === "high" &&
                           t("components.advancedModelSettings.reasoningEffortHighDesc")}
+                        {settings.reasoningEffort === "xhigh" &&
+                          t("components.advancedModelSettings.reasoningEffortXHighDesc")}
+                        {settings.reasoningEffort === "max" &&
+                          t("components.advancedModelSettings.reasoningEffortMaxDesc")}
                       </p>
                     </div>
                   )}
