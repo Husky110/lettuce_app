@@ -26,6 +26,30 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "2.2.6 / 2.2.6",
+    date: "2026-10-15",
+    title: "2.2.6 — Historical Companion Time & USC Lorebook Import",
+    description:
+      "A companion's clock can now sit anywhere in history — freeze or tick it to a date before 1970 and it stays there instead of jumping back to today. Reasoning effort gains two higher levels, X-High and Max, and lorebooks exported in Lettuce's USC format import with their entries again.",
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Reasoning effort adds two higher levels, X-High and Max, alongside Low, Medium, and High, shown wherever a provider or local engine supports effort-based reasoning. Whether a given model actually honours the higher levels depends on the provider. When no explicit thinking budget is set, each level maps to a higher default budget (X-High 32k, Max 64k tokens).",
+      },
+      {
+        type: "bugfix",
+        description:
+          "Companion time awareness now honours a clock set before 1970, so a companion living in, say, 1305 keeps its in-game date instead of snapping back to the real system time. The fix carries through the whole effective timeline: message timestamps, memory \"observed\" times, soul-growth validity, scheduled notes, and the emotional and relationship state all stay on the companion's clock. Authored baseline soul facts stay in effect regardless of the date, and retrieved memories are shown to the model oldest-to-newest so it reads them as a chronology.",
+      },
+      {
+        type: "bugfix",
+        description:
+          "Importing a lorebook exported in Lettuce's own USC format now brings its entries in. The importer previously only understood the legacy WorldInfo/SillyTavern layout, so a USC file was imported as an empty lorebook; both formats are now detected and imported correctly, preserving titles, keywords, and ordering.",
+      },
+    ],
+  },
+  {
     version: "2.2.5 / 2.2.5",
     date: "2026-09-10",
     title: "2.2.5 — Context Usage Breakdown & Leaner Dynamic Memory",
