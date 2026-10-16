@@ -587,7 +587,10 @@ fn message_created_at(entry: &JsonValue) -> i64 {
             return v;
         }
     }
-    now_ms() as i64
+    // No usable timestamp in the source: anchor one minute in the past. That
+    // buffer keeps the monotonic +1 bumping during import safely below "now", so
+    // a turn sent right after the import still sorts after the imported history.
+    now_ms() as i64 - 60_000
 }
 
 // ------------------- Inspect -------------------
@@ -725,12 +728,21 @@ fn import_single(
     )?;
 
     let mut messages: Vec<JsonValue> = Vec::with_capacity(parsed.messages.len());
+    // Source send dates are often second-granularity, so many messages collide on
+    // the same millisecond. Force created_at strictly increasing in source order
+    // so the import keeps its message order (plain Unix-ms, +1 rolls into the next
+    // second cleanly).
+    let mut last_created_at = i64::MIN;
     for entry in &parsed.messages {
         let Some(content) = message_text(entry) else {
             continue;
         };
         let role = message_role(entry);
-        let created_at = message_created_at(entry);
+        let mut created_at = message_created_at(entry);
+        if created_at <= last_created_at {
+            created_at = last_created_at + 1;
+        }
+        last_created_at = created_at;
         let (variants, selected_variant_id) = imported_variants(entry, created_at);
         let mut message = json!({
             "id": Uuid::new_v4().to_string(),
@@ -878,12 +890,18 @@ fn import_group(
     }
 
     let mut turn_number: i64 = 0;
+    // Force created_at strictly increasing in source order (see single-chat import).
+    let mut last_created_at = i64::MIN;
     for entry in &parsed.messages {
         let Some(content) = message_text(entry) else {
             continue;
         };
         let role = message_role(entry);
-        let created_at = message_created_at(entry);
+        let mut created_at = message_created_at(entry);
+        if created_at <= last_created_at {
+            created_at = last_created_at + 1;
+        }
+        last_created_at = created_at;
         let speaker_char_id = if role == "assistant" {
             entry
                 .get("name")

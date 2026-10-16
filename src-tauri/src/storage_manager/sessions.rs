@@ -1847,7 +1847,7 @@ fn read_session(conn: &rusqlite::Connection, id: &str) -> Result<Option<JsonValu
     };
 
     // messages
-    let mut mstmt = conn.prepare("SELECT id, role, content, created_at, visible_in_chat, scene_edited, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, first_token_ms, tokens_per_second, model_id, mtp_stats, effective_at FROM messages WHERE session_id = ? ORDER BY created_at ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut mstmt = conn.prepare("SELECT id, role, content, created_at, visible_in_chat, scene_edited, prompt_tokens, completion_tokens, total_tokens, selected_variant_id, is_pinned, memory_refs, used_lorebook_entries, attachments, reasoning, first_token_ms, tokens_per_second, model_id, mtp_stats, effective_at FROM messages WHERE session_id = ? ORDER BY created_at ASC, id ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let mrows = mstmt
         .query_map(params![id], |r| {
             Ok((

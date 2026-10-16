@@ -479,6 +479,12 @@ fn import_sessions(app: &tauri::AppHandle, conn: &mut rusqlite::Connection) -> R
             ).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
             if let Some(msgs) = s.get("messages").and_then(|v| v.as_array()) {
+                // Keep created_at strictly increasing in source order so the chat
+                // keeps its message order even when source timestamps collide
+                // (e.g. second-granularity send dates) or are missing. It is a
+                // plain Unix-ms integer, so +1 rolls over into the next second
+                // cleanly and can never become an invalid time.
+                let mut last_created_at = i64::MIN;
                 for m in msgs {
                     let mid = m
                         .get("id")
@@ -487,10 +493,14 @@ fn import_sessions(app: &tauri::AppHandle, conn: &mut rusqlite::Connection) -> R
                         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                     let role = m.get("role").and_then(|v| v.as_str()).unwrap_or("user");
                     let content = m.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                    let mcreated = m
+                    let mut mcreated = m
                         .get("createdAt")
                         .and_then(|v| v.as_i64())
                         .unwrap_or(created_at);
+                    if mcreated <= last_created_at {
+                        mcreated = last_created_at + 1;
+                    }
+                    last_created_at = mcreated;
                     let effective_at = m
                         .get("effectiveAt")
                         .and_then(|v| v.as_i64())
