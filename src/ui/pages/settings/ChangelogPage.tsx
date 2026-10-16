@@ -47,6 +47,11 @@ export const changelog: ChangelogEntry[] = [
         description:
           "Importing a lorebook exported in Lettuce's own USC format now brings its entries in. The importer previously only understood the legacy WorldInfo/SillyTavern layout, so a USC file was imported as an empty lorebook; both formats are now detected and imported correctly, preserving titles, keywords, and ordering.",
       },
+      {
+        type: "bugfix",
+        description:
+          "Imported chats keep their message order. During import each message is now given a strictly increasing timestamp in source order, so a chat whose source timestamps collide — for example second-granularity send dates — is no longer shuffled on reload, including when running repeated memory passes over it. The imported history is also anchored just before the current time, so a message sent right after the import always sorts after it.",
+      },
     ],
   },
   {
