@@ -167,7 +167,7 @@ fn observed_memory_context(
     session: &Session,
     messages: &[StoredMessage],
     requested_message_id: Option<&str>,
-) -> (Option<u64>, Option<String>, Option<String>) {
+) -> (Option<i64>, Option<String>, Option<String>) {
     let source = requested_message_id
         .and_then(|message_id| messages.iter().find(|message| message.id == message_id))
         .or_else(|| messages.iter().rev().find(|message| {
@@ -1230,9 +1230,7 @@ fn fetch_conversation_messages_range(
                 role: r.get(1)?,
                 content: r.get(2)?,
                 created_at: created_at.max(0) as u64,
-                effective_at: r
-                    .get::<_, Option<i64>>(5)?
-                    .map(|value| value.max(0) as u64),
+                effective_at: r.get::<_, Option<i64>>(5)?,
                 visible_in_chat: false,
                 scene_edited: false,
                 usage: None,

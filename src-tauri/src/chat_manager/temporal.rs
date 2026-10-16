@@ -8,12 +8,12 @@ use crate::chat_manager::types::{MemoryEmbedding, Session};
 
 #[derive(Clone, Debug)]
 pub struct TemporalRange {
-    pub start_ms: u64,
-    pub end_ms: u64,
+    pub start_ms: i64,
+    pub end_ms: i64,
 }
 
-fn local_datetime_from_ms(ms: u64) -> DateTime<Local> {
-    match Local.timestamp_millis_opt(ms as i64) {
+fn local_datetime_from_ms(ms: i64) -> DateTime<Local> {
+    match Local.timestamp_millis_opt(ms) {
         LocalResult::Single(dt) => dt,
         LocalResult::Ambiguous(dt, _) => dt,
         LocalResult::None => Local::now(),
@@ -27,22 +27,22 @@ fn local_midnight(date: NaiveDate) -> DateTime<Local> {
     match Local.from_local_datetime(&naive) {
         LocalResult::Single(dt) => dt,
         LocalResult::Ambiguous(dt, _) => dt,
-        LocalResult::None => local_datetime_from_ms(Utc::now().timestamp_millis().max(0) as u64),
+        LocalResult::None => local_datetime_from_ms(Utc::now().timestamp_millis()),
     }
 }
 
 fn range_from_local_dates(start: NaiveDate, end: NaiveDate) -> TemporalRange {
     TemporalRange {
-        start_ms: local_midnight(start).timestamp_millis().max(0) as u64,
-        end_ms: local_midnight(end).timestamp_millis().max(0) as u64,
+        start_ms: local_midnight(start).timestamp_millis(),
+        end_ms: local_midnight(end).timestamp_millis(),
     }
 }
 
 fn rolling_range(now: DateTime<Local>, duration: Duration) -> TemporalRange {
     let start = now - duration;
     TemporalRange {
-        start_ms: start.timestamp_millis().max(0) as u64,
-        end_ms: now.timestamp_millis().max(0) as u64,
+        start_ms: start.timestamp_millis(),
+        end_ms: now.timestamp_millis(),
     }
 }
 
@@ -176,8 +176,8 @@ pub fn companion_time_awareness_enabled(session: &Session) -> bool {
 
 struct TimeOverride {
     mode: String,
-    anchor_ms: Option<u64>,
-    set_at_ms: Option<u64>,
+    anchor_ms: Option<i64>,
+    set_at_ms: Option<i64>,
 }
 
 fn read_time_override(session: &Session) -> Option<TimeOverride> {
@@ -192,13 +192,13 @@ fn read_time_override(session: &Session) -> Option<TimeOverride> {
             .and_then(|mode| mode.as_str())
             .unwrap_or("off")
             .to_string(),
-        anchor_ms: value.get("anchorMs").and_then(|anchor| anchor.as_u64()),
-        set_at_ms: value.get("setAtMs").and_then(|set_at| set_at.as_u64()),
+        anchor_ms: value.get("anchorMs").and_then(|anchor| anchor.as_i64()),
+        set_at_ms: value.get("setAtMs").and_then(|set_at| set_at.as_i64()),
     })
 }
 
-pub fn companion_effective_now(session: &Session) -> u64 {
-    let real_now = crate::utils::now_millis().unwrap_or_default();
+pub fn companion_effective_now(session: &Session) -> i64 {
+    let real_now = crate::utils::now_millis().unwrap_or_default() as i64;
     if !companion_time_awareness_enabled(session) {
         return real_now;
     }
@@ -215,13 +215,13 @@ pub fn companion_effective_now(session: &Session) -> u64 {
     }
 }
 
-pub fn format_message_timestamp(effective_ms: u64) -> String {
+pub fn format_message_timestamp(effective_ms: i64) -> String {
     let dt = local_datetime_from_ms(effective_ms);
     format!("<time>{}</time>", dt.format("%Y-%m-%d %H:%M"))
 }
 
 pub fn stored_message_timestamp(message: &crate::chat_manager::types::StoredMessage) -> String {
-    format_message_timestamp(message.effective_at.unwrap_or(message.created_at))
+    format_message_timestamp(message.effective_at.unwrap_or(message.created_at as i64))
 }
 
 pub fn timestamped_message_content(
@@ -288,7 +288,7 @@ pub fn strip_echoed_time_stamps(text: &str) -> String {
         .to_string()
 }
 
-pub fn time_placeholder_values(reference_ms: u64) -> Vec<(&'static str, String)> {
+pub fn time_placeholder_values(reference_ms: i64) -> Vec<(&'static str, String)> {
     let now = local_datetime_from_ms(reference_ms);
     let date_full = format!(
         "{}, {} {}, {}",
@@ -357,12 +357,12 @@ pub fn humanize_relative(delta_ms: i64, _precision: Option<&str>) -> String {
     }
 }
 
-pub fn format_memory_for_prompt(memory: &MemoryEmbedding, effective_now: u64) -> String {
+pub fn format_memory_for_prompt(memory: &MemoryEmbedding, effective_now: i64) -> String {
     let mut line = format!("- {}", memory.text);
     if let Some(observed_at) = memory.observed_at {
         let observed = local_datetime_from_ms(observed_at);
         let relative = humanize_relative(
-            effective_now as i64 - observed_at as i64,
+            effective_now - observed_at,
             memory.observed_time_precision.as_deref(),
         );
         line.push_str(&format!(
@@ -374,6 +374,18 @@ pub fn format_memory_for_prompt(memory: &MemoryEmbedding, effective_now: u64) ->
     line
 }
 
+/// Orders memories for prompt presentation oldest → newest along the effective
+/// (in-game) timeline, so the model reads them as a chronology ("B happened
+/// after A"). `observed_at` is the narrative time and sorts signed, so a 1508
+/// memory precedes a 1509 one even though both are negative. Undated memories
+/// (no `observed_at`) sort first as timeless background; the real wall-clock
+/// `created_at` is a stable tie-breaker, preserving the order they were learned.
+pub fn memories_in_chronological_order(memories: &[MemoryEmbedding]) -> Vec<&MemoryEmbedding> {
+    let mut ordered: Vec<&MemoryEmbedding> = memories.iter().collect();
+    ordered.sort_by_key(|memory| (memory.observed_at.unwrap_or(i64::MIN), memory.created_at));
+    ordered
+}
+
 pub fn memory_matches_temporal_range(memory: &MemoryEmbedding, range: &TemporalRange) -> bool {
     let Some(observed_at) = memory.observed_at else {
         return false;
@@ -381,7 +393,7 @@ pub fn memory_matches_temporal_range(memory: &MemoryEmbedding, range: &TemporalR
     observed_at >= range.start_ms && observed_at < range.end_ms
 }
 
-pub fn detect_temporal_query_range(query: &str, reference_ms: u64) -> Option<TemporalRange> {
+pub fn detect_temporal_query_range(query: &str, reference_ms: i64) -> Option<TemporalRange> {
     let normalized = normalized_query(query);
     let now = local_datetime_from_ms(reference_ms);
     let today = now.date_naive();

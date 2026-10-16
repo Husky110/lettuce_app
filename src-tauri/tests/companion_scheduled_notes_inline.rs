@@ -6,7 +6,7 @@ use lettuceai_lib::storage_manager::companion_scheduled_notes::{
 };
 
 fn note(
-    available_at: u64,
+    available_at: i64,
     recurrence: &str,
     recurrence_window_ms: Option<u64>,
 ) -> CompanionScheduledNote {
@@ -20,12 +20,12 @@ fn note(
         recurrence: recurrence.to_string(),
         recurrence_window_ms,
         enabled: true,
-        created_at: available_at,
-        updated_at: available_at,
+        created_at: available_at.max(0) as u64,
+        updated_at: available_at.max(0) as u64,
     }
 }
 
-fn ms(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> u64 {
+fn ms(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
     local_datetime_to_ms(
         resolve_local_datetime(year, month, day, hour, minute, 0, 0).expect("valid local datetime"),
     )

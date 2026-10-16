@@ -377,7 +377,7 @@ fn parse_growth_entries(
             .unwrap_or("")
             .trim()
             .to_string();
-        let valid_until = item.get("validUntil").and_then(Value::as_u64);
+        let valid_until = item.get("validUntil").and_then(Value::as_i64);
         let supersedes = item
             .get("supersedes")
             .and_then(Value::as_array)

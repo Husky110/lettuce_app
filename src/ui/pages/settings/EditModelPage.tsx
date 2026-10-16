@@ -7695,8 +7695,8 @@ export function EditModelPage() {
                                       <span className="text-[13px] font-bold text-fg/30 uppercase tracking-wider">
                                         {t("editModel.reasoning.effort")}
                                       </span>
-                                      <div className="grid grid-cols-4 gap-2">
-                                        {([null, "low", "medium", "high"] as const).map((level) => (
+                                      <div className="grid grid-cols-6 gap-2">
+                                        {([null, "low", "medium", "high", "xhigh", "max"] as const).map((level) => (
                                           <button
                                             key={level || "auto"}
                                             type="button"

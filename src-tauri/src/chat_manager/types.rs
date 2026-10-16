@@ -1088,9 +1088,10 @@ pub struct StoredMessage {
     pub created_at: u64,
     /// Immutable timestamp in the companion's effective timeline. This is
     /// captured when the message is created so later clock changes cannot
-    /// rewrite conversation history.
+    /// rewrite conversation history. Signed so a user-chosen effective time
+    /// before the Unix epoch (pre-1970) is preserved rather than clamped.
     #[serde(default)]
-    pub effective_at: Option<u64>,
+    pub effective_at: Option<i64>,
     #[serde(default)]
     pub visible_in_chat: bool,
     #[serde(default)]
@@ -1193,8 +1194,10 @@ pub struct MemoryEmbedding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     /// When the remembered event happened, if the session supplied time grounding.
+    /// Signed so a pre-1970 effective time (companion clock frozen in the past)
+    /// is preserved rather than clamped to the epoch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub observed_at: Option<u64>,
+    pub observed_at: Option<i64>,
     /// Precision of `observed_at` (for now, usually "turn").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_time_precision: Option<String>,

@@ -534,7 +534,7 @@ pub struct SyncMemoryEmbeddingRecord {
     pub embedding_dimensions: Option<usize>,
     pub match_score: Option<f32>,
     pub category: Option<String>,
-    pub observed_at: Option<u64>,
+    pub observed_at: Option<i64>,
     pub observed_time_precision: Option<String>,
     pub canonical_entities: Vec<MemoryEntityAnchor>,
     pub fact_signature: Option<String>,

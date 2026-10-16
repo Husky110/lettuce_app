@@ -1058,9 +1058,45 @@ pub fn lorebook_export_as_usc(
     })
 }
 
+fn keyword_detection_mode_from_str(value: Option<&str>) -> LorebookKeywordDetectionMode {
+    match value {
+        Some("latestUserMessage") => LorebookKeywordDetectionMode::LatestUserMessage,
+        _ => LorebookKeywordDetectionMode::RecentMessageWindow,
+    }
+}
+
+/// Maps the entries of a USC lorebook payload to storage entries. IDs are
+/// regenerated so a re-import never collides with existing rows; ordering
+/// follows the payload's `displayOrder` (the import loop re-indexes it densely
+/// afterwards). USC has no per-entry match mode, so entries default to literal
+/// matching, matching the WorldInfo importer.
+fn parse_usc_lorebook_entries(
+    mut entries: Vec<crate::storage_manager::system_cards::UscLorebookEntry>,
+) -> Vec<LorebookEntry> {
+    entries.sort_by_key(|entry| entry.display_order);
+    entries
+        .into_iter()
+        .map(|entry| LorebookEntry {
+            id: Uuid::new_v4().to_string(),
+            lorebook_id: String::new(),
+            title: entry.title,
+            enabled: entry.enabled,
+            always_active: entry.always_active,
+            keywords: entry.keywords,
+            case_sensitive: entry.case_sensitive,
+            keyword_match_mode: LorebookKeywordMatchMode::Literal,
+            content: entry.content,
+            priority: entry.priority,
+            display_order: entry.display_order,
+            created_at: 0,
+            updated_at: 0,
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub fn lorebook_import(app: tauri::AppHandle, import_json: String) -> Result<String, String> {
-    let parsed: WorldInfoImport = serde_json::from_str(&import_json).map_err(|e| {
+    let value: JsonValue = serde_json::from_str(&import_json).map_err(|e| {
         crate::utils::err_msg(
             module_path!(),
             line!(),
@@ -1068,34 +1104,67 @@ pub fn lorebook_import(app: tauri::AppHandle, import_json: String) -> Result<Str
         )
     })?;
 
-    let mut parsed_entries = parse_world_info_entries(&parsed.entries);
     let now = now_millis()? as i64;
-    let keyword_detection_mode = parsed
-        .extensions
-        .get("lettuceai")
-        .and_then(|value| value.get("keywordDetectionMode"))
-        .and_then(|value| value.as_str())
-        .map(|value| match value {
-            "latestUserMessage" => LorebookKeywordDetectionMode::LatestUserMessage,
-            _ => LorebookKeywordDetectionMode::RecentMessageWindow,
-        })
-        .unwrap_or(LorebookKeywordDetectionMode::RecentMessageWindow);
-    let lorebook = Lorebook {
-        id: Uuid::new_v4().to_string(),
-        name: parsed.name.trim().to_string(),
-        avatar_path: None,
-        keyword_detection_mode,
-        created_at: now,
-        updated_at: now,
-    };
 
-    if lorebook.name.is_empty() {
+    // Lettuce's own USC export wraps the lorebook under `payload` with camelCase
+    // entry fields the WorldInfo parser can't read (keywords vs keys, title vs
+    // name, …), so feeding it to the WorldInfo path silently imports zero
+    // entries. Detect the USC envelope and unwrap it natively; otherwise fall
+    // back to the WorldInfo / SillyTavern format.
+    let (name, keyword_detection_mode, mut parsed_entries) =
+        if crate::storage_manager::system_cards::is_usc_value(&value) {
+            match crate::storage_manager::system_cards::parse_usc_value(&value)? {
+                crate::storage_manager::system_cards::AnyUscCard::Lorebook(card) => {
+                    let payload = card.payload;
+                    (
+                        payload.name.trim().to_string(),
+                        keyword_detection_mode_from_str(payload.keyword_detection_mode.as_deref()),
+                        parse_usc_lorebook_entries(payload.entries),
+                    )
+                }
+                _ => {
+                    return Err(crate::utils::err_msg(
+                        module_path!(),
+                        line!(),
+                        "USC card is not a lorebook",
+                    ));
+                }
+            }
+        } else {
+            let parsed: WorldInfoImport = serde_json::from_value(value).map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Invalid lorebook import JSON: {}", e),
+                )
+            })?;
+            let detection_mode = keyword_detection_mode_from_str(
+                parsed
+                    .extensions
+                    .get("lettuceai")
+                    .and_then(|value| value.get("keywordDetectionMode"))
+                    .and_then(|value| value.as_str()),
+            );
+            let entries = parse_world_info_entries(&parsed.entries);
+            (parsed.name.trim().to_string(), detection_mode, entries)
+        };
+
+    if name.is_empty() {
         return Err(crate::utils::err_msg(
             module_path!(),
             line!(),
             "Lorebook name is required",
         ));
     }
+
+    let lorebook = Lorebook {
+        id: Uuid::new_v4().to_string(),
+        name,
+        avatar_path: None,
+        keyword_detection_mode,
+        created_at: now,
+        updated_at: now,
+    };
 
     let conn = crate::storage_manager::db::open_db(&app)?;
     upsert_lorebook(&conn, &lorebook)?;
@@ -1114,4 +1183,61 @@ pub fn lorebook_import(app: tauri::AppHandle, import_json: String) -> Result<Str
             format!("Failed to serialize imported lorebook: {}", e),
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_usc_lorebook_entries;
+    use crate::storage_manager::system_cards::{is_usc_value, parse_usc_value, AnyUscCard};
+    use serde_json::json;
+
+    fn usc_lorebook_value() -> serde_json::Value {
+        json!({
+            "schema": { "name": "USC", "version": "1.0" },
+            "kind": "lorebook",
+            "payload": {
+                "id": "lb-1",
+                "name": "Aine",
+                "keywordDetectionMode": "latestUserMessage",
+                "entries": [
+                    { "id": "e2", "title": "Second", "enabled": true, "alwaysActive": false,
+                      "keywords": ["beta"], "caseSensitive": false, "content": "B",
+                      "priority": 0, "displayOrder": 1, "createdAt": 0, "updatedAt": 0 },
+                    { "id": "e1", "title": "First", "enabled": true, "alwaysActive": true,
+                      "keywords": ["alpha", "a2"], "caseSensitive": true, "content": "A",
+                      "priority": 5, "displayOrder": 0, "createdAt": 0, "updatedAt": 0 }
+                ],
+                "createdAt": 0,
+                "updatedAt": 0
+            }
+        })
+    }
+
+    #[test]
+    fn usc_lorebook_entries_are_parsed_not_dropped() {
+        let value = usc_lorebook_value();
+        assert!(is_usc_value(&value));
+        let AnyUscCard::Lorebook(card) = parse_usc_value(&value).expect("usc parses") else {
+            panic!("expected a lorebook card");
+        };
+        let entries = parse_usc_lorebook_entries(card.payload.entries);
+        // Regression: the WorldInfo path dropped every USC entry; both must survive.
+        assert_eq!(entries.len(), 2);
+        // Re-ordered by displayOrder: "First" (0) precedes "Second" (1).
+        assert_eq!(entries[0].title, "First");
+        assert_eq!(entries[0].keywords, vec!["alpha".to_string(), "a2".to_string()]);
+        assert_eq!(entries[0].content, "A");
+        assert!(entries[0].always_active);
+        assert!(entries[0].case_sensitive);
+        assert_eq!(entries[0].priority, 5);
+        assert_eq!(entries[1].title, "Second");
+        assert_eq!(entries[1].keywords, vec!["beta".to_string()]);
+    }
+
+    #[test]
+    fn world_info_format_is_not_detected_as_usc() {
+        // The legacy WorldInfo / SillyTavern format must still take the fallback path.
+        let value = json!({ "name": "Legacy", "entries": { "0": { "key": ["x"], "content": "c" } } });
+        assert!(!is_usc_value(&value));
+    }
 }

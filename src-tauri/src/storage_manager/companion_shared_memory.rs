@@ -209,14 +209,14 @@ pub fn load_normalized_soul_facts(
                 confidence: row.get(6)?,
                 evidence_count: row.get::<_, i64>(7)?.max(0) as u32,
                 weight: row.get(8)?,
-                valid_from: row.get::<_, i64>(9)?.max(0) as u64,
-                valid_until: row.get::<_, Option<i64>>(10)?.map(|value| value.max(0) as u64),
+                valid_from: row.get::<_, i64>(9)?,
+                valid_until: row.get::<_, Option<i64>>(10)?,
                 locked: row.get::<_, i64>(11)? != 0,
                 source_memory_ids: serde_json::from_str(&source_memory_ids).unwrap_or_default(),
-                created_at: row.get::<_, i64>(13)?.max(0) as u64,
+                created_at: row.get::<_, i64>(13)?,
                 supersedes: serde_json::from_str(&supersedes).unwrap_or_default(),
                 superseded_by: row.get(15)?,
-                superseded_at: row.get::<_, Option<i64>>(16)?.map(|value| value.max(0) as u64),
+                superseded_at: row.get::<_, Option<i64>>(16)?,
             })
         })
         .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?
@@ -230,7 +230,7 @@ pub fn sync_normalized_soul_facts(
     character_id: &str,
     growth_json: &str,
 ) -> Result<String, String> {
-    let now = super::db::now_ms();
+    let now = super::db::now_ms() as i64;
     let mut facts = serde_json::from_str::<Vec<SoulGrowthEntry>>(growth_json).unwrap_or_default();
     for fact in &mut facts {
         fact.normalize_for_storage(now);
@@ -292,15 +292,15 @@ pub fn sync_normalized_soul_facts(
                 fact.confidence,
                 fact.evidence_count as i64,
                 fact.weight,
-                fact.valid_from as i64,
-                fact.valid_until.map(|value| value as i64),
+                fact.valid_from,
+                fact.valid_until,
                 i64::from(fact.locked),
                 serde_json::to_string(&fact.source_memory_ids).unwrap_or_else(|_| "[]".to_string()),
-                fact.created_at as i64,
+                fact.created_at,
                 serde_json::to_string(&fact.supersedes).unwrap_or_else(|_| "[]".to_string()),
                 fact.superseded_by.as_deref(),
-                fact.superseded_at.map(|value| value as i64),
-                now as i64,
+                fact.superseded_at,
+                now,
             ],
         )
         .map_err(|error| crate::utils::err_to_string(module_path!(), line!(), error))?;

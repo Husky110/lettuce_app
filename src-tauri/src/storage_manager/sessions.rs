@@ -984,7 +984,7 @@ fn fetch_messages_page_typed(
             role,
             content,
             created_at: created_at as u64,
-            effective_at: effective_at.map(|value| value.max(0) as u64),
+            effective_at,
             visible_in_chat: visible_in_chat != 0,
             scene_edited: scene_edited != 0,
             usage: typed_usage_summary(prompt_tokens, completion_tokens, total_tokens),
@@ -1151,7 +1151,7 @@ fn fetch_pinned_messages_typed(
             role,
             content,
             created_at: created_at as u64,
-            effective_at: effective_at.map(|value| value.max(0) as u64),
+            effective_at,
             visible_in_chat: visible_in_chat != 0,
             scene_edited: scene_edited != 0,
             usage: typed_usage_summary(prompt_tokens, completion_tokens, total_tokens),
@@ -4507,7 +4507,7 @@ pub fn session_set_memory_observed_at(
     app: tauri::AppHandle,
     session_id: String,
     memory_index: usize,
-    observed_at: Option<u64>,
+    observed_at: Option<i64>,
 ) -> Result<Option<String>, String> {
     let mut conn = open_db(&app)?;
 

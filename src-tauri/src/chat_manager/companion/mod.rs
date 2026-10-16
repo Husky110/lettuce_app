@@ -197,7 +197,8 @@ pub struct EmotionalState {
     pub momentum: EmotionVector,
     pub active_drivers: Vec<String>,
     pub confidence: f64,
-    pub updated_at: u64,
+    /// Effective-timeline timestamp (signed so a pre-1970 companion clock is preserved).
+    pub updated_at: i64,
 }
 
 impl Default for EmotionalState {
@@ -223,7 +224,8 @@ pub struct RelationshipState {
     pub tension: f64,
     pub stability: f64,
     pub interaction_count: u32,
-    pub last_interaction_at: u64,
+    /// Effective-timeline timestamp (signed so a pre-1970 companion clock is preserved).
+    pub last_interaction_at: i64,
 }
 
 impl Default for RelationshipState {
@@ -253,7 +255,8 @@ pub struct CompanionSessionState {
     pub soul_growth: Vec<SoulGrowthEntry>,
     #[serde(default)]
     pub continuity: CompanionContinuityState,
-    pub updated_at: u64,
+    /// Effective-timeline timestamp (signed so a pre-1970 companion clock is preserved).
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -265,8 +268,9 @@ pub struct CompanionContinuityState {
     pub episode_index: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_episode_id: Option<String>,
+    /// Effective-timeline timestamp (signed so a pre-1970 companion clock is preserved).
     #[serde(default)]
-    pub started_at: u64,
+    pub started_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -290,23 +294,40 @@ pub struct SoulGrowthEntry {
     pub evidence_count: u32,
     #[serde(default = "default_soul_fact_weight")]
     pub weight: f64,
+    // Effective-timeline timestamps (signed so a pre-1970 companion clock is preserved).
     #[serde(default)]
-    pub valid_from: u64,
+    pub valid_from: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub valid_until: Option<u64>,
+    pub valid_until: Option<i64>,
     #[serde(default)]
     pub locked: bool,
     #[serde(default)]
     pub source_memory_ids: Vec<String>,
     #[serde(default)]
-    pub created_at: u64,
+    pub created_at: i64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supersedes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub superseded_at: Option<u64>,
+    pub superseded_at: Option<i64>,
 }
+
+/// `valid_from` sentinel marking a soul fact as effective across the companion's
+/// entire timeline, regardless of where the clock sits. Authored/baseline facts
+/// (soul editor + character defaults) use this so a companion set in the past
+/// (e.g. 1508) still carries its defined personality — unlike learned growth,
+/// which is stamped with the effective time of the turn that produced it.
+///
+/// Value is JS `Number.MIN_SAFE_INTEGER`, NOT `i64::MIN`: the companion state
+/// round-trips through the frontend (e.g. toggling time awareness re-saves the
+/// whole `soulGrowth` array), and JS represents it as an f64. `i64::MIN` would
+/// round to a value just past the i64 range and fail to deserialize on the way
+/// back. This sentinel is representable losslessly in both — and still ~283,000
+/// years before the earliest date the UI can produce (year 1), so it is always
+/// `<=` any effective clock. Keep it in sync with the TS side if that ever
+/// needs to reference it.
+pub const ALWAYS_EFFECTIVE_FROM: i64 = -9_007_199_254_740_991;
 
 fn default_soul_fact_confidence() -> f64 {
     1.0
@@ -345,13 +366,13 @@ impl SoulGrowthEntry {
         self.superseded_by.is_none()
     }
 
-    pub fn is_effective_at(&self, now: u64) -> bool {
+    pub fn is_effective_at(&self, now: i64) -> bool {
         self.is_active()
             && self.valid_from <= now
             && self.valid_until.is_none_or(|until| until > now)
     }
 
-    pub fn normalize_for_storage(&mut self, now: u64) {
+    pub fn normalize_for_storage(&mut self, now: i64) {
         if self.id.trim().is_empty() {
             self.id = uuid::Uuid::new_v4().to_string();
         }
@@ -453,9 +474,9 @@ pub struct CompanionTimeOverridePref {
     #[serde(default)]
     pub mode: String,
     #[serde(default)]
-    pub anchor_ms: u64,
+    pub anchor_ms: i64,
     #[serde(default)]
-    pub set_at_ms: u64,
+    pub set_at_ms: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -637,7 +658,7 @@ pub async fn update_state_for_user_message(
     session: &mut Session,
     character: &Character,
     user_message: &str,
-    now: u64,
+    now: i64,
 ) -> Option<CompanionTurnEffectSeed> {
     if !is_companion_mode(session, character) {
         return None;
@@ -815,7 +836,7 @@ pub fn render_prompt_state(
     session: &Session,
     character: &Character,
     persona: Option<&Persona>,
-    effective_at: u64,
+    effective_at: i64,
 ) -> Option<String> {
     if !is_companion_mode(session, character) {
         return None;
@@ -999,7 +1020,7 @@ fn effective_soul_value(
     base: &str,
     category: &str,
     growth: &[SoulGrowthEntry],
-    effective_at: u64,
+    effective_at: i64,
 ) -> String {
     let mut parts: Vec<String> = Vec::new();
     let trimmed = base.trim();
@@ -1063,7 +1084,7 @@ pub fn soul_category_label(category: &str) -> &'static str {
 pub fn changeable_soul_snapshot(
     character: &Character,
     session: &Session,
-    effective_at: u64,
+    effective_at: i64,
 ) -> Vec<(String, String)> {
     let config = companion_config(character);
     let state = current_state(session, &config);
@@ -1079,7 +1100,7 @@ pub fn changeable_soul_snapshot(
         .collect()
 }
 
-pub fn remove_soul_growth_at(session: &mut Session, index: usize, now: u64) -> bool {
+pub fn remove_soul_growth_at(session: &mut Session, index: usize, now: i64) -> bool {
     let raw = match &session.companion_state {
         Some(raw) => raw.clone(),
         None => return false,
@@ -1097,7 +1118,7 @@ pub fn remove_soul_growth_at(session: &mut Session, index: usize, now: u64) -> b
     true
 }
 
-pub fn clear_soul_growth(session: &mut Session, now: u64) -> usize {
+pub fn clear_soul_growth(session: &mut Session, now: i64) -> usize {
     let raw = match &session.companion_state {
         Some(raw) => raw.clone(),
         None => return 0,
@@ -1132,7 +1153,7 @@ pub fn core_soul_authored(character: &Character) -> Vec<(String, String)> {
 pub fn active_soul_growth_entries(
     character: &Character,
     session: &Session,
-    effective_at: u64,
+    effective_at: i64,
 ) -> Vec<SoulGrowthEntry> {
     let config = companion_config(character);
     let state = current_state(session, &config);
@@ -1147,7 +1168,7 @@ pub fn append_soul_growth(
     session: &mut Session,
     character: &Character,
     entries: Vec<SoulGrowthEntry>,
-    now: u64,
+    now: i64,
 ) -> usize {
     append_soul_growth_gated(session, character, entries, now, false)
 }
@@ -1156,7 +1177,7 @@ pub fn append_core_soul_growth(
     session: &mut Session,
     character: &Character,
     entries: Vec<SoulGrowthEntry>,
-    now: u64,
+    now: i64,
 ) -> usize {
     append_soul_growth_gated(session, character, entries, now, true)
 }
@@ -1165,7 +1186,7 @@ fn append_soul_growth_gated(
     session: &mut Session,
     character: &Character,
     entries: Vec<SoulGrowthEntry>,
-    now: u64,
+    now: i64,
     allow_core: bool,
 ) -> usize {
     if entries.is_empty() {
@@ -1253,7 +1274,7 @@ fn append_soul_growth_gated(
     applied
 }
 
-pub fn retire_soul_growth_entries(session: &mut Session, ids: &[String], now: u64) -> usize {
+pub fn retire_soul_growth_entries(session: &mut Session, ids: &[String], now: i64) -> usize {
     if ids.is_empty() {
         return 0;
     }
@@ -1285,7 +1306,7 @@ pub fn set_soul_growth_lock(
     session: &mut Session,
     entry_id: &str,
     locked: bool,
-    now: u64,
+    now: i64,
 ) -> bool {
     let raw = match &session.companion_state {
         Some(raw) => raw.clone(),
@@ -1329,9 +1350,14 @@ fn enforce_growth_bounds(growth: &mut Vec<SoulGrowthEntry>) {
 }
 
 fn default_state(config: &CompanionConfig) -> CompanionSessionState {
-    let now = crate::utils::now_millis().unwrap_or(0);
+    let now = crate::utils::now_millis().unwrap_or(0) as i64;
     let mut authored_facts = config.authored_facts.clone();
     for fact in &mut authored_facts {
+        // Baseline facts are timeless: effective no matter where the companion
+        // clock sits (see ALWAYS_EFFECTIVE_FROM). Only stamp an unset valid_from.
+        if fact.valid_from == 0 {
+            fact.valid_from = ALWAYS_EFFECTIVE_FROM;
+        }
         fact.normalize_for_storage(now);
         if fact.policy == "historical" {
             fact.locked = true;
@@ -1665,7 +1691,7 @@ fn push_signal(signals: &mut Vec<String>, label: &str) {
     }
 }
 
-fn elapsed_minutes(previous: u64, now: u64) -> f64 {
+fn elapsed_minutes(previous: i64, now: i64) -> f64 {
     if previous == 0 || now <= previous {
         0.0
     } else {
