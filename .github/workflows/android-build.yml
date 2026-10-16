@@ -205,6 +205,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Setup Android NDK
         id: setup-ndk
