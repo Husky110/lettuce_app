@@ -43,6 +43,12 @@ runs:
           echo "RUSTC_WRAPPER=sccache"
           echo "CMAKE_C_COMPILER_LAUNCHER=sccache"
           echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          # Keep the sccache server alive for the whole build (0 = never idle-shutdown).
+          # Since nvcc is no longer wrapped (see below), the long CUDA compile phase sends
+          # zero requests to sccache; with the default 600s idle timeout the server shuts
+          # itself down mid-build and the trailing cl.exe objects then fail with
+          # "Timed out waiting for server startup" on the cold restart.
+          echo "SCCACHE_IDLE_TIMEOUT=0"
           # nvcc is intentionally NOT wrapped with sccache: under CUDA 13.x sccache
           # fails to launch nvcc ("Missing cubin file output" / signal 126), which
           # breaks the CUDA builds. C/C++/Rust caching stays enabled.
