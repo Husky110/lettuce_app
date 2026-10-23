@@ -8975,7 +8975,7 @@ export const deMessages: DeepPartialMessageTree<LocaleMessages> = {
     penaltyRange: "Strafbereich",
     xtcProbability: "XTC-Wahrscheinlichkeit",
     xtcThreshold: "XTC-Schwellenwert",
-    topNSigma: "Top-nσ",
+    topNSigma: "Top-n-sigma",
     dryMultiplier: "DRY-Multiplikator",
     dryBase: "DRY Base",
     dryAllowedLength: "DRY-Erlaubte-Länge",

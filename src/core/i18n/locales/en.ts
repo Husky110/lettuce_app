@@ -9663,7 +9663,7 @@ export const enMessages = {
     penaltyRange: "Penalty Range",
     xtcProbability: "XTC Probability",
     xtcThreshold: "XTC Threshold",
-    topNSigma: "Top-nσ",
+    topNSigma: "Top-n-sigma",
     adaptiveTarget: "Adaptive-P Target",
     adaptiveDecay: "Adaptive-P Target Decay",
     dryMultiplier: "DRY Multiplier",
