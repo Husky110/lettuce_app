@@ -791,7 +791,7 @@ const PROFILES: &[ProfileSpec] = &[
         recommended_for_scenes: true,
         default_width: 1024,
         default_height: 1024,
-        default_steps: 40,
+        default_steps: 35,
         default_cfg: 6.0,
         minimum_runtime_build: Some(883),
         variants: QWEN21_VARIANTS,
